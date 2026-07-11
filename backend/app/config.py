@@ -1,31 +1,40 @@
+from __future__ import annotations
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def normalize_database_url(url: str) -> str:
-    """Railway delivers postgres:// or postgresql://; SQLAlchemy+psycopg needs +psycopg.
-
-    Rejects http(s) hosts that users sometimes paste from the Postgres public domain.
-    """
+    """Railway delivers postgres:// or postgresql://; SQLAlchemy+psycopg needs +psycopg."""
     raw = url.strip()
     lower = raw.lower()
     if lower.startswith(("http://", "https://")):
         raise ValueError(
-            "DATABASE_URL must be a Postgres connection string "
-            "(postgresql://...), not an https:// URL. "
-            "In Railway → Backend → Variables → Add Variable → "
-            "Variable Reference → Postgres → DATABASE_URL."
+            "DATABASE_URL must be postgresql://... (Variable Reference → Postgres → DATABASE_URL), "
+            "not an https:// hostname."
         )
     if raw.startswith("postgres://"):
         raw = "postgresql://" + raw[len("postgres://") :]
     if raw.startswith("postgresql://"):
         raw = "postgresql+psycopg://" + raw[len("postgresql://") :]
     if not raw.startswith("postgresql+psycopg://"):
-        raise ValueError(
-            "DATABASE_URL must start with postgresql:// or postgres://. "
-            "Use Railway Variable Reference to Postgres.DATABASE_URL."
-        )
+        raise ValueError("DATABASE_URL must start with postgresql:// or postgres://")
     return raw
+
+
+def parse_cors_origins(value: str | list[str]) -> list[str]:
+    """Accept JSON list, comma-separated URLs, or a single URL (Railway-friendly)."""
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    raw = (value or "").strip()
+    if not raw:
+        return []
+    if raw.startswith("["):
+        import json
+
+        parsed = json.loads(raw)
+        return [str(v).strip() for v in parsed if str(v).strip()]
+    return [part.strip() for part in raw.split(",") if part.strip()]
 
 
 class Settings(BaseSettings):
@@ -40,7 +49,9 @@ class Settings(BaseSettings):
 
     # App
     APP_NAME: str = "M&D Odontología Especializada"
-    CORS_ORIGINS: list[str] = ["http://localhost:3001"]
+    # Keep as str so pydantic-settings does NOT json.loads the Railway env value.
+    # Use settings.cors_origins for the list form.
+    CORS_ORIGINS: str = "http://localhost:3001"
     BACKEND_PORT: int = 8001
     CLINIC_NAME: str = "M&D Odontología Especializada"
     CLINIC_PHONE: str = ""
@@ -48,7 +59,6 @@ class Settings(BaseSettings):
     CLINIC_RUC: str = ""
     CLINIC_EMAIL: str = ""
     CLINIC_TICKET_SERIE: str = "T001"
-    # Public base URL for QR verification links (optional)
     PUBLIC_APP_URL: str = "http://localhost:3001"
 
     # Reminder scheduler
@@ -63,38 +73,9 @@ class Settings(BaseSettings):
             return normalize_database_url(v)
         return v
 
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def _parse_cors_origins(cls, v: object) -> object:
-        """Accept JSON list or comma-separated URLs (Railway-friendly)."""
-        if not isinstance(v, str):
-            return v
-        raw = v.strip()
-        if not raw:
-            return []
-        if raw.startswith("["):
-            import json
-
-            return json.loads(raw)
-        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    @property
+    def cors_origins(self) -> list[str]:
+        return parse_cors_origins(self.CORS_ORIGINS)
 
 
-def load_settings() -> Settings:
-    """Load settings; never crash the process on bad Railway env (healthcheck needs HTTP)."""
-    try:
-        return Settings()
-    except Exception as exc:  # noqa: BLE001
-        print(f"[dentalfacil] ERROR loading settings: {exc}", flush=True)
-        print(
-            "[dentalfacil] Fix DATABASE_URL: use Variable Reference → Postgres → DATABASE_URL "
-            "(must look like postgresql://user:pass@host:5432/db, NOT https://...)",
-            flush=True,
-        )
-        # Fall back so uvicorn can still bind and /api/health responds
-        return Settings(
-            DATABASE_URL="postgresql+psycopg://invalid:invalid@127.0.0.1:1/invalid",
-            CORS_ORIGINS=["*"],
-        )
-
-
-settings = load_settings()
+settings = Settings()

@@ -32,7 +32,12 @@
 | Variable | Cuándo | Valor |
 |---|---|---|
 | `BACKEND_URL` | **Runtime** | `https://<backend>.up.railway.app` |
-| `NEXT_PUBLIC_API_URL` | — | **déjala vacía / bórrala** |
+| `NEXT_PUBLIC_API_URL` | — | **bórrala por completo** (no la dejes ni vacía en Variables) |
 
-El frontend llama a `/api/...` en su propio dominio; Next hace proxy a `BACKEND_URL`.  
-Si ves `NetworkError when attempting to fetch resource`, falta `BACKEND_URL` o apunta mal.
+El frontend llama a `/api/...` en su propio dominio; Next hace proxy a `BACKEND_URL`.
+
+Si ves `Failed to fetch` / `NetworkError when attempting to fetch resource`:
+1. En Frontend → Variables: **borra** `NEXT_PUBLIC_API_URL` (si apunta al backend, el JS hace fetch cross-origin y falla).
+2. Define `BACKEND_URL=https://<tu-backend>.up.railway.app`.
+3. **Redeploy** el Frontend (hace falta rebuild; un restart no basta).
+4. En Backend, `CORS_ORIGINS` debe incluir la URL pública del frontend (p. ej. `https://mdodontologia.up.railway.app`).

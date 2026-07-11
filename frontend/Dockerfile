@@ -1,9 +1,7 @@
-ARG NEXT_PUBLIC_API_URL=""
 ARG BACKEND_URL=http://localhost:8001
 
 FROM node:18-alpine AS builder
 
-ARG NEXT_PUBLIC_API_URL
 ARG BACKEND_URL
 
 WORKDIR /app
@@ -13,9 +11,11 @@ RUN npm install
 
 COPY . .
 
-# NEXT_PUBLIC_* is optional: leave empty so the browser uses same-origin /api
-# and the Next.js route handler proxies to BACKEND_URL at runtime.
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# IMPORTANT: do NOT bake NEXT_PUBLIC_API_URL into the client bundle.
+# Railway injects service vars as build-args; if NEXT_PUBLIC_API_URL points at the
+# public backend, the browser does cross-origin fetch → "Failed to fetch"/CORS.
+# Browser always calls same-origin /api/... ; route handler proxies via BACKEND_URL.
+ENV NEXT_PUBLIC_API_URL=
 ENV BACKEND_URL=$BACKEND_URL
 RUN npm run build
 

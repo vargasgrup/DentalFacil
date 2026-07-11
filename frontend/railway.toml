@@ -1,0 +1,8 @@
+[deploy]
+startCommand = "npm run start"
+healthcheckPath = "/"
+healthcheckTimeout = 10
+
+[deploy.envs]
+NEXT_PUBLIC_API_URL = {required = true}
+PORT = {default = "3001"}

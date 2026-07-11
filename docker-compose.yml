@@ -1,0 +1,72 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: dentalsimple-db
+    environment:
+      POSTGRES_USER: dentalsimple
+      POSTGRES_PASSWORD: dentalsimple
+      POSTGRES_DB: dentalsimple
+    ports:
+      - "5434:5432"
+    volumes:
+      - dentalsimple_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dentalsimple"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dentalsimple-backend
+    ports:
+      - "8001:8001"
+    environment:
+      PORT: "8001"
+      DATABASE_URL: postgresql+psycopg://dentalsimple:dentalsimple@db:5432/dentalsimple
+      JWT_SECRET: change-me-in-production-please-use-a-long-random-string
+      CORS_ORIGINS: '["http://localhost:3001"]'
+      CLINIC_NAME: M&D Odontología Especializada
+      CLINIC_TICKET_SERIE: T001
+      PUBLIC_APP_URL: http://localhost:3001
+      REMINDER_HOURS_BEFORE: "24"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/app/assets/uploads:/app/app/assets/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8001/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* variables are baked into the browser bundle at build time.
+        # The browser cannot resolve the internal Docker hostname 'backend'.
+        # Leave empty so api.ts uses relative paths ("/api/...") and Next.js
+        # rewrites (next.config.js) proxy them to the internal backend service.
+        NEXT_PUBLIC_API_URL: ""
+        # BACKEND_URL is used by next.config.js at build time to compile rewrites.
+        # The Next.js server inside Docker can reach the 'backend' service.
+        BACKEND_URL: http://backend:8001
+    container_name: dentalsimple-frontend
+    environment:
+      # BACKEND_URL is read by next.config.js at server startup (runtime).
+      # It can reach the internal Docker 'backend' service.
+      BACKEND_URL: http://backend:8001
+    ports:
+      - "3001:3001"
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  dentalsimple_pgdata:

@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# .env files (credentials)
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+frontend/.next/
+frontend/out/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Docker volumes
+pgdata/
+
+# Local tooling
+.claude/
+.impeccable/
+
+
+# Uploaded assets
+backend/app/assets/uploads/*
+!backend/app/assets/uploads/.gitkeep
+

@@ -1,0 +1,225 @@
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import String, and_, func, literal, or_
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.core.deps import get_current_user
+from app.database import get_db
+from app.models import ClinicalRecord, Patient, User
+from app.schemas.patient import (
+    PatientCreate,
+    PatientOut,
+    PatientSearchResult,
+    PatientUpdate,
+)
+from app.utils.ficha import format_ficha_label, parse_ficha_query
+
+router = APIRouter(prefix="/api/patients", tags=["patients"])
+
+
+def _next_ficha_number(db: Session) -> int:
+    max_num = db.query(func.max(Patient.numero_ficha)).scalar()
+    return (max_num or 0) + 1
+
+
+def _normalize_documento(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _find_by_document(
+    db: Session,
+    tipo_documento: str,
+    numero_documento: str | None,
+    exclude_id: int | None = None,
+) -> Patient | None:
+    doc = _normalize_documento(numero_documento)
+    if not doc:
+        return None
+    q = db.query(Patient).filter(
+        Patient.tipo_documento == (tipo_documento or "DNI"),
+        func.lower(Patient.numero_documento) == doc.lower(),
+    )
+    if exclude_id is not None:
+        q = q.filter(Patient.id != exclude_id)
+    return q.first()
+
+
+def _assert_unique_document(
+    db: Session,
+    tipo_documento: str,
+    numero_documento: str | None,
+    exclude_id: int | None = None,
+) -> None:
+    existing = _find_by_document(db, tipo_documento, numero_documento, exclude_id)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Ya existe un paciente con {tipo_documento or 'DNI'} {numero_documento.strip()} "
+                f"({format_ficha_label(existing.numero_ficha)}: {existing.nombres} {existing.apellidos}). "
+                "Abre esa ficha en lugar de crear un duplicado."
+            ),
+        )
+
+
+@router.get("/search", response_model=list[PatientSearchResult])
+def search_patients(
+    q: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Búsqueda inteligente de pacientes:
+    nombre, apellido, nombre completo, DNI y nº de ficha (5, 00005, FC-00005).
+    Soporta varias palabras (p.ej. «Maria Perez») con coincidencia por token.
+    """
+    raw = q.strip()
+    if not raw:
+        return []
+
+    tokens = [t for t in raw.lower().split() if t]
+    full_name = func.lower(func.concat(Patient.nombres, literal(" "), Patient.apellidos))
+    raw_like = f"%{raw.lower()}%"
+
+    base_or = [
+        full_name.like(raw_like),
+        func.lower(Patient.nombres).like(raw_like),
+        func.lower(Patient.apellidos).like(raw_like),
+        func.lower(func.coalesce(Patient.numero_documento, "")).like(raw_like),
+        func.cast(Patient.numero_ficha, String).like(raw_like),
+    ]
+    ficha_n = parse_ficha_query(raw)
+    if ficha_n is not None:
+        base_or.append(Patient.numero_ficha == ficha_n)
+
+    filters = [or_(*base_or)]
+
+    # Cada palabra debe coincidir en algún campo (AND entre tokens)
+    if len(tokens) > 1:
+        for token in tokens:
+            t = f"%{token}%"
+            filters.append(
+                or_(
+                    func.lower(Patient.nombres).like(t),
+                    func.lower(Patient.apellidos).like(t),
+                    full_name.like(t),
+                    func.lower(func.coalesce(Patient.numero_documento, "")).like(t),
+                    func.cast(Patient.numero_ficha, String).like(t),
+                )
+            )
+
+    results = (
+        db.query(Patient)
+        .filter(and_(*filters))
+        .order_by(Patient.apellidos, Patient.nombres)
+        .limit(20)
+        .all()
+    )
+    return results
+
+
+@router.get("", response_model=list[PatientOut])
+def list_patients(
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return db.query(Patient).order_by(Patient.created_at.desc()).offset(skip).limit(limit).all()
+
+
+@router.get("/{patient_id}", response_model=PatientOut)
+def get_patient(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    p = db.get(Patient, patient_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    return p
+
+
+@router.post("", response_model=PatientOut, status_code=status.HTTP_201_CREATED)
+def create_patient(
+    payload: PatientCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    doc = _normalize_documento(payload.numero_documento)
+    _assert_unique_document(db, payload.tipo_documento, doc)
+
+    patient = Patient(
+        numero_ficha=_next_ficha_number(db),
+        nombres=payload.nombres.strip(),
+        apellidos=payload.apellidos.strip(),
+        tipo_documento=payload.tipo_documento or "DNI",
+        numero_documento=doc,
+        fecha_nacimiento=payload.fecha_nacimiento,
+        lugar_nacimiento=payload.lugar_nacimiento,
+        ocupacion=payload.ocupacion,
+        estado_civil=payload.estado_civil,
+        telefono=payload.telefono,
+        email=payload.email,
+        direccion=payload.direccion,
+        contacto_emergencia=payload.contacto_emergencia,
+        nombre_responsable=payload.nombre_responsable,
+        alergias=payload.alergias,
+    )
+    db.add(patient)
+    try:
+        db.flush()
+        record = ClinicalRecord(patient_id=patient.id, doctor_responsable_id=user.id)
+        db.add(record)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Ya existe un paciente con {payload.tipo_documento or 'DNI'} {doc}. "
+                "No se permiten documentos duplicados."
+            ),
+        )
+    db.refresh(patient)
+    return patient
+
+
+@router.patch("/{patient_id}", response_model=PatientOut)
+def update_patient(
+    patient_id: int,
+    payload: PatientUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    p = db.get(Patient, patient_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+
+    data = payload.model_dump(exclude_unset=True)
+    if "numero_documento" in data:
+        data["numero_documento"] = _normalize_documento(data["numero_documento"])
+    if "nombres" in data and data["nombres"] is not None:
+        data["nombres"] = data["nombres"].strip()
+    if "apellidos" in data and data["apellidos"] is not None:
+        data["apellidos"] = data["apellidos"].strip()
+
+    next_tipo = data.get("tipo_documento", p.tipo_documento)
+    next_doc = data["numero_documento"] if "numero_documento" in data else p.numero_documento
+    _assert_unique_document(db, next_tipo, next_doc, exclude_id=p.id)
+
+    for field, value in data.items():
+        setattr(p, field, value)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya existe otro paciente con ese número de documento.",
+        )
+    db.refresh(p)
+    return p

@@ -1,8 +1,7 @@
 [build]
 builder = "DOCKERFILE"
-# Absolute from repo root (config-as-code ignores service Root Directory)
-dockerfilePath = "frontend/Dockerfile"
-watchPatterns = ["/frontend/**"]
+dockerfilePath = "Dockerfile.frontend"
+watchPatterns = ["/frontend/**", "/Dockerfile.frontend"]
 
 [deploy]
 startCommand = "npm start"

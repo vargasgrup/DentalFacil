@@ -1,8 +1,7 @@
 [build]
 builder = "DOCKERFILE"
-# Absolute from repo root (config-as-code ignores service Root Directory)
-dockerfilePath = "backend/Dockerfile"
-watchPatterns = ["/backend/**"]
+dockerfilePath = "Dockerfile.backend"
+watchPatterns = ["/backend/**", "/Dockerfile.backend"]
 
 [deploy]
 startCommand = "./start.sh"

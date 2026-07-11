@@ -1,99 +1,60 @@
 # Despliegue en Railway — DentalFacil / M&D Odontología
 
-Stack en Railway: **PostgreSQL** + **backend (FastAPI)** + **frontend (Next.js)**.
+Stack: **PostgreSQL** + **backend (FastAPI)** + **frontend (Next.js)**.
 
-## 1. Crear el proyecto
+## Settings exactos (importante)
 
-1. En [Railway](https://railway.app) → **New Project** → **Deploy from GitHub repo** → `vargasgrup/DentalFacil`.
-2. Añadir base de datos: **+ New** → **Database** → **PostgreSQL**.
-
-No dejes un servicio buildeando la raíz del monorepo. Usa **dos** servicios con Root Directory (paso 2).
-
-## 2. Servicios backend y frontend
-
-Para cada uno: **+ New** → **GitHub Repo** → mismo repo `DentalFacil`.
+En **ambos** servicios deja **Root Directory vacío** (`/`).  
+Los Dockerfiles viven en la **raíz del repo** y copian `backend/` o `frontend/`.
 
 ### Backend
 
 | Setting | Valor |
 |---|---|
-| **Root Directory** | `/backend` |
-| **Config as Code** | `/backend/railway.toml` |
-| Dockerfile | `backend/Dockerfile` (lo define el toml) |
+| Root Directory | *(vacío)* `/` |
+| Config as Code | `/backend/railway.toml` |
+| Dockerfile | `Dockerfile.backend` |
 
 ### Frontend
 
 | Setting | Valor |
 |---|---|
-| **Root Directory** | `/frontend` |
-| **Config as Code** | `/frontend/railway.toml` |
-| Dockerfile | `frontend/Dockerfile` (lo define el toml) |
+| Root Directory | *(vacío)* `/` |
+| Config as Code | `/frontend/railway.toml` |
+| Dockerfile | `Dockerfile.frontend` |
 
-> Si el build dice `"/frontend": not found`, el Root Directory está mal: debe ser `/frontend` con el Dockerfile **dentro** de esa carpeta (no `Dockerfile.frontend` en la raíz del repo).
+Si Root Directory es `/backend` o `/frontend`, el build falla con `requirements.txt not found` o `"/frontend": not found`.
 
-## 3. Dominios públicos
-
-En cada servicio → **Settings** → **Networking** → **Generate Domain**.
-
-Anota:
-
-- `https://<backend>.up.railway.app`
-- `https://<frontend>.up.railway.app`
-
-## 4. Variables de entorno
+## Variables
 
 ### Backend
 
-| Variable | Valor sugerido |
+| Variable | Valor |
 |---|---|
-| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (usa el **Variable Reference** al servicio Postgres) |
-| `JWT_SECRET` | cadena larga aleatoria (mín. 32 caracteres) |
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (Variable Reference) |
+| `JWT_SECRET` | cadena larga aleatoria |
 | `CORS_ORIGINS` | `https://<frontend>.up.railway.app` |
 | `PUBLIC_APP_URL` | `https://<frontend>.up.railway.app` |
-| `CLINIC_NAME` | Nombre del centro (opcional) |
-| `REMINDER_HOURS_BEFORE` | `24` (opcional) |
 
-`postgres://` / `postgresql://` de Railway se convierten automáticamente a `postgresql+psycopg://`.
+### Frontend (build)
 
-Las migraciones corren al arrancar (`./start.sh` → `alembic upgrade head`).
-
-### Frontend
-
-| Variable | Cuándo | Valor sugerido |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | **Build** | `https://<backend>.up.railway.app` |
-| `PORT` | Runtime | Lo inyecta Railway |
-
-`NEXT_PUBLIC_*` se embebe en el bundle en el **build**. Si cambias la URL del backend, **redeploy** el frontend.
-
-## 5. Volúmenes (recomendado)
-
-En **backend** → **Volumes**:
-
-- `/app/app/assets/uploads` — logo del centro
-- `/app/uploads/tooth_media` — adjuntos del odontograma
-
-## 6. Desplegar y verificar
-
-1. Deploy backend (healthcheck `/api/health`).
-2. Deploy frontend.
-3. Abre el frontend → wizard ADMIN si no hay usuarios.
-
-## 7. Fallos comunes
-
-| Síntoma | Causa / arreglo |
+| Variable | Valor |
 |---|---|
-| `"/frontend": not found` o `"/backend": not found` | Root Directory debe ser `/frontend` o `/backend` (no `/`). El Dockerfile no debe hacer `COPY frontend/`. |
-| `Railpack could not determine how to build` | Falta Root Directory o Config-as-code. |
-| Healthcheck backend falla 5 min | Falta `DATABASE_URL=${{Postgres.DATABASE_URL}}`. Mira Deploy Logs por `[dentalfacil]`. |
-| CORS / API falla en browser | `CORS_ORIGINS` y `NEXT_PUBLIC_API_URL` deben usar las URLs `.up.railway.app` exactas. |
-| Logo se pierde | Falta volumen en uploads. |
+| `NEXT_PUBLIC_API_URL` | `https://<backend>.up.railway.app` |
 
-## 8. Railway CLI (opcional)
+## Pasos
 
-```bash
-npm i -g @railway/cli
-railway login
-railway link
-railway ssh   # shell en el servicio seleccionado
-```
+1. Postgres plugin online.
+2. Dos servicios GitHub → mismo repo, Root vacío, configs arriba.
+3. Generate Domain en backend y frontend.
+4. Variables → Redeploy.
+5. Abrir frontend → wizard ADMIN.
+
+## Errores frecuentes
+
+| Error | Arreglo |
+|---|---|
+| `"/requirements.txt": not found` | Root Directory debe estar **vacío**; Dockerfile = `Dockerfile.backend` |
+| `"/frontend": not found` | Root Directory debe estar **vacío**; Dockerfile = `Dockerfile.frontend` |
+| Healthcheck backend 5 min | Falta `DATABASE_URL` con referencia a Postgres |
+| Railpack en la raíz | Borra ese servicio; usa backend/frontend con config-as-code |

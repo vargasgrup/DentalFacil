@@ -1,13 +1,13 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+watchPatterns = ["/backend/**"]
+
 [deploy]
+# Runs once before the new replica starts (zero-downtime friendly)
+preDeployCommand = ["alembic upgrade head"]
 startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
 healthcheckPath = "/api/health"
-healthcheckTimeout = 10
-
-[deploy.envs]
-DATABASE_URL = {required = true}
-JWT_SECRET = {required = true}
-CORS_ORIGINS = {required = true}
-CLINIC_NAME = {default = "M&D Odontología Especializada"}
-CLINIC_PHONE = {default = ""}
-CLINIC_ADDRESS = {default = ""}
-REMINDER_HOURS_BEFORE = {default = "24"}
+healthcheckTimeout = 100
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

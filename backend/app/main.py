@@ -22,6 +22,9 @@ from app.routers.audit import router as audit_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.services.clinic_profile import ensure_uploads_dir
+
+    ensure_uploads_dir()
     scheduler = BackgroundScheduler()
     scheduler.add_job(generate_reminders_job, "interval", minutes=5, id="reminders", next_run_time=datetime.now())
     scheduler.start()

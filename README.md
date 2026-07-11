@@ -69,12 +69,22 @@ docker compose down
 
 ## Despliegue en Railway
 
-1. Crear un proyecto en Railway con dos servicios (backend y frontend).
-2. Agregar un plugin de PostgreSQL.
-3. Configurar variables de entorno (ver `.env.example` de cada servicio).
-4. Backend: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-5. Frontend: `npm run start` (con `NEXT_PUBLIC_API_URL` apuntando al backend).
-6. Ejecutar migraciones: `alembic upgrade head` (Railway CLI o en el build).
+Guía completa: [`docs/RAILWAY.md`](docs/RAILWAY.md).
+
+Resumen rápido:
+
+1. Crear un proyecto en Railway e importar el repo `DentalFacil`.
+2. Agregar **PostgreSQL**.
+3. Crear dos servicios desde el mismo repo:
+   - **backend** → Root Directory `/backend`, Config file `/backend/railway.toml`
+   - **frontend** → Root Directory `/frontend`, Config file `/frontend/railway.toml`
+4. Variables (ver `.env.example` y `docs/RAILWAY.md`):
+   - Backend: `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, `PUBLIC_APP_URL`
+   - Frontend (build): `NEXT_PUBLIC_API_URL` = URL pública del backend
+5. Generar dominio público en ambos servicios.
+6. Primer login: wizard de setup ADMIN en la URL del frontend.
+
+Las migraciones Alembic corren solas en el **pre-deploy** del backend.
 
 ## Decisiones de diseño clave
 

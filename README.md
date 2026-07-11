@@ -75,16 +75,16 @@ Resumen rápido:
 
 1. Crear un proyecto en Railway e importar el repo `DentalFacil`.
 2. Agregar **PostgreSQL**.
-3. Crear dos servicios desde el mismo repo:
-   - **backend** → Root Directory `/backend`, Config file `/backend/railway.toml`
-   - **frontend** → Root Directory `/frontend`, Config file `/frontend/railway.toml`
+3. Crear dos servicios desde el mismo repo (Root Directory = `/` en ambos):
+   - **backend** → Config `/backend/railway.toml` → usa `Dockerfile.backend`
+   - **frontend** → Config `/frontend/railway.toml` → usa `Dockerfile.frontend`
 4. Variables (ver `.env.example` y `docs/RAILWAY.md`):
    - Backend: `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, `PUBLIC_APP_URL`
    - Frontend (build): `NEXT_PUBLIC_API_URL` = URL pública del backend
 5. Generar dominio público en ambos servicios.
 6. Primer login: wizard de setup ADMIN en la URL del frontend.
 
-Las migraciones Alembic corren solas en el **pre-deploy** del backend.
+Las migraciones Alembic corren al arrancar el backend.
 
 ## Decisiones de diseño clave
 

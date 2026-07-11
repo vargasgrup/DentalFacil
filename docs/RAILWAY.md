@@ -13,21 +13,23 @@ No dejes que Railway intente desplegar la raíz del monorepo como un solo servic
 
 Para cada uno: **+ New** → **GitHub Repo** → mismo repo `DentalFacil`.
 
+**Importante:** deja **Root Directory** vacío (`/`, raíz del repo). Los Dockerfiles de Railway están en la raíz (`Dockerfile.backend` / `Dockerfile.frontend`) y copian el código correcto. Si pones Root Directory en `/backend` con el Dockerfile viejo, el healthcheck falla.
+
 ### Backend
 
 | Setting | Valor |
 |---|---|
-| Root Directory | `/backend` |
+| Root Directory | `/` (vacío / raíz del repo) |
 | Config as Code | `/backend/railway.toml` |
-| Builder | Dockerfile (detectado) |
+| Builder | Dockerfile → `Dockerfile.backend` |
 
 ### Frontend
 
 | Setting | Valor |
 |---|---|
-| Root Directory | `/frontend` |
+| Root Directory | `/` (vacío / raíz del repo) |
 | Config as Code | `/frontend/railway.toml` |
-| Builder | Dockerfile (detectado) |
+| Builder | Dockerfile → `Dockerfile.frontend` |
 
 ## 3. Dominios públicos
 
@@ -112,14 +114,15 @@ Eso ocurre cuando importas el monorepo y Railway crea **un** servicio en `/`.
 
 **Backend**
 
-- Root Directory: `/backend`
+- Root Directory: `/` (raíz del repo, **no** `/backend`)
 - Config-as-code path: `/backend/railway.toml`
-- Builder: debe usar **Dockerfile** (no Railpack)
+- Dockerfile: `Dockerfile.backend`
 
 **Frontend**
 
-- Root Directory: `/frontend`
+- Root Directory: `/` (raíz del repo, **no** `/frontend`)
 - Config-as-code path: `/frontend/railway.toml`
+- Dockerfile: `Dockerfile.frontend`
 
 4. Redeploy.
 

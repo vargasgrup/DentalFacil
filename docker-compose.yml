@@ -18,8 +18,8 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.backend
     container_name: dentalsimple-backend
     ports:
       - "8001:8001"
@@ -46,8 +46,8 @@ services:
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.frontend
       args:
         # NEXT_PUBLIC_* variables are baked into the browser bundle at build time.
         # The browser cannot resolve the internal Docker hostname 'backend'.

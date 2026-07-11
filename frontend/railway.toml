@@ -1,11 +1,12 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
-watchPatterns = ["/frontend/**"]
+# Path is from repo root (config-as-code does NOT follow Root Directory)
+dockerfilePath = "Dockerfile.frontend"
+watchPatterns = ["/frontend/**", "/Dockerfile.frontend"]
 
 [deploy]
 startCommand = "npm start"
 healthcheckPath = "/"
-healthcheckTimeout = 100
+healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5

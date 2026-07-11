@@ -95,11 +95,35 @@ El disco del contenedor es efímero. Para no perder logos y adjuntos:
 
 | Síntoma | Causa probable |
 |---|---|
+| `Railpack could not determine how to build` / `Script start.sh not found` / analiza `./backend`, `./frontend` | El servicio no tiene **Root Directory**. Debe ser `/backend` o `/frontend` (no la raíz `/`) |
 | Frontend carga pero API falla (CORS) | `CORS_ORIGINS` no incluye exactamente la URL del frontend (con `https://`) |
 | Frontend llama a `localhost` | `NEXT_PUBLIC_API_URL` vacío o mal puesto; falta rebuild |
 | Backend no arranca / DB error | `DATABASE_URL` no referenciada al plugin Postgres |
 | Tablas inexistentes | Falló pre-deploy; revisa logs de “Pre-deploy”; ejecuta `alembic upgrade head` en Railway shell |
 | Logo se pierde tras redeploy | Falta volumen en `/app/app/assets/uploads` |
+
+### Si Railpack intenta buildear la raíz del repo
+
+Eso ocurre cuando importas el monorepo y Railway crea **un** servicio en `/`.
+
+1. Borra ese servicio (o no lo uses).
+2. Crea **dos** servicios desde el mismo GitHub repo.
+3. En cada uno → **Settings**:
+
+**Backend**
+
+- Root Directory: `/backend`
+- Config-as-code path: `/backend/railway.toml`
+- Builder: debe usar **Dockerfile** (no Railpack)
+
+**Frontend**
+
+- Root Directory: `/frontend`
+- Config-as-code path: `/frontend/railway.toml`
+
+4. Redeploy.
+
+En los logs de build correctos debes ver algo como `Dockerfile` / `docker build`, **no** `using build driver railpack`, y el árbol analizado no debe listar `backend/` y `frontend/` juntos.
 
 ## 8. Comandos útiles (Railway CLI)
 

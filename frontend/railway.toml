@@ -1,6 +1,5 @@
 [build]
 builder = "DOCKERFILE"
-# Requires service Root Directory = /frontend (build context = frontend folder)
 dockerfilePath = "frontend/Dockerfile"
 watchPatterns = ["/frontend/**"]
 

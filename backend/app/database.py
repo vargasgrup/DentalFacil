@@ -3,12 +3,25 @@ from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from app.config import settings
 
-# connect_timeout keeps boot from hanging forever on a bad host
-engine = create_engine(
-    settings.DATABASE_URL,
-    pool_pre_ping=True,
-    connect_args={"connect_timeout": 5},
-)
+
+def _make_engine():
+    try:
+        return create_engine(
+            settings.DATABASE_URL,
+            pool_pre_ping=True,
+            connect_args={"connect_timeout": 5},
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[dentalfacil] ERROR create_engine: {exc}", flush=True)
+        # Unreachable placeholder so imports succeed and /api/health can respond
+        return create_engine(
+            "postgresql+psycopg://invalid:invalid@127.0.0.1:1/invalid",
+            pool_pre_ping=False,
+            connect_args={"connect_timeout": 1},
+        )
+
+
+engine = _make_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

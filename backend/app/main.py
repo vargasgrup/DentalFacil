@@ -1,12 +1,12 @@
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
+import threading
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
-from app.database import Base, engine
 from app.routers.auth import router as auth_router, users_router
 from app.routers.patients import router as patients_router
 from app.routers.clinical import router as clinical_router
@@ -20,14 +20,38 @@ from app.routers.reports import router as reports_router
 from app.routers.audit import router as audit_router
 
 
+def _run_migrations() -> None:
+    """Run Alembic in a daemon thread so HTTP can bind immediately (Railway healthcheck)."""
+    try:
+        from alembic import command
+        from alembic.config import Config
+
+        print("[dentalfacil] running migrations...", flush=True)
+        command.upgrade(Config("alembic.ini"), "head")
+        print("[dentalfacil] migrations ok", flush=True)
+    except Exception as exc:  # noqa: BLE001 — boot must not die on migrate errors
+        print(f"[dentalfacil] WARNING: migrations failed: {exc}", flush=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.services.clinic_profile import ensure_uploads_dir
 
+    print("[dentalfacil] lifespan start", flush=True)
     ensure_uploads_dir()
+    threading.Thread(target=_run_migrations, daemon=True, name="alembic").start()
+
     scheduler = BackgroundScheduler()
-    scheduler.add_job(generate_reminders_job, "interval", minutes=5, id="reminders", next_run_time=datetime.now())
+    # Delay first run so boot/healthcheck are not competing with DB work
+    scheduler.add_job(
+        generate_reminders_job,
+        "interval",
+        minutes=5,
+        id="reminders",
+        next_run_time=datetime.now() + timedelta(minutes=1),
+    )
     scheduler.start()
+    print("[dentalfacil] lifespan ready", flush=True)
     yield
     scheduler.shutdown()
 

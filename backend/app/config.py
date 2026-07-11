@@ -3,12 +3,29 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def normalize_database_url(url: str) -> str:
-    """Railway delivers postgres:// or postgresql://; SQLAlchemy+psycopg needs +psycopg."""
-    if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://") :]
-    if url.startswith("postgresql://"):
-        url = "postgresql+psycopg://" + url[len("postgresql://") :]
-    return url
+    """Railway delivers postgres:// or postgresql://; SQLAlchemy+psycopg needs +psycopg.
+
+    Rejects http(s) hosts that users sometimes paste from the Postgres public domain.
+    """
+    raw = url.strip()
+    lower = raw.lower()
+    if lower.startswith(("http://", "https://")):
+        raise ValueError(
+            "DATABASE_URL must be a Postgres connection string "
+            "(postgresql://...), not an https:// URL. "
+            "In Railway → Backend → Variables → Add Variable → "
+            "Variable Reference → Postgres → DATABASE_URL."
+        )
+    if raw.startswith("postgres://"):
+        raw = "postgresql://" + raw[len("postgres://") :]
+    if raw.startswith("postgresql://"):
+        raw = "postgresql+psycopg://" + raw[len("postgresql://") :]
+    if not raw.startswith("postgresql+psycopg://"):
+        raise ValueError(
+            "DATABASE_URL must start with postgresql:// or postgres://. "
+            "Use Railway Variable Reference to Postgres.DATABASE_URL."
+        )
+    return raw
 
 
 class Settings(BaseSettings):
@@ -42,8 +59,8 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def _normalize_database_url(cls, v: object) -> object:
-        if isinstance(v, str):
-            return normalize_database_url(v.strip())
+        if isinstance(v, str) and v.strip():
+            return normalize_database_url(v)
         return v
 
     @field_validator("CORS_ORIGINS", mode="before")
@@ -62,4 +79,22 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
-settings = Settings()
+def load_settings() -> Settings:
+    """Load settings; never crash the process on bad Railway env (healthcheck needs HTTP)."""
+    try:
+        return Settings()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[dentalfacil] ERROR loading settings: {exc}", flush=True)
+        print(
+            "[dentalfacil] Fix DATABASE_URL: use Variable Reference → Postgres → DATABASE_URL "
+            "(must look like postgresql://user:pass@host:5432/db, NOT https://...)",
+            flush=True,
+        )
+        # Fall back so uvicorn can still bind and /api/health responds
+        return Settings(
+            DATABASE_URL="postgresql+psycopg://invalid:invalid@127.0.0.1:1/invalid",
+            CORS_ORIGINS=["*"],
+        )
+
+
+settings = load_settings()

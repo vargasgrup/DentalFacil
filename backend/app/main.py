@@ -73,7 +73,12 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "app": settings.APP_NAME}
+    db_ok = settings.DATABASE_URL.startswith("postgresql+psycopg://") and "@127.0.0.1:1/" not in settings.DATABASE_URL
+    return {
+        "status": "ok",
+        "app": settings.APP_NAME,
+        "database_url_configured": db_ok,
+    }
 
 
 app.include_router(auth_router)

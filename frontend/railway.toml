@@ -1,7 +1,8 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile.frontend"
-watchPatterns = ["/frontend/**", "/Dockerfile.frontend"]
+# Requires service Root Directory = /frontend (build context = frontend folder)
+dockerfilePath = "frontend/Dockerfile"
+watchPatterns = ["/frontend/**"]
 
 [deploy]
 startCommand = "npm start"

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
 from app.database import get_db
+from app.migrate import migrations_status
 from app.models import ClinicalRecord, Patient, User
 from app.schemas.patient import (
     PatientCreate,
@@ -15,6 +16,26 @@ from app.schemas.patient import (
 from app.utils.ficha import format_ficha_label, parse_ficha_query
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
+
+
+def _db_write_error_detail(exc: Exception) -> str:
+    msg = str(exc).lower()
+    if "clinical_records" in msg and "does not exist" in msg:
+        return (
+            "Falta la tabla de ficha clínica. Reinicia el servicio Backend en Railway "
+            "para aplicar migraciones."
+        )
+    if "does not exist" in msg or "undefinedcolumn" in msg or "undefined column" in msg:
+        return (
+            "Esquema de base de datos incompleto. Reinicia el Backend en Railway; "
+            "si persiste, revisa los logs de migraciones."
+        )
+    if "connection" in msg or "timeout" in msg or "could not connect" in msg:
+        return (
+            "Sin conexión a PostgreSQL. En Railway, DATABASE_URL debe ser Variable Reference "
+            "→ Postgres → DATABASE_URL (postgresql://…)."
+        )
+    return f"No se pudo guardar el paciente: {exc}"
 
 
 def _next_ficha_number(db: Session) -> int:
@@ -149,6 +170,16 @@ def create_patient(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    mig = migrations_status()
+    if not mig["ok"]:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Base de datos en inicialización. Espera 30 segundos e intenta de nuevo. "
+                f"Detalle: {mig['error'] or 'migraciones pendientes'}"
+            ),
+        )
+
     doc = _normalize_documento(payload.numero_documento)
     _assert_unique_document(db, payload.tipo_documento, doc)
 
@@ -186,18 +217,17 @@ def create_patient(
         )
     except (OperationalError, ProgrammingError) as exc:
         db.rollback()
+        print(f"[dentalfacil] create_patient DB error: {exc}", flush=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "No se pudo guardar el paciente: la base de datos aún no está lista. "
-                "Espera unos segundos e intenta de nuevo."
-            ),
+            detail=_db_write_error_detail(exc),
         ) from exc
     except Exception as exc:
         db.rollback()
+        print(f"[dentalfacil] create_patient error: {exc}", flush=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"No se pudo crear el paciente: {exc}",
+            detail=_db_write_error_detail(exc),
         ) from exc
     db.refresh(patient)
     return patient

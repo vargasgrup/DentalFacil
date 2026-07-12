@@ -25,10 +25,12 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    from app.database import _connect_args
+
     connectable = create_engine(
         settings.DATABASE_URL,
         poolclass=pool.NullPool,
-        connect_args={"connect_timeout": 10},
+        connect_args=_connect_args(settings.DATABASE_URL),
     )
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)

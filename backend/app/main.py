@@ -1,12 +1,12 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-import threading
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
+from app.migrate import migrations_status, run_migrations_blocking
 from app.routers.auth import router as auth_router, users_router
 from app.routers.patients import router as patients_router
 from app.routers.clinical import router as clinical_router
@@ -21,16 +21,9 @@ from app.routers.audit import router as audit_router
 
 
 def _run_migrations() -> None:
-    """Run Alembic in a daemon thread so HTTP can bind immediately (Railway healthcheck)."""
-    try:
-        from alembic import command
-        from alembic.config import Config
-
-        print("[dentalfacil] running migrations...", flush=True)
-        command.upgrade(Config("alembic.ini"), "head")
-        print("[dentalfacil] migrations ok", flush=True)
-    except Exception as exc:  # noqa: BLE001 — boot must not die on migrate errors
-        print(f"[dentalfacil] WARNING: migrations failed: {exc}", flush=True)
+    """Fallback when not started via boot.py (e.g. local start.sh)."""
+    if not migrations_status()["ok"]:
+        run_migrations_blocking()
 
 
 @asynccontextmanager
@@ -39,7 +32,7 @@ async def lifespan(app: FastAPI):
 
     print("[dentalfacil] lifespan start", flush=True)
     ensure_uploads_dir()
-    threading.Thread(target=_run_migrations, daemon=True, name="alembic").start()
+    _run_migrations()
 
     scheduler = BackgroundScheduler()
     # Delay first run so boot/healthcheck are not competing with DB work
@@ -73,11 +66,22 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health():
-    db_ok = settings.DATABASE_URL.startswith("postgresql+psycopg://") and "@127.0.0.1:1/" not in settings.DATABASE_URL
+    from app.db_health import ping_database, schema_ready
+
+    mig = migrations_status()
+    db_connected = ping_database()
+    tables_ok, tables_err = schema_ready() if db_connected else (False, None)
+    url_ok = settings.DATABASE_URL.startswith("postgresql+psycopg://") and "@127.0.0.1:1/" not in settings.DATABASE_URL
+    ready = url_ok and db_connected and mig["ok"] and tables_ok
     return {
-        "status": "ok",
+        "status": "ok" if ready else "degraded",
         "app": settings.APP_NAME,
-        "database_url_configured": db_ok,
+        "database_url_configured": url_ok,
+        "database_connected": db_connected,
+        "migrations_ok": mig["ok"],
+        "migrations_error": mig["error"],
+        "schema_ready": tables_ok,
+        "schema_error": tables_err,
     }
 
 

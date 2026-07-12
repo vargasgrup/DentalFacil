@@ -1,4 +1,4 @@
-"""Railway/Docker boot — always bind HTTP even if settings/DB are wrong."""
+"""Railway/Docker boot — migrate DB, then bind HTTP."""
 from __future__ import annotations
 
 import os
@@ -21,9 +21,11 @@ def main() -> None:
     elif not db:
         print("[dentalfacil] WARNING: DATABASE_URL is empty", flush=True)
     else:
-        # Redact password for logs
         safe = db.split("@")[-1] if "@" in db else "(set)"
         print(f"[dentalfacil] DATABASE_URL host/db = {safe}", flush=True)
+        from app.migrate import run_migrations_blocking
+
+        run_migrations_blocking()
 
     try:
         import uvicorn

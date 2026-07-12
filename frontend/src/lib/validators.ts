@@ -13,6 +13,15 @@ export function digitsOnly(value: string, maxLen: number): string {
   return value.replace(/\D/g, "").slice(0, maxLen);
 }
 
+/** Normalize pasted Peruvian mobiles (+51, leading 0) to 9 digits starting with 9. */
+export function normalizePeruvianMobile(raw: string): string {
+  let d = raw.replace(/\D/g, "");
+  if (d.startsWith("51") && d.length >= 11) d = d.slice(2);
+  if (d.startsWith("51") && d.length === 11) d = d.slice(2);
+  if (d.length === 10 && d.startsWith("0")) d = d.slice(1);
+  return d.slice(0, PHONE_LENGTH);
+}
+
 export function validateDNI(dni: string): boolean {
   return new RegExp(`^\\d{${DNI_LENGTH}}$`).test(dni.trim());
 }
@@ -25,11 +34,11 @@ export function validateRUC(ruc: string): boolean {
 /** Celular Perú: 9 dígitos, empieza en 9. */
 export function validatePeruvianMobile(phone: string | undefined | null): boolean {
   if (!phone) return false;
-  return /^9\d{8}$/.test(phone.replace(/\D/g, ""));
+  return /^9\d{8}$/.test(normalizePeruvianMobile(phone));
 }
 
 export function formatPhone(phone: string): string {
-  const num = digitsOnly(phone, PHONE_LENGTH);
+  const num = normalizePeruvianMobile(phone);
   return validatePeruvianMobile(num) ? num : num;
 }
 

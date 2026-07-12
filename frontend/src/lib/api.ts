@@ -46,20 +46,59 @@ function getToken(): string | null {
   return localStorage.getItem("access_token");
 }
 
+let refreshPromise: Promise<boolean> | null = null;
+
+async function refreshAccessToken(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  const refresh = localStorage.getItem("refresh_token");
+  if (!refresh) return false;
+
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refresh }),
+        });
+        if (!res.ok) return false;
+        const body = (await res.json()) as {
+          access_token?: string;
+          refresh_token?: string;
+        };
+        if (!body.access_token) return false;
+        localStorage.setItem("access_token", body.access_token);
+        if (body.refresh_token) {
+          localStorage.setItem("refresh_token", body.refresh_token);
+        }
+        return true;
+      } catch {
+        return false;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+  }
+  return refreshPromise;
+}
+
+type ApiFetchOptions = RequestInit & { _retryAuth?: boolean };
+
 export async function apiFetch<T>(
   path: string,
-  options: RequestInit = {}
+  options: ApiFetchOptions = {}
 ): Promise<T> {
+  const { _retryAuth, ...fetchOptions } = options;
   const token = getToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
+    ...(fetchOptions.headers as Record<string, string>),
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    res = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
       throw new ApiError("La solicitud fue cancelada o agotó el tiempo de espera.", 0);
@@ -69,12 +108,23 @@ export async function apiFetch<T>(
       0
     );
   }
+
+  if (res.status === 401 && !_retryAuth && path !== "/api/auth/refresh") {
+    const renewed = await refreshAccessToken();
+    if (renewed) {
+      return apiFetch<T>(path, { ...options, _retryAuth: true });
+    }
+  }
+
   if (!res.ok) {
     let msg = res.statusText || "Error en la solicitud";
     try {
       const body = await res.json();
       msg = formatApiDetail(body.detail ?? body.message, msg);
     } catch { /* ignore */ }
+    if (res.status === 401) {
+      msg = "Sesión expirada. Cierra sesión e ingresa de nuevo.";
+    }
     throw new ApiError(msg, res.status);
   }
   if (res.status === 204) return null as T;

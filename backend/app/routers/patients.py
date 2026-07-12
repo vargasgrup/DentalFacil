@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import String, and_, func, literal, or_
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
@@ -184,6 +184,21 @@ def create_patient(
                 "No se permiten documentos duplicados."
             ),
         )
+    except (OperationalError, ProgrammingError) as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "No se pudo guardar el paciente: la base de datos aún no está lista. "
+                "Espera unos segundos e intenta de nuevo."
+            ),
+        ) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"No se pudo crear el paciente: {exc}",
+        ) from exc
     db.refresh(patient)
     return patient
 

@@ -16,6 +16,7 @@ import {
   titleCaseName,
   validateDNI,
   validatePeruvianMobile,
+  normalizePeruvianMobile,
 } from "@/lib/validators";
 import { formatFichaLabel } from "@/lib/ficha";
 
@@ -125,7 +126,10 @@ export default function NuevoPacientePage() {
         setDocStatus("ok");
       }
     } catch (err) {
-      if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) return;
+      if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) {
+        setDocStatus((prev) => (prev === "checking" ? "idle" : prev));
+        return;
+      }
       // No bloquear el alta si el prechequeo falla (red/API): el backend valida igual.
       setDocStatus("idle");
       setDupPatient(null);
@@ -184,7 +188,7 @@ export default function NuevoPacientePage() {
   };
 
   const onTelefonoChange = (raw: string) => {
-    set("telefono", digitsOnly(raw, PHONE_LENGTH));
+    set("telefono", normalizePeruvianMobile(raw));
   };
 
   const blurName = (field: "nombres" | "apellidos") => {
@@ -204,7 +208,7 @@ export default function NuevoPacientePage() {
       errs.numero_documento = `DNI: exactamente ${DNI_LENGTH} dígitos`;
     }
 
-    const tel = form.telefono.trim();
+    const tel = normalizePeruvianMobile(form.telefono.trim());
     if (!tel) {
       errs.telefono = "Obligatorio (9 dígitos)";
     } else if (!validatePeruvianMobile(tel)) {
@@ -226,6 +230,7 @@ export default function NuevoPacientePage() {
     if (docStatus === "dup") return;
 
     const doc = form.numero_documento.trim();
+    const tel = normalizePeruvianMobile(form.telefono.trim());
     setBusy(true);
     const ac = new AbortController();
     const timeout = window.setTimeout(() => ac.abort(), 25000);
@@ -240,7 +245,7 @@ export default function NuevoPacientePage() {
           tipo_documento: form.tipo_documento,
           numero_documento: doc || null,
           fecha_nacimiento: form.fecha_nacimiento || null,
-          telefono: form.telefono || null,
+          telefono: tel || null,
           email: form.email.trim() || null,
           direccion: form.direccion.trim() || null,
           contacto_emergencia: form.contacto_emergencia.trim() || null,
@@ -286,19 +291,20 @@ export default function NuevoPacientePage() {
       ? validateDNI(form.numero_documento)
       : form.numero_documento.trim().length >= 4;
   const docOk = docFormatOk && docStatus === "ok";
+  const missingFields: string[] = [];
+  if (!form.nombres.trim()) missingFields.push("nombres");
+  if (!form.apellidos.trim()) missingFields.push("apellidos");
+  if (!docFormatOk) missingFields.push("documento");
+  if (!telOk) missingFields.push("celular válido (9 dígitos, empieza en 9)");
   const canSubmit =
-    Boolean(form.nombres.trim()) &&
-    Boolean(form.apellidos.trim()) &&
-    docFormatOk &&
-    telOk &&
-    docStatus !== "dup";
+    missingFields.length === 0 && docStatus !== "dup";
   const submitBlockedReason =
     docStatus === "dup"
       ? "Este documento ya está registrado"
-      : !canSubmit
-        ? "Completa nombres, apellidos, documento y celular válidos"
-        : busy
-          ? "Creando paciente…"
+      : busy
+        ? "Creando paciente…"
+        : !canSubmit
+          ? `Completa: ${missingFields.join(", ")}`
           : undefined;
 
   return (
@@ -525,24 +531,30 @@ export default function NuevoPacientePage() {
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
-            <Button
-              type="button"
-              loading={busy}
-              disabled={busy || !canSubmit}
-              title={submitBlockedReason}
-              onClick={() => void handleSubmit()}
-            >
-              Crear y abrir Ficha Clínica
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => router.back()} disabled={busy}>
-              Cancelar
-            </Button>
-            <span className="text-help text-slate-500 sm:ml-auto">
-              {docStatus === "checking"
-                ? "Verificando documento…"
-                : "Enter para crear · Tab para avanzar"}
-            </span>
+          <div className="flex flex-col gap-2 border-t border-slate-100 pt-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="submit"
+                loading={busy}
+                disabled={busy || docStatus === "dup"}
+                title={submitBlockedReason}
+              >
+                Crear y abrir Ficha Clínica
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => router.back()} disabled={busy}>
+                Cancelar
+              </Button>
+              <span className="text-help text-slate-500 sm:ml-auto">
+                {docStatus === "checking"
+                  ? "Verificando documento…"
+                  : "Enter para crear · Tab para avanzar"}
+              </span>
+            </div>
+            {!busy && docStatus !== "dup" && !canSubmit && (
+              <p className="text-help text-amber-700" role="status">
+                {submitBlockedReason}
+              </p>
+            )}
           </div>
         </form>
       </Card>

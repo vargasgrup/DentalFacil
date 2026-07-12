@@ -172,12 +172,21 @@ def create_patient(
 ):
     mig = migrations_status()
     if not mig["ok"]:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "Base de datos en inicialización. Espera 30 segundos e intenta de nuevo. "
-                f"Detalle: {mig['error'] or 'migraciones pendientes'}"
-            ),
+        from app.db_health import schema_ready
+
+        ready, schema_err = schema_ready()
+        if not ready:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "Base de datos en inicialización. Espera 30 segundos e intenta de nuevo. "
+                    f"Detalle: {mig['error'] or schema_err or 'migraciones pendientes'}"
+                ),
+            )
+        # Esquema usable aunque Alembic aún reporte error residual.
+        print(
+            f"[dentalfacil] create_patient: migrations_ok=false but schema_ready=true ({mig['error']})",
+            flush=True,
         )
 
     doc = _normalize_documento(payload.numero_documento)

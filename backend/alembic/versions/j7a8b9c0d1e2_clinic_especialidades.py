@@ -9,6 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from app.alembic_helpers import add_column_if_missing, drop_column_if_exists
+
 revision = "j7a8b9c0d1e2"
 down_revision = "i6f7a8b9c0d1"
 branch_labels = None
@@ -16,11 +18,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
+    add_column_if_missing(
         "clinic_settings",
         sa.Column("especialidades", postgresql.JSON(astext_type=sa.Text()), nullable=True),
     )
 
 
 def downgrade() -> None:
-    op.drop_column("clinic_settings", "especialidades")
+    drop_column_if_exists("clinic_settings", "especialidades")

@@ -8,6 +8,8 @@ Create Date: 2026-07-11
 from alembic import op
 import sqlalchemy as sa
 
+from app.alembic_helpers import add_column_if_missing, drop_column_if_exists
+
 revision = "i6f7a8b9c0d1"
 down_revision = "h5e6f7a8b9c0"
 branch_labels = None
@@ -33,9 +35,9 @@ _COLS = [
 
 def upgrade() -> None:
     for name, col_type in _COLS:
-        op.add_column("clinic_settings", sa.Column(name, col_type, nullable=True))
+        add_column_if_missing("clinic_settings", sa.Column(name, col_type, nullable=True))
 
 
 def downgrade() -> None:
     for name, _ in reversed(_COLS):
-        op.drop_column("clinic_settings", name)
+        drop_column_if_exists("clinic_settings", name)

@@ -8,6 +8,8 @@ Create Date: 2026-07-11
 from alembic import op
 import sqlalchemy as sa
 
+from app.alembic_helpers import add_column_if_missing, drop_column_if_exists
+
 revision = "k8b9c0d1e2f3"
 down_revision = "j7a8b9c0d1e2"
 branch_labels = None
@@ -15,16 +17,16 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
+    add_column_if_missing(
         "clinic_settings",
         sa.Column("reminder_hours_before", sa.Integer(), nullable=True),
     )
-    op.add_column(
+    add_column_if_missing(
         "clinic_settings",
         sa.Column("reminder_template", sa.Text(), nullable=True),
     )
 
 
 def downgrade() -> None:
-    op.drop_column("clinic_settings", "reminder_template")
-    op.drop_column("clinic_settings", "reminder_hours_before")
+    drop_column_if_exists("clinic_settings", "reminder_template")
+    drop_column_if_exists("clinic_settings", "reminder_hours_before")

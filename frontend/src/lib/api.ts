@@ -4,8 +4,41 @@ export class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
     super(message);
+    this.name = "ApiError";
     this.status = status;
   }
+}
+
+/** Normalize FastAPI `detail` (string | list | object) into a readable message. */
+export function formatApiDetail(detail: unknown, fallback = "Error en la solicitud"): string {
+  if (detail == null || detail === "") return fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail.map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object" && "msg" in item) {
+        const loc = Array.isArray((item as { loc?: unknown }).loc)
+          ? (item as { loc: unknown[] }).loc.filter((x) => x !== "body").join(".")
+          : "";
+        const msg = String((item as { msg: unknown }).msg);
+        return loc ? `${loc}: ${msg}` : msg;
+      }
+      try {
+        return JSON.stringify(item);
+      } catch {
+        return String(item);
+      }
+    });
+    return parts.filter(Boolean).join("; ") || fallback;
+  }
+  if (typeof detail === "object") {
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return fallback;
+    }
+  }
+  return String(detail);
 }
 
 function getToken(): string | null {
@@ -27,17 +60,20 @@ export async function apiFetch<T>(
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  } catch {
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError("La solicitud fue cancelada o agotó el tiempo de espera.", 0);
+    }
     throw new ApiError(
       "No se pudo conectar con el servidor. Si estás en Railway, borra NEXT_PUBLIC_API_URL y define BACKEND_URL en el Frontend.",
       0
     );
   }
   if (!res.ok) {
-    let msg = res.statusText;
+    let msg = res.statusText || "Error en la solicitud";
     try {
       const body = await res.json();
-      msg = body.detail || body.message || msg;
+      msg = formatApiDetail(body.detail ?? body.message, msg);
     } catch { /* ignore */ }
     throw new ApiError(msg, res.status);
   }
@@ -81,14 +117,14 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
     body: formData,
   });
   if (!res.ok) {
-    let msg = res.statusText;
+    let msg = res.statusText || "Error al subir archivo";
     try {
       const body = await res.json();
-      msg = body.detail || body.message || msg;
+      msg = formatApiDetail(body.detail ?? body.message, msg);
     } catch {
       /* ignore */
     }
-    throw new ApiError(typeof msg === "string" ? msg : "Error al subir archivo", res.status);
+    throw new ApiError(msg, res.status);
   }
   if (res.status === 204) return null as T;
   return res.json();

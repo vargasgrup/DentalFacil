@@ -96,7 +96,7 @@ export default function NuevoPacientePage() {
     });
   }, []);
 
-  const checkDuplicate = useCallback(async (doc: string, tipo: DocTipo) => {
+  const checkDuplicate = useCallback(async (doc: string, tipo: DocTipo, signal?: AbortSignal) => {
     if (tipo === "DNI" && !validateDNI(doc)) {
       setDocStatus("idle");
       setDupPatient(null);
@@ -110,8 +110,10 @@ export default function NuevoPacientePage() {
     setDocStatus("checking");
     try {
       const hits = await apiFetch<Patient[]>(
-        `/api/patients/search?q=${encodeURIComponent(doc)}`
+        `/api/patients/search?q=${encodeURIComponent(doc)}`,
+        { signal }
       );
+      if (signal?.aborted) return;
       const clash = hits.find(
         (p) => (p.numero_documento || "").trim().toLowerCase() === doc.toLowerCase()
       );
@@ -122,7 +124,9 @@ export default function NuevoPacientePage() {
         setDupPatient(null);
         setDocStatus("ok");
       }
-    } catch {
+    } catch (err) {
+      if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) return;
+      // No bloquear el alta si el prechequeo falla (red/API): el backend valida igual.
       setDocStatus("idle");
       setDupPatient(null);
     }
@@ -141,10 +145,14 @@ export default function NuevoPacientePage() {
       return;
     }
 
+    const ac = new AbortController();
     const t = window.setTimeout(() => {
-      void checkDuplicate(doc, form.tipo_documento);
+      void checkDuplicate(doc, form.tipo_documento, ac.signal);
     }, 280);
-    return () => window.clearTimeout(t);
+    return () => {
+      window.clearTimeout(t);
+      ac.abort();
+    };
   }, [form.numero_documento, form.tipo_documento, checkDuplicate]);
 
   const onDocumentoChange = (raw: string) => {
@@ -211,22 +219,27 @@ export default function NuevoPacientePage() {
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     setError("");
     if (!validate()) return;
+    if (docStatus === "dup") return;
 
     const doc = form.numero_documento.trim();
     setBusy(true);
+    const ac = new AbortController();
+    const timeout = window.setTimeout(() => ac.abort(), 25000);
+    let navigated = false;
     try {
       const patient = await apiFetch<Patient>("/api/patients", {
         method: "POST",
+        signal: ac.signal,
         body: JSON.stringify({
-          ...form,
           nombres: titleCaseName(form.nombres),
           apellidos: titleCaseName(form.apellidos),
-          fecha_nacimiento: form.fecha_nacimiento || null,
+          tipo_documento: form.tipo_documento,
           numero_documento: doc || null,
+          fecha_nacimiento: form.fecha_nacimiento || null,
           telefono: form.telefono || null,
           email: form.email.trim() || null,
           direccion: form.direccion.trim() || null,
@@ -238,11 +251,20 @@ export default function NuevoPacientePage() {
           nombre_responsable: form.nombre_responsable.trim() || null,
         }),
       });
+      if (!patient?.id) {
+        throw new Error("El servidor no devolvió el paciente creado.");
+      }
+      navigated = true;
       router.push(`/pacientes/${patient.id}`);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "No se pudo crear el paciente");
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : "No se pudo crear el paciente";
+      setError(message);
     } finally {
-      setBusy(false);
+      window.clearTimeout(timeout);
+      if (!navigated) setBusy(false);
     }
   };
 
@@ -259,10 +281,25 @@ export default function NuevoPacientePage() {
       : undefined;
 
   const telOk = validatePeruvianMobile(form.telefono);
-  const docOk =
+  const docFormatOk =
     form.tipo_documento === "DNI"
-      ? validateDNI(form.numero_documento) && docStatus === "ok"
-      : form.numero_documento.length >= 4 && docStatus === "ok";
+      ? validateDNI(form.numero_documento)
+      : form.numero_documento.trim().length >= 4;
+  const docOk = docFormatOk && docStatus === "ok";
+  const canSubmit =
+    Boolean(form.nombres.trim()) &&
+    Boolean(form.apellidos.trim()) &&
+    docFormatOk &&
+    telOk &&
+    docStatus !== "dup";
+  const submitBlockedReason =
+    docStatus === "dup"
+      ? "Este documento ya está registrado"
+      : !canSubmit
+        ? "Completa nombres, apellidos, documento y celular válidos"
+        : busy
+          ? "Creando paciente…"
+          : undefined;
 
   return (
     <PageContainer width="narrow">
@@ -280,7 +317,13 @@ export default function NuevoPacientePage() {
       )}
 
       <Card>
-        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <form
+          onSubmit={(e) => {
+            void handleSubmit(e);
+          }}
+          className="space-y-5"
+          noValidate
+        >
           {/* Identidad */}
           <section className="space-y-4">
             <h2 className="text-section-title text-slate-800">Identidad</h2>
@@ -484,17 +527,21 @@ export default function NuevoPacientePage() {
 
           <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
             <Button
-              type="submit"
+              type="button"
               loading={busy}
-              disabled={busy || docStatus === "dup" || docStatus === "checking"}
+              disabled={busy || !canSubmit}
+              title={submitBlockedReason}
+              onClick={() => void handleSubmit()}
             >
               Crear y abrir Ficha Clínica
             </Button>
-            <Button type="button" variant="ghost" onClick={() => router.back()}>
+            <Button type="button" variant="ghost" onClick={() => router.back()} disabled={busy}>
               Cancelar
             </Button>
             <span className="text-help text-slate-500 sm:ml-auto">
-              Enter para crear · Tab para avanzar
+              {docStatus === "checking"
+                ? "Verificando documento…"
+                : "Enter para crear · Tab para avanzar"}
             </span>
           </div>
         </form>

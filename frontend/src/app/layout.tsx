@@ -17,11 +17,11 @@ export const metadata: Metadata = {
     "Sistema de gestión odontológica — Dra. Maribel Condori Hilasaca, especialista en ortodoncia y ortopedia maxilar",
   icons: {
     icon: [
-      { url: "/favicon.png", type: "image/png", sizes: "any" },
-      { url: "/icon.png", type: "image/png" },
+      { url: "/favicon.png?v=logo01-transparent", type: "image/png", sizes: "any" },
+      { url: "/icon.png?v=logo01-transparent", type: "image/png" },
     ],
-    shortcut: "/favicon.png",
-    apple: "/apple-icon.png",
+    shortcut: "/favicon.png?v=logo01-transparent",
+    apple: "/apple-icon.png?v=logo01-transparent",
   },
 };
 

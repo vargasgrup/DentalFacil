@@ -1,0 +1,25 @@
+.odontograma-realista-stage {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  background:
+    radial-gradient(ellipse at 50% 0%, #eef6ff 0%, transparent 55%),
+    #f8fafc;
+  touch-action: none;
+}
+
+.odontograma-realista-stage .konvajs-content {
+  margin-inline: auto;
+}
+
+.odontograma-realista-panel {
+  max-height: 36rem;
+  overflow: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .odontograma-realista-stage * {
+    transition: none !important;
+  }
+}

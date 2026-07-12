@@ -1,10 +1,11 @@
 "use client";
 
 import type { PlanProposalItem } from "@/lib/odontogramTreatments";
-import { OdontogramaAnatomico } from "./odontogram/OdontogramaAnatomico";
+import { OdontogramaRealista } from "./odontogram/realista/OdontogramaRealista";
 
 /**
- * Odontograma clínico (FDI) — registro visual, historial y vínculo al plan.
+ * Odontograma clínico (FDI) — render realista Konva + mismos endpoints API.
+ * Drop-in: props idénticas al odontograma anatómico previo.
  */
 export function Odontograma({
   patientId,
@@ -14,7 +15,7 @@ export function Odontograma({
   onProposeTreatment?: (item: PlanProposalItem) => void;
 }) {
   return (
-    <OdontogramaAnatomico
+    <OdontogramaRealista
       patientId={patientId}
       onProposeTreatment={onProposeTreatment}
     />

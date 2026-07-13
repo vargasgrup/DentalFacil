@@ -82,7 +82,7 @@ function ToothCell({
 }) {
   return (
     <div
-      className={`box-border flex w-full flex-col items-center justify-center border px-0 py-1.5 sm:py-2 md:py-2.5 ${
+      className={`box-border flex w-full flex-col items-center justify-center border px-0 py-0.5 sm:py-1 ${
         selected
           ? "border-sky-500 bg-sky-100/90"
           : compare
@@ -363,7 +363,7 @@ export function OdontogramaAnatomico({
         return (
           <div
             key={`c-${p}`}
-            className="box-border flex w-full justify-center py-1 sm:py-1.5"
+            className="box-border flex w-full justify-center py-0.5 sm:py-1"
           >
             <SurfaceCross
               pieza={p}
@@ -384,7 +384,7 @@ export function OdontogramaAnatomico({
         return (
           <div
             key={`c-${p}`}
-            className="box-border flex w-full justify-center py-1 sm:py-1.5"
+            className="box-border flex w-full justify-center py-0.5 sm:py-1"
           >
             <SurfaceCross
               pieza={p}
@@ -598,7 +598,7 @@ export function OdontogramaAnatomico({
           <div
             className="overflow-x-auto border border-black bg-white [--odo-col:2.125rem] [--odo-mid:0.35rem] sm:[--odo-col:2.375rem] sm:[--odo-mid:0.45rem] md:[--odo-col:2.625rem] md:[--odo-mid:0.5rem] lg:[--odo-col:2.75rem] lg:[--odo-mid:0.55rem]"
           >
-            <div className="flex min-w-0 flex-col gap-y-2 px-1 py-2.5 sm:gap-y-2.5 sm:px-2 sm:py-3 md:gap-y-3 md:py-3.5">
+            <div className="flex min-w-0 flex-col gap-y-1 px-1 py-2 sm:gap-y-1.5 sm:px-2 sm:py-2.5 md:gap-y-1.5 md:py-3">
               {showUpper && (
                 <>
                   {renderNums(upperSeq, ur, upperGrid)}
@@ -613,7 +613,7 @@ export function OdontogramaAnatomico({
                 </>
               )}
               {showUpper && showLower && (
-                <div className="hidden flex-col gap-y-1.5 sm:flex md:gap-y-2">
+                <div className="hidden flex-col gap-y-1 sm:flex md:gap-y-1.5">
                   {renderNums(upperSeq, ur, upperGrid)}
                   {renderNums(lowerSeq, lr, lowerGrid)}
                 </div>

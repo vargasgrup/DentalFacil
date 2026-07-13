@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useId, useState } from "react";
+import { memo, useEffect, useId, useState } from "react";
 import {
   conditionById,
   conditionFillColor,
@@ -54,7 +54,12 @@ function ToothSVGInner({ pieza, arch, condicion, selected, onClick }: ToothSVGPr
   const fill = crownFill(condicion);
   const banded = wantsBanded(condicion) && !!fill;
   const usePng = hasToothPieceAsset(pieza);
+  const imgSrc = usePng ? toothPieceUrl(pieza) : "";
   const [imgOk, setImgOk] = useState(usePng);
+
+  useEffect(() => {
+    setImgOk(usePng);
+  }, [pieza, usePng, imgSrc]);
 
   // Overlay SVG: viewBox con raíz en Y=0. PNG inferior ya tiene corona arriba → espejar solo el overlay.
   const overlayFlip = arch === "lower" ? "scaleY(-1)" : undefined;
@@ -72,7 +77,7 @@ function ToothSVGInner({ pieza, arch, condicion, selected, onClick }: ToothSVGPr
       <span className="relative block h-[90px] w-[42px]">
         {usePng && imgOk ? (
           <img
-            src={toothPieceUrl(pieza)}
+            src={imgSrc}
             alt=""
             aria-hidden
             draggable={false}

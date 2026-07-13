@@ -1,18 +1,39 @@
 /**
  * Assets de dientes por pieza FDI.
  * Fuente: frontend/public/dientes/{pieza}.png (extraídos por el equipo clínico).
+ *
+ * Permanentes: 11–48.
+ * Temporales (51–85): reutilizan el PNG permanente homólogo (51→11, 85→45, …).
  */
 
 import { toothKind } from "@/lib/odontogramConditions";
 
-/** URL del PNG permanente adulto: /dientes/18.png */
-export function toothPieceUrl(pieza: string): string {
-  return `/dientes/${pieza}.png`;
+/**
+ * Homólogo permanente para reutilizar el mismo sprite realista.
+ * 5→1, 6→2, 7→3, 8→4 (manteniendo el dígito de posición 1–8).
+ */
+export function permanentAssetPieza(pieza: string): string {
+  const n = Number(pieza);
+  if (!Number.isFinite(n) || pieza.length < 2) return pieza;
+  const q = Math.floor(n / 10);
+  const p = n % 10;
+  if (q >= 1 && q <= 4) return pieza;
+  if (q >= 5 && q <= 8 && p >= 1 && p <= 8) {
+    const mapQ: Record<number, number> = { 5: 1, 6: 2, 7: 3, 8: 4 };
+    return `${mapQ[q]}${p}`;
+  }
+  return pieza;
 }
 
-/** ¿Existe asset dedicado? Solo permanentes 11–48. */
+/** URL del PNG: /dientes/18.png (temporales → permanente homólogo). */
+export function toothPieceUrl(pieza: string): string {
+  return `/dientes/${permanentAssetPieza(pieza)}.png`;
+}
+
+/** ¿Hay PNG usable (directo o vía homólogo permanente)? */
 export function hasToothPieceAsset(pieza: string): boolean {
-  const n = Number(pieza);
+  const asset = permanentAssetPieza(pieza);
+  const n = Number(asset);
   if (!Number.isFinite(n)) return false;
   const q = Math.floor(n / 10);
   const p = n % 10;
@@ -28,14 +49,12 @@ export type ToothAssetKind =
 
 export function toothAssetKind(pieza: string): ToothAssetKind {
   const kind = toothKind(pieza);
-  const q = Number(pieza[0]);
-  const upper = q === 1 || q === 2 || q === 5 || q === 6;
+  const q = Number(permanentAssetPieza(pieza)[0]);
+  const upper = q === 1 || q === 2;
   if (kind === "molar") return upper ? "molar_upper" : "molar_lower";
   return kind;
 }
 
-/** Fallback legacy (tipo anatómico) si faltara el PNG por pieza. */
 export function toothReferenceUrl(pieza: string): string {
-  if (hasToothPieceAsset(pieza)) return toothPieceUrl(pieza);
-  return `/dientes/referencia/${toothAssetKind(pieza)}.png`;
+  return toothPieceUrl(pieza);
 }

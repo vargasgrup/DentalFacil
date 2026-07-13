@@ -460,23 +460,31 @@ export function OdontogramaAnatomico({
             </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  setDenticion((d) =>
-                    d === "permanente" ? "temporal" : d === "temporal" ? "mixta" : "permanente"
-                  )
-                }
-                className={`min-w-[4.75rem] border border-black px-3 py-2 text-xs font-semibold text-black sm:py-1.5 ${
-                  denticion !== "temporal" ? "bg-[#b8e0c8]" : "bg-white"
-                }`}
+              <div
+                className="inline-flex overflow-hidden border border-black"
+                role="group"
+                aria-label="Tipo de odontograma"
               >
-                {denticion === "permanente"
-                  ? "Adulto"
-                  : denticion === "temporal"
-                    ? "Niño"
-                    : "Mixta"}
-              </button>
+                {(
+                  [
+                    ["permanente", "Adulto"],
+                    ["temporal", "Niño"],
+                    ["mixta", "Mixto"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setDenticion(id)}
+                    className={`min-w-[4.75rem] border-r border-black px-3 py-2 text-xs font-semibold text-black last:border-r-0 sm:py-1.5 ${
+                      denticion === id ? "bg-[#b8e0c8]" : "bg-white hover:bg-slate-50"
+                    }`}
+                    aria-pressed={denticion === id}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
                 onClick={() => setSistema((s) => (s === "fdi" ? "universal" : "fdi"))}

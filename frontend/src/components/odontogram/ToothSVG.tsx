@@ -70,11 +70,10 @@ function ToothSVGInner({ pieza, arch, condicion, selected, onClick }: ToothSVGPr
       onClick={onClick}
       title={`Pieza ${pieza}${cond ? ` — ${cond.label}` : " — sin marca"}`}
       aria-label={`Pieza ${pieza}${cond ? `, ${cond.label}` : ", sin marca"}`}
-      className={`relative flex flex-col items-center p-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
-        selected ? "bg-emerald-50/70" : ""
-      }`}
+      aria-pressed={selected}
+      className="relative box-border flex w-full max-w-full flex-col items-center p-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-inset"
     >
-      <span className="relative block h-[90px] w-[42px]">
+      <span className="relative mx-auto block h-[4.5rem] w-full max-w-full sm:h-[5.15rem] md:h-[5.625rem]">
         {usePng && imgOk ? (
           <img
             src={imgSrc}

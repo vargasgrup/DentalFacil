@@ -34,7 +34,7 @@ function SurfaceCrossInner({ pieza, surfaces, circled, onSurfaceClick }: Surface
   return (
     <svg
       viewBox="0 0 40 40"
-      className="h-11 w-11 touch-manipulation sm:h-9 sm:w-9"
+      className="aspect-square h-auto w-[90%] max-w-full touch-manipulation"
     >
       {SURFACES.map(({ key, x, y, label }) => {
         const cid = surfaces[key];

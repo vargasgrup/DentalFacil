@@ -27,40 +27,70 @@ import {
   type OdontogramSnapshot,
 } from "./useOdontogramPatient";
 
-const CW = 42;
-const MID = 8;
-
 type Tab = "actual" | "historial" | "comparar";
 type MobileArch = "upper" | "lower" | "both";
 
+/** Columnas del chart usan --odo-col / --odo-mid (responsive en el wrapper). */
 function gridStyle(rightLen: number, leftLen: number): React.CSSProperties {
   return {
     display: "grid",
-    gridTemplateColumns: `repeat(${rightLen}, ${CW}px) ${MID}px repeat(${leftLen}, ${CW}px)`,
+    gridTemplateColumns: `repeat(${rightLen}, var(--odo-col)) var(--odo-mid) repeat(${leftLen}, var(--odo-col))`,
     justifyContent: "center",
     width: "max-content",
+    maxWidth: "100%",
     marginLeft: "auto",
     marginRight: "auto",
+    columnGap: 0,
   };
 }
 
 function NumCell({
   pieza,
   highlight,
+  selected,
   sistema,
 }: {
   pieza: string;
   highlight?: boolean;
+  selected?: boolean;
   sistema: NumberingSystem;
 }) {
   return (
     <div
-      className={`box-border flex h-[22px] w-full items-center justify-center border border-black bg-white text-[11px] font-medium tabular-nums leading-none sm:h-6 sm:text-xs ${
-        highlight ? "bg-amber-100 font-bold text-amber-900" : "text-black"
+      className={`box-border flex h-[22px] w-full items-center justify-center border text-[10px] font-medium tabular-nums leading-none sm:h-6 sm:text-xs ${
+        selected
+          ? "border-sky-500 bg-sky-100 font-bold text-sky-900"
+          : highlight
+            ? "border-black bg-amber-100 font-bold text-amber-900"
+            : "border-black bg-white text-black"
       }`}
       title={`FDI ${pieza}`}
     >
       {displayToothLabel(pieza, sistema)}
+    </div>
+  );
+}
+
+function ToothCell({
+  selected,
+  compare,
+  children,
+}: {
+  selected?: boolean;
+  compare?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`box-border flex w-full flex-col items-center justify-center border px-0 py-1.5 sm:py-2 md:py-2.5 ${
+        selected
+          ? "border-sky-500 bg-sky-100/90"
+          : compare
+            ? "border-transparent bg-amber-50"
+            : "border-transparent"
+      }`}
+    >
+      {children}
     </div>
   );
 }
@@ -235,13 +265,25 @@ export function OdontogramaAnatomico({
     style: React.CSSProperties,
     highlightSet?: Set<string>
   ) => (
-    <div style={style}>
+    <div style={style} className="odo-nums">
       {seq.slice(0, rightLen).map((p) => (
-        <NumCell key={`n-${p}`} pieza={p} highlight={highlightSet?.has(p)} sistema={sistema} />
+        <NumCell
+          key={`n-${p}`}
+          pieza={p}
+          highlight={highlightSet?.has(p)}
+          selected={selectedPieza === p}
+          sistema={sistema}
+        />
       ))}
       <div aria-hidden />
       {seq.slice(rightLen).map((p) => (
-        <NumCell key={`n-${p}`} pieza={p} highlight={highlightSet?.has(p)} sistema={sistema} />
+        <NumCell
+          key={`n-${p}`}
+          pieza={p}
+          highlight={highlightSet?.has(p)}
+          selected={selectedPieza === p}
+          sistema={sistema}
+        />
       ))}
     </div>
   );
@@ -253,15 +295,14 @@ export function OdontogramaAnatomico({
     style: React.CSSProperties,
     readOnly = false
   ) => (
-    <div style={style}>
+    <div style={style} className="odo-teeth">
       {seq.slice(0, rightLen).map((p) => {
         const estado = isMarked(entries[p]?.estado) ? entries[p].estado : null;
         return (
-          <div
+          <ToothCell
             key={`t-${p}`}
-            className={`flex justify-center ${selectedPieza === p ? "ring-2 ring-brand-500 ring-offset-1" : ""} ${
-              changedPiezas.has(p) && tab === "comparar" ? "bg-amber-50" : ""
-            }`}
+            selected={selectedPieza === p}
+            compare={changedPiezas.has(p) && tab === "comparar"}
           >
             <ToothSVG
               pieza={p}
@@ -277,18 +318,17 @@ export function OdontogramaAnatomico({
                 onToothTap(p, e);
               }}
             />
-          </div>
+          </ToothCell>
         );
       })}
       <div aria-hidden />
       {seq.slice(rightLen).map((p) => {
         const estado = isMarked(entries[p]?.estado) ? entries[p].estado : null;
         return (
-          <div
+          <ToothCell
             key={`t-${p}`}
-            className={`flex justify-center ${selectedPieza === p ? "ring-2 ring-brand-500 ring-offset-1" : ""} ${
-              changedPiezas.has(p) && tab === "comparar" ? "bg-amber-50" : ""
-            }`}
+            selected={selectedPieza === p}
+            compare={changedPiezas.has(p) && tab === "comparar"}
           >
             <ToothSVG
               pieza={p}
@@ -304,7 +344,7 @@ export function OdontogramaAnatomico({
                 onToothTap(p, e);
               }}
             />
-          </div>
+          </ToothCell>
         );
       })}
     </div>
@@ -316,12 +356,15 @@ export function OdontogramaAnatomico({
     style: React.CSSProperties,
     readOnly = false
   ) => (
-    <div style={style}>
+    <div style={style} className="odo-crosses">
       {seq.slice(0, rightLen).map((p) => {
         const surfaces = entries[p]?.superficies || emptySurfaces();
         const circled = Object.values(surfaces).some((v) => v === "obturacion");
         return (
-          <div key={`c-${p}`} className="flex justify-center py-0.5 sm:py-0.5">
+          <div
+            key={`c-${p}`}
+            className="box-border flex w-full justify-center py-1 sm:py-1.5"
+          >
             <SurfaceCross
               pieza={p}
               surfaces={surfaces}
@@ -339,7 +382,10 @@ export function OdontogramaAnatomico({
         const surfaces = entries[p]?.superficies || emptySurfaces();
         const circled = Object.values(surfaces).some((v) => v === "obturacion");
         return (
-          <div key={`c-${p}`} className="flex justify-center py-0.5">
+          <div
+            key={`c-${p}`}
+            className="box-border flex w-full justify-center py-1 sm:py-1.5"
+          >
             <SurfaceCross
               pieza={p}
               surfaces={surfaces}
@@ -549,39 +595,43 @@ export function OdontogramaAnatomico({
             </p>
           </div>
 
-          <div className="overflow-x-auto border border-black bg-white py-1.5">
-            {showUpper && (
-              <>
-                {renderNums(upperSeq, ur, upperGrid)}
-                {showMixedNums &&
-                  renderNums(
-                    [...tempArches.upperRight, ...tempArches.upperLeft],
-                    tempArches.upperRight.length,
-                    gridStyle(tempArches.upperRight.length, tempArches.upperLeft.length)
-                  )}
-                {renderTeeth(upperSeq, "upper", ur, upperGrid)}
-                {renderCrosses(upperSeq, ur, upperGrid)}
-              </>
-            )}
-            {showUpper && showLower && (
-              <div className="mt-0.5 hidden sm:block">
-                {renderNums(upperSeq, ur, upperGrid)}
-                {renderNums(lowerSeq, lr, lowerGrid)}
-              </div>
-            )}
-            {showLower && (
-              <>
-                {renderCrosses(lowerSeq, lr, lowerGrid)}
-                {renderTeeth(lowerSeq, "lower", lr, lowerGrid)}
-                {showMixedNums &&
-                  renderNums(
-                    [...tempArches.lowerRight, ...tempArches.lowerLeft],
-                    tempArches.lowerRight.length,
-                    gridStyle(tempArches.lowerRight.length, tempArches.lowerLeft.length)
-                  )}
-                {renderNums(lowerSeq, lr, lowerGrid)}
-              </>
-            )}
+          <div
+            className="overflow-x-auto border border-black bg-white [--odo-col:2.125rem] [--odo-mid:0.35rem] sm:[--odo-col:2.375rem] sm:[--odo-mid:0.45rem] md:[--odo-col:2.625rem] md:[--odo-mid:0.5rem] lg:[--odo-col:2.75rem] lg:[--odo-mid:0.55rem]"
+          >
+            <div className="flex min-w-0 flex-col gap-y-2 px-1 py-2.5 sm:gap-y-2.5 sm:px-2 sm:py-3 md:gap-y-3 md:py-3.5">
+              {showUpper && (
+                <>
+                  {renderNums(upperSeq, ur, upperGrid)}
+                  {showMixedNums &&
+                    renderNums(
+                      [...tempArches.upperRight, ...tempArches.upperLeft],
+                      tempArches.upperRight.length,
+                      gridStyle(tempArches.upperRight.length, tempArches.upperLeft.length)
+                    )}
+                  {renderTeeth(upperSeq, "upper", ur, upperGrid)}
+                  {renderCrosses(upperSeq, ur, upperGrid)}
+                </>
+              )}
+              {showUpper && showLower && (
+                <div className="hidden flex-col gap-y-1.5 sm:flex md:gap-y-2">
+                  {renderNums(upperSeq, ur, upperGrid)}
+                  {renderNums(lowerSeq, lr, lowerGrid)}
+                </div>
+              )}
+              {showLower && (
+                <>
+                  {renderCrosses(lowerSeq, lr, lowerGrid)}
+                  {renderTeeth(lowerSeq, "lower", lr, lowerGrid)}
+                  {showMixedNums &&
+                    renderNums(
+                      [...tempArches.lowerRight, ...tempArches.lowerLeft],
+                      tempArches.lowerRight.length,
+                      gridStyle(tempArches.lowerRight.length, tempArches.lowerLeft.length)
+                    )}
+                  {renderNums(lowerSeq, lr, lowerGrid)}
+                </>
+              )}
+            </div>
           </div>
 
           {/* Panel de pieza */}

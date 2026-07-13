@@ -1,7 +1,23 @@
 /**
- * Sprites anatómicos extraídos de docs/Odontograma.jpg (referencia clínica M&D).
+ * Assets de dientes por pieza FDI.
+ * Fuente: frontend/public/dientes/{pieza}.png (extraídos por el equipo clínico).
  */
+
 import { toothKind } from "@/lib/odontogramConditions";
+
+/** URL del PNG permanente adulto: /dientes/18.png */
+export function toothPieceUrl(pieza: string): string {
+  return `/dientes/${pieza}.png`;
+}
+
+/** ¿Existe asset dedicado? Solo permanentes 11–48. */
+export function hasToothPieceAsset(pieza: string): boolean {
+  const n = Number(pieza);
+  if (!Number.isFinite(n)) return false;
+  const q = Math.floor(n / 10);
+  const p = n % 10;
+  return q >= 1 && q <= 4 && p >= 1 && p <= 8;
+}
 
 export type ToothAssetKind =
   | "incisor"
@@ -18,10 +34,8 @@ export function toothAssetKind(pieza: string): ToothAssetKind {
   return kind;
 }
 
+/** Fallback legacy (tipo anatómico) si faltara el PNG por pieza. */
 export function toothReferenceUrl(pieza: string): string {
+  if (hasToothPieceAsset(pieza)) return toothPieceUrl(pieza);
   return `/dientes/referencia/${toothAssetKind(pieza)}.png`;
-}
-
-export function toothReferencePieceUrl(pieza: string): string {
-  return `/dientes/referencia/${pieza}_vestibular.png`;
 }

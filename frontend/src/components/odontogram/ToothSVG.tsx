@@ -1,13 +1,13 @@
 "use client";
 
-import { memo, useId } from "react";
+import { memo, useId, useState } from "react";
 import {
   conditionById,
   conditionFillColor,
   toothKind,
 } from "@/lib/odontogramConditions";
 import { toothAnatomy } from "./toothAnatomy";
-import { toothReferenceUrl } from "./toothAssetsReferencia";
+import { hasToothPieceAsset, toothPieceUrl } from "./toothAssetsReferencia";
 
 type Arch = "upper" | "lower";
 
@@ -19,15 +19,15 @@ interface ToothSVGProps {
   onClick: (e: React.MouseEvent) => void;
 }
 
-const CROWN_BASE = "#ffffff";
+const BASE = "#f7f4ef";
 const STROKE = "#111111";
 const SW = 1.55;
 
-function crownFill(condicion: string | null): string {
+function crownFill(condicion: string | null): string | null {
   const cond = conditionById(condicion);
-  if (!cond) return CROWN_BASE;
+  if (!cond) return null;
   if (cond.symbol === "x" || cond.symbol === "diagonal" || cond.symbol === "lines") {
-    return CROWN_BASE;
+    return null;
   }
   return conditionFillColor(condicion);
 }
@@ -42,19 +42,22 @@ function wantsBanded(condicion: string | null): boolean {
 }
 
 /**
- * Diente clínico estilo Odontograma.jpg — imagen anatómica de referencia
- * + capa SVG para marcas clínicas (relleno, símbolos).
+ * Diente clínico: PNG por FDI (/dientes/{pieza}.png) + marcas SVG.
+ * Los PNG ya vienen orientados (superior raíces↑, inferior raíces↓).
  */
 function ToothSVGInner({ pieza, arch, condicion, selected, onClick }: ToothSVGProps) {
   const uid = useId().replace(/:/g, "");
   const kind = toothKind(pieza);
-  const { crown } = toothAnatomy(kind, arch);
+  const { roots, crown } = toothAnatomy(kind, arch);
   const cond = conditionById(condicion);
   const symbol = cond?.symbol ?? null;
   const fill = crownFill(condicion);
-  const banded = wantsBanded(condicion) && fill !== CROWN_BASE;
-  const imgSrc = toothReferenceUrl(pieza);
-  const flip = arch === "upper" ? "scaleY(-1)" : undefined;
+  const banded = wantsBanded(condicion) && !!fill;
+  const usePng = hasToothPieceAsset(pieza);
+  const [imgOk, setImgOk] = useState(usePng);
+
+  // Overlay SVG: viewBox con raíz en Y=0. PNG inferior ya tiene corona arriba → espejar solo el overlay.
+  const overlayFlip = arch === "lower" ? "scaleY(-1)" : undefined;
 
   return (
     <button
@@ -67,83 +70,99 @@ function ToothSVGInner({ pieza, arch, condicion, selected, onClick }: ToothSVGPr
       }`}
     >
       <span className="relative block h-[90px] w-[42px]">
-        {/* Sprite extraído de la referencia clínica M&D */}
-        <img
-          src={imgSrc}
-          alt=""
-          aria-hidden
-          draggable={false}
-          className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain object-center"
-          style={{ transform: flip }}
-        />
-
-        <svg
-          viewBox="0 0 48 96"
-          className="absolute inset-0 h-full w-full"
-          style={{ transform: flip }}
-        >
-          <defs>
-            <clipPath id={`${uid}-cr`}>
-              <path d={crown} />
-            </clipPath>
-          </defs>
-
-          {/* Normaliza corona (referencia demo trae tintes) o aplica condición clínica */}
-          <path
-            d={crown}
-            fill={fill}
-            stroke="none"
-            opacity={condicion ? 0.92 : 0.88}
+        {usePng && imgOk ? (
+          <img
+            src={toothPieceUrl(pieza)}
+            alt=""
+            aria-hidden
+            draggable={false}
+            onError={() => setImgOk(false)}
+            className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain object-center"
           />
-          <path
-            d={crown}
-            fill="none"
-            stroke={STROKE}
-            strokeWidth={SW}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            opacity={0.35}
-          />
-
-          {banded && (
-            <g clipPath={`url(#${uid}-cr)`} pointerEvents="none">
-              <rect x="24" y="54" width="20" height="42" fill="#ffffff" opacity={0.28} />
-              <line
-                x1="24"
-                y1="56"
-                x2="24"
-                y2="94"
+        ) : (
+          <svg
+            viewBox="0 0 48 96"
+            className="absolute inset-0 h-full w-full"
+            style={{ transform: arch === "lower" ? "scaleY(-1)" : undefined }}
+            aria-hidden
+          >
+            {roots.map((d, i) => (
+              <path
+                key={i}
+                d={d}
+                fill={BASE}
                 stroke={STROKE}
-                strokeWidth="0.9"
-                opacity={0.35}
+                strokeWidth={SW}
+                strokeLinejoin="round"
               />
-            </g>
-          )}
-
-          {symbol === "x" && (
-            <g stroke="#1e3a8a" strokeWidth="2.6" strokeLinecap="round">
-              <line x1="11" y1="22" x2="37" y2="86" />
-              <line x1="37" y1="22" x2="11" y2="86" />
-            </g>
-          )}
-          {symbol === "diagonal" && (
-            <line
-              x1="13"
-              y1="20"
-              x2="35"
-              y2="88"
-              stroke="#dc2626"
-              strokeWidth="2.7"
-              strokeLinecap="round"
+            ))}
+            <path
+              d={crown}
+              fill={fill || BASE}
+              stroke={STROKE}
+              strokeWidth={SW}
+              strokeLinejoin="round"
             />
-          )}
-          {symbol === "lines" && (
-            <g stroke="#1e3a8a" strokeWidth="2.2" strokeLinecap="round">
-              <line x1="9" y1="68" x2="39" y2="68" />
-              <line x1="9" y1="76" x2="39" y2="76" />
-            </g>
-          )}
-        </svg>
+          </svg>
+        )}
+
+        {/* Marcas clínicas (solo si hay condición o selección de símbolo) */}
+        {(fill || symbol || banded) && (
+          <svg
+            viewBox="0 0 48 96"
+            className="pointer-events-none absolute inset-0 h-full w-full"
+            style={{ transform: overlayFlip }}
+          >
+            <defs>
+              <clipPath id={`${uid}-cr`}>
+                <path d={crown} />
+              </clipPath>
+            </defs>
+
+            {fill && (
+              <path d={crown} fill={fill} stroke="none" opacity={0.72} />
+            )}
+
+            {banded && (
+              <g clipPath={`url(#${uid}-cr)`}>
+                <rect x="24" y="54" width="20" height="42" fill="#ffffff" opacity={0.28} />
+                <line
+                  x1="24"
+                  y1="56"
+                  x2="24"
+                  y2="94"
+                  stroke={STROKE}
+                  strokeWidth="0.9"
+                  opacity={0.35}
+                />
+              </g>
+            )}
+
+            {symbol === "x" && (
+              <g stroke="#1e3a8a" strokeWidth="2.6" strokeLinecap="round">
+                <line x1="11" y1="22" x2="37" y2="86" />
+                <line x1="37" y1="22" x2="11" y2="86" />
+              </g>
+            )}
+            {symbol === "diagonal" && (
+              <line
+                x1="13"
+                y1="20"
+                x2="35"
+                y2="88"
+                stroke="#dc2626"
+                strokeWidth="2.7"
+                strokeLinecap="round"
+              />
+            )}
+            {symbol === "lines" && (
+              <g stroke="#1e3a8a" strokeWidth="2.2" strokeLinecap="round">
+                <line x1="9" y1="68" x2="39" y2="68" />
+                <line x1="9" y1="76" x2="39" y2="76" />
+              </g>
+            )}
+          </svg>
+        )}
       </span>
     </button>
   );

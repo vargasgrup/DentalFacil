@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ .
 
 RUN chmod +x start.sh \
-    && mkdir -p /app/app/assets/uploads /app/uploads/tooth_media
+    && mkdir -p /app/app/assets/uploads /app/uploads/tooth_media /data
 
 ENV PORT=8001
 EXPOSE 8001

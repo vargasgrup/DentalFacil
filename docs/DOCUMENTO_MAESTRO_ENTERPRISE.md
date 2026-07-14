@@ -1,1169 +1,800 @@
-# Documento Maestro Enterprise - DentalSimple (M&D Odontologia Especializada)
+# Documento Maestro Enterprise — DentalSimple (M&D Odontología Especializada)
 
-Version: v1.2 (SQLite + UUID — ver Changelog v1.2)
-Fecha: 2026-07-14
-Repositorio analizado: `C:\PROYECTOS\DentalSimple`
+| Campo | Valor |
+|-------|--------|
+| **Versión** | **v1.3** (edición auditoría) |
+| **Fecha** | 2026-07-14 |
+| **Repositorio** | `C:\PROYECTOS\DentalSimple` (`vargasgrup/DentalFacil`) |
+| **Commit de referencia** | `db0bc7b` (agenda UUID + SQLite/UUID en `8e52098`) |
+| **Clasificación** | Artefacto técnico de auditoría / trazabilidad |
+| **Audiencia** | Dueño de producto, desarrollo, QA, auditor externo |
 
-## 1. Resumen Ejecutivo
+---
 
-### Objetivo
-Consolidar, en un solo artefacto tecnico, la arquitectura, inventario, flujos, reglas de negocio, riesgos y deuda tecnica del sistema DentalSimple para operar con trazabilidad total de codigo.
+## 0. Control del documento (para auditorías)
 
-### Estado
-- Estado general: funcional en entorno local con Docker Compose (frontend, backend, Postgres).
-- Madurez funcional: alta en flujo clinico-operativo base (pacientes, ficha, agenda, caja, documentos, reportes).
-- Madurez de ingenieria: media (sin testing automatizado, con deuda de mantenibilidad y docs parciales/desalineadas).
+### 0.1 Propósito
+Ser la **única fuente de verdad escrita** sobre qué es el sistema, qué está implementado, qué está fuera de alcance, cómo verificarlo en código y qué riesgos residuales existen.
 
-### Cobertura
-- Backend FastAPI, modelos SQLAlchemy, migraciones Alembic, servicios y routers.
-- Frontend Next.js App Router, rutas, layouts, componentes, librerias de dominio.
-- Infraestructura de despliegue local y Railway.
-- Seguridad, configuracion, auditoria tecnica y matrices de dependencia.
+### 0.2 Metodología de elaboración
+1. Inventario de código versionado (`git ls-files`).
+2. Lectura de modelos (`backend/app/models/*`), routers (`backend/app/routers/*`), config (`backend/app/config.py`), migración (`backend/app/migrate.py`).
+3. Cruce con tests (`backend/tests/*`, Playwright/Vitest).
+4. Cruzado con docs satélite: `MIGRATION_AUDIT_SQLITE.md`, `docs/ER_diagram.md`, `EXCEPCIONES_ODONTOGRAMA.md`, `docs/RAILWAY.md`.
+5. Cada afirmación material lleva **evidencia** (ruta de archivo) o se marca como **brecha / residual**.
 
-### Nivel de madurez
-- Producto: medio-alto (MVP robusto para clinica unica).
-- Arquitectura: medio (modular por capas, con acoplamiento controlado).
-- Operaciones: medio (dockerizado, sin CI/CD formal).
-- Calidad: media (suite de integración API + E2E/unit mínimos en flujos núcleo; odontograma fuera de cobertura intencional).
+### 0.3 Convención de estados
 
-### Arquitectura
-- Monorepo con frontend y backend desacoplados por API REST.
-- Persistencia central en **SQLite** (archivo local; Postgres opcional vía `DATABASE_URL`). PK/FK UUID string.
-- Scheduler embebido (APScheduler) para recordatorios.
-- Generacion documental PDF en backend (ReportLab).
+| Etiqueta | Significado |
+|----------|-------------|
+| **IMPLEMENTADO** | Existe en código y es operable |
+| **PARCIAL** | Existe con limitaciones conocidas |
+| **PLANIFICADO / FUERA DE ALCANCE** | No forma parte de la versión auditada |
+| **CERRADO** | Módulo estabilizado; cambios solo de infraestructura salvo nuevo prompt |
 
-### Tecnologias
-- Frontend: Next.js 14, React 18, TypeScript, Tailwind.
-- Backend: FastAPI, SQLAlchemy 2, Alembic, psycopg 3.
-- Seguridad: JWT (PyJWT) + bcrypt.
-- Infra: Docker/Docker Compose, Railway.
+### 0.4 Cómo auditar (checklist de verificación)
 
-### Versiones
-- Node: 18 (imagen `node:18-alpine`) - `Dockerfile.frontend:5`.
-- Python: 3.12 (imagen `python:3.12-slim`) - `Dockerfile.backend:3`.
-- Next: `^14.2.35` - `frontend/package.json:15`.
-- React: `^18.3.1` - `frontend/package.json:17`.
-- FastAPI: `>=0.115.6` - `backend/requirements.txt:1`.
-- SQLAlchemy: `>=2.0.36` - `backend/requirements.txt:3`.
+| # | Control | Cómo verificar | Evidencia esperada |
+|---|---------|----------------|--------------------|
+| A1 | Arranque sin Postgres | `DATABASE_URL` default SQLite; `python -m pytest` o levantar backend | `backend/app/config.py`, `data/clinica.db` |
+| A2 | PK/FK UUID | Crear paciente → `id` string 36 chars | `test_uuid_chain.py`, schemas `id: str` |
+| A3 | Auth revocable | Login → logout → access 401; change-password invalida tokens | `test_auth.py`, `revoked_tokens`, `token_version` |
+| A4 | Rate limit login | >N intentos → 429 | `test_auth_rate_limit.py` |
+| A5 | Paciente + ficha 1:1 | POST patient → GET clinical record | `test_patients.py` |
+| A6 | Solape citas | Misma doctora, ventana solapada → 409 | `test_appointments.py` |
+| A7 | Caja sesión única | TX solo con sesión abierta | `test_cash.py` |
+| A8 | PDF comprobante | GET comprobante → `%PDF` | `test_documents.py` |
+| A9 | Frontend typecheck | `npx tsc --noEmit` en `frontend/` | IDs tipados `string` |
+| A10 | Odontograma sin cambio funcional v1.2 | Diff solo tipado UUID / rutas | Changelog v1.2 + `EXCEPCIONES_ODONTOGRAMA.md` |
 
-### Repositorio
-- Monorepo Git con carpetas principales `backend/`, `frontend/`, `docs/`, `scripts/`.
-- Archivos de orquestacion en raiz: `docker-compose.yml`, `Dockerfile.backend`, `Dockerfile.frontend`, `Makefile`.
+### 0.5 Fuera de alcance explícito (no auditar como “faltante crítico” de esta versión)
 
-### Dependencias principales
-- Backend: fastapi, uvicorn, sqlalchemy, alembic, psycopg, pydantic-settings, bcrypt, PyJWT, reportlab, apscheduler.
-- Frontend: next, react, react-dom, tailwindcss, lucide-react, konva/react-konva, pdfjs-dist.
+| Ítem | Estado | Notas |
+|------|--------|-------|
+| Motor de sincronización multi-PC | **FUERA DE ALCANCE** | UUIDs preparan el terreno; no hay cola ni conflictos |
+| Backup Google Drive | **FUERA DE ALCANCE** | Prompt separado |
+| Rol `CAJERO` | **FUERA DE ALCANCE** | Roles: `ADMIN`, `DOCTOR`, `ASISTENTE` |
+| WhatsApp Business API / SMTP | **NO IMPLEMENTADO** | Solo `wa.me` + marca “enviado” |
+| Odontograma 3D operativo | **NO IMPLEMENTADO** | Doc conceptual `docs/ODONTOGRAMA_3D.md` |
+| CI/CD GitHub Actions | **NO IMPLEMENTADO** | Deploy vía Railway al push |
+| Lógica clínica odontograma/perio | **CERRADO** | v1.1/v1.2: sin reglas ni UI clínica nuevas |
 
-## 2. Arquitectura General
+---
 
-### Arquitectura logica
-- Capa Presentacion: Next.js (paginas, layouts, componentes UI).
-- Capa Aplicacion: routers FastAPI + servicios de negocio.
-- Capa Dominio/Persistencia: modelos SQLAlchemy + **SQLite** (UUID PK/FK).
-- Capa Integracion: WhatsApp por enlace `wa.me`, archivos media, logo clinica.
+## 1. Resumen ejecutivo
 
-### Arquitectura fisica
-- Servicio `frontend` expuesto en `:3001`.
-- Servicio `backend` expuesto en `:8001`.
-- Servicio `db` Postgres expuesto en `:5434` local.
-- Montaje de uploads: `./backend/app/assets/uploads:/app/app/assets/uploads`.
+### 1.1 Producto
+HIS odontológico mono-clínica (**M&D Odontología Especializada**) para ficha clínica, odontograma/periodontograma, agenda, caja, documentos PDF y reportes.
 
-### Arquitectura por capas
-- Frontend -> `src/app`, `src/components`, `src/lib`.
-- Backend -> `routers` (API), `services` (negocio), `models/schemas` (datos), `core` (seguridad/deps).
+### 1.2 Estado actual (v1.3)
+| Dimensión | Valor |
+|-----------|--------|
+| Estado general | **Funcional** — local con SQLite (sin Docker DB) y deploy Railway |
+| Persistencia default | **SQLite** `sqlite:///./data/clinica.db` (WAL + `foreign_keys=ON`) |
+| Identificadores | **UUID `String(36)`** en PK/FK (app-generated) |
+| Madurez funcional | Alta en flujo clínico-operativo base |
+| Madurez ingeniería | Media-alta: suite pytest flujos núcleo + Vitest/Playwright parcial |
+| Operaciones | Media: Docker/Railway; **sin** pipeline CI formal |
 
-### Arquitectura modular
-- Modulos funcionales: Auth/Users, Pacientes, Ficha Clinica, Odontograma, Periodontograma, Agenda/Recordatorios, Caja, Documentos, Reportes, Configuracion.
+### 1.3 Arquitectura en una frase
+Monorepo **Next.js 14 + FastAPI**; API REST JWT; persistencia **SQLite (Postgres opcional)**; PDFs ReportLab; recordatorios APScheduler embebido.
 
-### Arquitectura de despliegue
-- Local: Docker Compose con 3 servicios.
-- Produccion: Railway con servicios backend/frontend y base de datos Postgres.
+### 1.4 Tecnologías y versiones (evidencia)
 
-### Diagrama ASCII
+| Componente | Versión / nota | Fuente |
+|------------|----------------|--------|
+| Node (imagen) | 18 alpine | `Dockerfile.frontend`, `frontend/Dockerfile` |
+| Python (imagen) | 3.12 slim | `Dockerfile.backend`, `backend/Dockerfile` |
+| Next.js | `^14.2.35` | `frontend/package.json` |
+| React | `^18.3.1` | `frontend/package.json` |
+| FastAPI | `>=0.115.6` | `backend/requirements.txt` |
+| SQLAlchemy | `>=2.0.36` | `backend/requirements.txt` |
+| Alembic | `>=1.14.0` | `backend/requirements.txt` |
+| Autenticación | JWT (PyJWT) + bcrypt | `backend/app/core/security.py` |
+
+### 1.5 URLs de referencia
+| Entorno | URL / puerto |
+|---------|----------------|
+| Frontend local | `http://localhost:3001` |
+| Backend local | `http://localhost:8001` |
+| Frontend prod (ejemplo) | `https://mdodontologia.up.railway.app` |
+| Backend prod | Railway service backend (`docs/RAILWAY.md`) |
+
+---
+
+## 2. Arquitectura
+
+### 2.1 Capas
+| Capa | Ubicación | Responsabilidad |
+|------|-----------|-----------------|
+| Presentación | `frontend/src/app`, `components`, `lib` | UI, auth client, proxy `/api/*` |
+| API | `backend/app/routers` | Contratos HTTP, auth, orquestación |
+| Servicios | `backend/app/services` | PDF, perfil clínica, recordatorios, audit |
+| Dominio / ORM | `backend/app/models`, `schemas` | Entidades y contratos Pydantic |
+| Persistencia | SQLite archivo (o Postgres) | `database.py`, Alembic, `migrate.py` |
+| Integración | filesystem + `wa.me` | Media/logo; sin gateways de pago |
+
+### 2.2 Diagrama de despliegue (actual)
+
 ```text
-                        +-----------------------------+
-                        |     Usuario (Web Browser)   |
-                        +-------------+---------------+
-                                      |
-                                      v
-                          +-----------+-----------+
-                          | Next.js Frontend :3001|
-                          | App Router + UI       |
-                          +-----------+-----------+
-                                      |
-                    /api/* proxy      | HTTP JSON + PDF
-                                      v
-                          +-----------+-----------+
-                          | FastAPI Backend :8001 |
-                          | Routers + Services    |
-                          +-----+-------------+---+
-                                |             |
-                 SQLAlchemy      |             | File media/logo
-                                v             v
-                        +-------+------+   +--+----------------+
-                        | Postgres :5432|  | assets/uploads    |
-                        +--------------+   +--------------------+
+                    +---------------------------+
+                    |     Navegador / clínica   |
+                    +-------------+-------------+
+                                  |
+                                  v
+                    +-------------+-------------+
+                    | Next.js Frontend :3001    |
+                    | App Router + proxy /api/* |
+                    +-------------+-------------+
+                                  |
+                                  v
+                    +-------------+-------------+
+                    | FastAPI Backend :8001     |
+                    | JWT + routers + services  |
+                    +------+--------------+-----+
+                           |              |
+              SQLAlchemy   |              |  disco
+                           v              v
+                 +---------+------+   +---+----------------+
+                 | SQLite file    |   | assets/uploads +   |
+                 | clinica.db     |   | tooth_media        |
+                 | (Postgres opt) |   +--------------------+
+                 +----------------+
 ```
 
-### Diagrama Mermaid
 ```mermaid
 flowchart LR
-    U[Usuario] --> F[Frontend Next.js :3001]
-    F -->|/api/*| B[Backend FastAPI :8001]
-    B -->|SQLAlchemy| DB[(PostgreSQL)]
-    B --> FS[(Uploads/Media)]
+    U[Usuario] --> F[Frontend Next.js]
+    F -->|/api/* JWT| B[Backend FastAPI]
+    B -->|SQLAlchemy| DB[(SQLite / Postgres opcional)]
+    B --> FS[(Uploads / media)]
     B --> W[wa.me WhatsApp]
 ```
 
-### Flujo completo
-1. Usuario inicia sesion en frontend.
-2. Frontend obtiene token JWT y consume endpoints del backend.
-3. Backend valida auth/rol, ejecuta reglas y persiste en Postgres.
-4. Para documentos, backend genera PDF y devuelve stream.
-5. Para recordatorios, scheduler crea pendientes y usuario los marca como enviados por WhatsApp.
+### 2.3 Arranque y bootstrap BD
+| Escenario | Comportamiento | Evidencia |
+|-----------|----------------|-----------|
+| SQLite nueva (sin `users` / sin alembic_version) | `Base.metadata.create_all` + seed `clinic_settings` + `alembic stamp` head | `backend/app/migrate.py` |
+| SQLite existente | `upgrade head` / recuperación de cadena | idem |
+| Postgres | `alembic upgrade head` (+ recuperación columnas duplicadas) | idem |
+| Head Alembic | `m0sqlite_uuid_baseline` | `migrate.py` `HEAD_REVISION` |
+| Auth schema extra | `ensure_auth_schema` en lifespan/boot | `ensure_auth_schema.py`, `boot.py` |
 
-## 3. Inventario del Proyecto
+### 2.4 Despliegue
+| Modo | Piezas | Notas |
+|------|--------|-------|
+| Local mínimo | Backend + frontend + archivo SQLite | **Sin** daemon Postgres |
+| Docker Compose | frontend + backend + Postgres 16 | Legacy / transición (`docker-compose.yml`) |
+| Railway | `backend/railway.toml`, `frontend/railway.toml` | Imágenes Docker raíz o por carpeta |
 
-### Todos los directorios
-Directorios versionados detectados:
+---
 
+## 3. Inventario del proyecto
+
+### 3.1 Árbol lógico (directorios clave)
 ```text
-backend
-backend/alembic
-backend/alembic/versions
-backend/app
-backend/app/assets
-backend/app/assets/uploads
-backend/app/constants
-backend/app/core
-backend/app/models
-backend/app/odontogram
-backend/app/routers
-backend/app/schemas
-backend/app/services
-backend/app/utils
-docs
-frontend
-frontend/public
-frontend/public/dientes
-frontend/public/odontogram
-frontend/src
-frontend/src/app
-frontend/src/app/agenda
-frontend/src/app/api/[...path]
-frontend/src/app/caja
-frontend/src/app/configuracion
-frontend/src/app/dashboard
-frontend/src/app/pacientes
-frontend/src/app/pacientes/[id]
-frontend/src/app/pacientes/nuevo
-frontend/src/app/reportes
-frontend/src/components
-frontend/src/components/agenda
-frontend/src/components/odontogram
-frontend/src/components/odontogram/realista
-frontend/src/components/periodontogram
-frontend/src/components/ui
-frontend/src/lib
-frontend/src/types
-scripts
+backend/app/{core,models,routers,schemas,services,odontogram,utils}
+backend/alembic/versions/          # 15 revisiones (cadena hasta m0sqlite…)
+backend/tests/                     # pytest flujos núcleo
+backend/scripts/pg_to_sqlite_uuid.py
+frontend/src/{app,components,lib}
+docs/                              # este maestro, ER, Railway, specs odontograma
+MIGRATION_AUDIT_SQLITE.md
+EXCEPCIONES_ODONTOGRAMA.md
+PROMPT_MIGRACION_SQLITE_UUID_DENTALSIMPLE.md
 ```
 
-### Todos los archivos
-- Inventario completo de archivos versionados en Anexo A.2 (Capitulo 25).
-- Fuente de verdad usada: `git ls-files`.
+### 3.2 Clasificación de artefactos
+| Clase | Contenido |
+|-------|-----------|
+| Infra / deploy | Dockerfiles, Compose, `railway.toml`, Makefile |
+| Dominio API | `backend/app/*`, Alembic |
+| UI | `frontend/src/*`, `frontend/public/*` |
+| Docs auditoría | este documento, `MIGRATION_AUDIT_SQLITE.md`, `ER_diagram.md` |
+| Tests | `backend/tests/*`, `frontend` Vitest/Playwright |
 
-### Clasificacion
-- Infraestructura y despliegue: Dockerfiles, Compose, Railway, Makefile.
-- Backend API y dominio: `backend/app/*`, `backend/alembic/*`.
-- Frontend app web: `frontend/src/*`, `frontend/public/*`.
-- Documentacion funcional/tecnica: `docs/*`, `README.md`, `PRODUCT.md`, `DESIGN.md`.
-- Scripts de soporte grafico/odontograma: `scripts/*`.
+Inventario de archivos versionados: ejecutar `git ls-files` (Anexo A.2 histórico puede desactualizarse; **priorizar git**).
 
-### Descripcion
-- El repositorio implementa un HIS odontologico mono-clinica con enfoque en ficha clinica unificada, integracion operativa agenda-caja-documentos y reportes.
+---
 
-## 4. Stack Tecnologico
+## 4. Stack tecnológico
 
-### Frontend
-- Next.js 14 App Router + React 18 + TypeScript + Tailwind CSS.
+### 4.1 Backend
+FastAPI, Uvicorn, SQLAlchemy 2, Alembic (`render_as_batch=True`), Pydantic v2 / Settings, bcrypt, PyJWT, ReportLab, qrcode, APScheduler.  
+Drivers: SQLite nativo; Postgres vía `psycopg` si `DATABASE_URL` lo indica.
 
-### Backend
-- FastAPI + SQLAlchemy ORM + Alembic + **SQLite** (Postgres opcional).
+### 4.2 Frontend
+Next.js App Router, React 18, TypeScript, Tailwind, lucide-react, konva/react-konva (odontograma), pdfjs-dist.
 
-### Frameworks
-- FastAPI (API REST), Next.js (SSR/CSR), Pydantic v2 (validacion).
+### 4.3 Testing
+| Capa | Herramienta | Ubicación |
+|------|-------------|-----------|
+| API integración | pytest + httpx / TestClient | `backend/tests/` |
+| Unit frontend | Vitest | `frontend/src/lib/api.test.ts` |
+| E2E | Playwright | `frontend/e2e/` |
 
-### Versiones
-- Referencias en `frontend/package.json` y `backend/requirements.txt` (rangos semver/minimos).
+### 4.4 Observabilidad
+Logging principalmente por `print` en lifespan/scheduler. **Sin** APM/métricas formales. Residual de auditoría.
 
-### Node
-- Runtime de contenedor: Node 18 (alpine).
+---
 
-### Python
-- Runtime de contenedor: Python 3.12 (slim).
+## 5. Base de datos
 
-### ORM
-- SQLAlchemy 2.x.
+### 5.1 Motor
+| Atributo | Valor |
+|----------|--------|
+| Default | SQLite archivo `./data/clinica.db` |
+| Pragmas | `journal_mode=WAL`, `foreign_keys=ON` (`database.py`) |
+| Alternativa | `postgresql+psycopg://…` |
+| Timestamps | ORM `DateTime(timezone=True)`; **app debe persistir UTC** (SQLite no conserva tz nativo) |
+| Dinero | `Numeric(10,2)` — nunca Float en caja/evolución |
 
-### UI
-- Tailwind + componentes custom (`frontend/src/components/ui/*`) + lucide-react.
+### 5.2 Inventario de tablas (17)
 
-### Testing
-- No hay framework de test configurado en scripts npm ni en backend.
+| # | Tabla | PK | Notas |
+|---|-------|-----|-------|
+| 1 | `users` | UUID | `email` unique; `token_version` |
+| 2 | `revoked_tokens` | `jti` string | FK `user_id` UUID |
+| 3 | `patients` | UUID | `numero_ficha` unique (int negocio) |
+| 4 | `clinical_records` | UUID | 1:1 `patient_id` unique |
+| 5 | `clinical_evolution_entries` | UUID | costos Numeric |
+| 6 | `odontogram_entries` | UUID | superficies JSON |
+| 7 | `odontogram_change_log` | UUID | before/after JSON |
+| 8 | `odontogram_snapshots` | UUID | entries JSON |
+| 9 | `periodontogram_entries` | UUID | Numeric sondaje |
+| 10 | `tooth_media` | UUID | paths disco |
+| 11 | `clinical_audit_log` | UUID | detail JSON |
+| 12 | `appointments` | UUID | `fecha_hora` UTC app |
+| 13 | `appointment_reminders` | UUID | |
+| 14 | `cash_sessions` | UUID | una activa (regla app) |
+| 15 | `cash_transactions` | UUID | |
+| 16 | `documents_generated` | UUID | |
+| 17 | `clinic_settings` | UUID fijo singleton | `CLINIC_SETTINGS_ID` |
 
-### Docker
-- Docker Compose 3 servicios en local.
+Generación ID: `backend/app/models/ids.py` → `new_uuid()`, `CLINIC_SETTINGS_ID = 00000000-0000-4000-8000-000000000001`.
 
-### Cloud
-- Railway documentado para despliegue de frontend/backend + Postgres.
+### 5.3 Constraints y uniques (negocio / schema)
 
-### Infraestructura
-- Estado: sin IaC formal, sin pipeline CI/CD en `.github/workflows`.
+| Constraint | Dónde | Tipo |
+|------------|-------|------|
+| `users.email` unique | modelo | DB |
+| `patients.numero_ficha` unique | modelo | DB |
+| `(tipo_documento, numero_documento)` unique | modelo (portable; sin `postgresql_where`) | DB |
+| `clinical_records.patient_id` unique | modelo | DB 1:1 |
+| Odontograma `(patient_id, pieza_fdi, denticion)` | migraciones históricas | **Auditar:** puede no estar en `__table_args__` ORM → riesgo en SQLite greenfield `create_all` |
+| Periodonto compuesto similar | migraciones | mismo riesgo residual |
+| Solape citas / sesión caja única | routers | **App**, no constraint SQL |
 
-## 5. Base de Datos
+### 5.4 Triggers / views / procedures / enums SQL
+**Ninguno** en el código (confirmado en auditoría SQLite). Roles y estados son `String` validados en aplicación.
 
-### Todas las tablas
-1. users
-2. patients
-3. clinical_records
-4. clinical_evolution_entries
-5. odontogram_entries
-6. odontogram_change_log
-7. odontogram_snapshots
-8. appointments
-9. appointment_reminders
-10. cash_sessions
-11. cash_transactions
-12. documents_generated
-13. clinic_settings
-14. periodontogram_entries
-15. tooth_media
-16. clinical_audit_log
+### 5.5 Alembic
 
-### Todos los campos
-- Definicion consolidada en Anexo B.1 (tabla por entidad con campos, tipos y nulabilidad).
+Cadena lineal (HEAD al final):
 
-### Constraints
-- Unicidad: `users.email`, `patients.numero_ficha`, parcial documento paciente, `clinical_records.patient_id` (1:1).
-- Integridad referencial via FK entre modulos clinicos, agenda, caja y auditoria.
+`2905d1e9dd7e` → … → `l9c0d1e2f3a4` → **`m0sqlite_uuid_baseline`**
 
-### FK
-- Principales: `appointments.patient_id -> patients.id`, `appointments.doctor_id -> users.id`, `cash_transactions.cash_session_id -> cash_sessions.id`, `clinical_records.patient_id -> patients.id`, etc.
+| Control | Detalle |
+|---------|---------|
+| Batch mode | `render_as_batch=True` en `alembic/env.py` |
+| Histórico PG | JSONB / `now()` — **no replayable** limpio en SQLite vacío |
+| Greenfield SQLite | `create_all` + stamp HEAD |
+| Cutover datos | `backend/scripts/pg_to_sqlite_uuid.py` (+ backup `pg_dump` obligatorio antes) |
 
-### PK
-- Todas las tablas usan `id` entero autoincremental como PK.
+Diagrama ER actualizado: `docs/ER_diagram.md`.  
+Auditoría tipos: `MIGRATION_AUDIT_SQLITE.md`.
 
-### Indices
-- Indices por campos de busqueda: fechas de cita, documento, patient_id en tablas transaccionales.
-- Indices unicos compuestos definidos por migracion en odontograma/perio.
-
-### Triggers
-- No se detectan triggers SQL definidos en migraciones.
-
-### Views
-- No se detectan vistas SQL definidas.
-
-### Procedimientos
-- No se detectan stored procedures/functions SQL.
-
-### Enums
-- No hay enums SQL nativos; se usan `String` con validacion logica en aplicacion.
-
-### Migraciones
-- 13 migraciones Alembic encadenadas (desde `2905d1e9dd7e` hasta `k8b9c0d1e2f3`).
-
-### Historial
-- Evolutivo: esquema inicial -> ampliacion ficha -> sincronizacion JSON -> configuracion clinica -> odontograma avanzado -> periodonto/media/auditoria -> especialidades/recordatorios.
-
-### Diagrama ER
-- Disponible en `docs/ER_diagram.md` (requiere actualizacion para nuevas tablas).
-
-### Mermaid
-```mermaid
-erDiagram
-    users ||--o{ appointments : doctor
-    users ||--o{ clinical_records : doctor_responsable
-    users ||--o{ clinical_evolution_entries : doctor
-    users ||--o{ cash_sessions : usuario
-    users ||--o{ appointment_reminders : marcado_por
-
-    patients ||--|| clinical_records : tiene
-    patients ||--o{ clinical_evolution_entries : evoluciona
-    patients ||--o{ appointments : agenda
-    patients ||--o{ cash_transactions : paga
-    patients ||--o{ odontogram_entries : odontograma
-    patients ||--o{ periodontogram_entries : periodonto
-    patients ||--o{ tooth_media : media
-
-    appointments ||--o{ appointment_reminders : genera
-    cash_sessions ||--o{ cash_transactions : contiene
-```
+---
 
 ## 6. Backend
 
-### Todos los modulos
-- `auth.py`, `patients.py`, `clinical.py`, `odontogram.py`, `periodontogram.py`, `tooth_media.py`, `audit.py`, `appointments.py`, `cash.py`, `documents.py`, `reports.py`.
+### 6.1 Entrypoints
+| Archivo | Rol |
+|---------|-----|
+| `backend/boot.py` | Migrate + auth schema + uvicorn (Railway/Docker) |
+| `backend/app/main.py` | App FastAPI, CORS, lifespan, scheduler, `GET /api/health` |
+| `backend/start.sh` | Arranque contenedor |
 
-### Todos los endpoints
-- Inventario completo en Anexo C.1 (metodo, path, auth, tablas implicadas).
+### 6.2 Routers incluidos
+`auth`, `users`, `patients`, `clinical`, `odontogram`, `periodontogram`, `tooth_media`, `audit`, `appointments`, `config`, `cash`, `documents`, `reports` (`main.py`).
 
-### Autenticacion
-- JWT access/refresh (`backend/app/core/security.py`).
-- Login en `/api/auth/login`, refresh en `/api/auth/refresh`.
+### 6.3 Autenticación y autorización (control de seguridad)
 
-### Autorizacion
-- `get_current_user` y `require_roles` (`backend/app/core/deps.py`).
-- Roles: `ADMIN`, `DOCTOR`, `ASISTENTE`.
+| Control | Implementación | Evidencia |
+|---------|----------------|-----------|
+| Access JWT | claims `sub`, `role`, `type=access`, `exp`, `jti`, `ver` | `core/security.py` |
+| Refresh JWT | `type=refresh` + `jti` + `ver` | idem |
+| Validación | tipo access; JTI no revocado; user `activo`; `ver == token_version` | `deps.py` |
+| Logout | escribe `revoked_tokens` | `routers/auth.py` |
+| Rotación refresh | revoca refresh anterior | idem |
+| Cambio/reset password | `token_version += 1` | idem / users |
+| Rate limit | login 10/min; setup 3/min (in-memory) | `core/rate_limit.py`, env `RATE_LIMIT_*` |
+| Roles | `ADMIN`, `DOCTOR`, `ASISTENTE` | `core/roles.py` |
+| RBAC | `require_roles` en endpoints sensibles | users, config clínica, etc. |
 
-### Servicios
-- `pdf_generator.py`, `ticket_comprobante.py`, `clinic_profile.py`, `reminder_messages.py`, `audit.py`.
+### 6.4 Middleware
+Solo `CORSMiddleware` (`CORS_ORIGINS`). Sin CSRF clásico (API bearer). Sin CSP reportada en Next.
 
-### Validaciones
-- Pydantic schemas y validaciones de negocio dentro de routers (ej. horario clinica, solapes, tamaño/logo, RUC).
+### 6.5 Servicios de negocio
+`pdf_generator.py`, `ticket_comprobante.py`, `clinic_profile.py`, `reminder_messages.py`, `audit.py`.
 
-### Middlewares
-- CORS global en `backend/app/main.py`.
+### 6.6 Errores HTTP típicos
+| Código | Uso |
+|--------|-----|
+| 400 | Validación negocio (horario, datos) |
+| 401 | Token inválido/expirado/revocado |
+| 403 | Inactivo / rol insuficiente |
+| 404 | Recurso inexistente |
+| 409 | Solape agenda / conflicto |
+| 422 | Validación Pydantic |
+| 429 | Rate limit auth |
 
-### Logs
-- Logging basico via `print` en scheduler/lifespan y errores puntuales.
+Inventario de endpoints (Anexo C.1). Odontograma/periodontograma/tooth_media existen pero se tratan como **módulo cerrado** en cambios funcionales.
 
-### Errores
-- Manejo por `HTTPException` con codigos 400/401/403/404/409.
-
-### Flujos
-- Flujos principales: setup/login, alta paciente + creacion ficha 1:1, evolucion clinica, cobranzas, documentacion PDF, recordatorios pendientes.
-
-### Dependencias
-- Dependencias de seguridad y DB inyectadas por `Depends(get_db)` y `Depends(get_current_user)`.
+---
 
 ## 7. Frontend
 
-### Todas las rutas
-- `/`, `/dashboard`, `/agenda`, `/caja`, `/reportes`, `/configuracion`, `/pacientes`, `/pacientes/nuevo`, `/pacientes/[id]`.
+### 7.1 Rutas de negocio
+| Ruta | Función |
+|------|---------|
+| `/` | Login / setup inicial |
+| `/dashboard` | Resumen operativo |
+| `/agenda` | Citas (IDs doctor/paciente **string UUID**) |
+| `/caja` | Sesión y movimientos |
+| `/reportes` | Caja / pacientes / tratamientos |
+| `/configuracion` | Clínica, horas, especialidades, usuarios (ADMIN) |
+| `/pacientes` | Listado |
+| `/pacientes/nuevo` | Alta |
+| `/pacientes/[id]` | Ficha + odontograma/perio + financieros + docs |
 
-### Todas las paginas
-- Definidas en `frontend/src/app/**/page.tsx`.
+### 7.2 Seguridad cliente
+| Pieza | Rol |
+|-------|-----|
+| `lib/api.ts` | `getToken`, `apiFetch`, refresh en 401 |
+| `lib/auth.tsx` | `AuthProvider`; `User.id: string` |
+| `middleware.ts` | Gate cookie JWT (forma); `/` pública |
+| `lib/authCookie.ts` | Cookie `ds_access_token` |
 
-### Todos los componentes
-- Inventario en `frontend/src/components/*` y `frontend/src/components/ui/*`.
-- Componentes huarfanos detectados: `PatientSearch.tsx`, `ClinicalAuditPanel.tsx`, `SignaturePad.tsx`, `ui/Toolbar.tsx` (sin referencia activa observable en rutas).
+### 7.3 Excepción token odontograma
+`ToothAttachments.tsx` aún usa `localStorage.getItem("access_token")` — documentado en `EXCEPCIONES_ODONTOGRAMA.md` (**PARCIAL** respecto a token hub unificado).
 
-### Hooks
-- Hook custom principal: `components/odontogram/useOdontogramPatient.ts`.
+### 7.4 Layout / navegación
+Layouts protegidos + `ProtectedRoute` + `AppShell` (Sidebar + Topbar). Enforcement de rol fuerte en backend; UI restringe parcialmente pantallas admin.
 
-### Stores
-- No hay store global externo (Redux/Zustand); estado en hooks/context local.
+---
 
-### Contexts
-- `AuthProvider` en `frontend/src/lib/auth.tsx`.
+## 8. Módulos clínicos y operativos
 
-### Estados
-- Estado local por pagina (formularios, carga, filtros) y estado auth por contexto.
+| Módulo | Estado | Notas de auditoría |
+|--------|--------|-------------------|
+| Ficha clínica | IMPLEMENTADO | 1:1 al crear paciente |
+| Evolución | IMPLEMENTADO | CRUD + costos |
+| Odontograma 2D | IMPLEMENTADO / **CERRADO** | Anatomico + realista; cambios v1.2 solo UUID |
+| Periodontograma | IMPLEMENTADO / **CERRADO** | idem |
+| Media dental | IMPLEMENTADO | Filesystem |
+| Agenda | IMPLEMENTADO | Horario Lima + solape + UTC persist |
+| Recordatorios | PARCIAL | Scheduler crea; envío humano vía WhatsApp link |
+| Caja | IMPLEMENTADO | Sesión única; ingreso/egreso |
+| Documentos PDF | IMPLEMENTADO | Comprobante, cierre, ficha, evolución, consentimiento, presupuesto |
+| Reportes | IMPLEMENTADO | JSON/export según UI |
+| Configuración | IMPLEMENTADO | Horario, especialidades, branding, reminder hours |
+| Usuarios | IMPLEMENTADO | Setup, CRUD ADMIN, reset password |
+| Auditoría clínica | IMPLEMENTADO (API) | Panel UI (`ClinicalAuditPanel`) puede no estar montado |
 
-### Layouts
-- Root layout + layouts protegidos por modulo que envuelven con `ProtectedRoute` y `AppShell`.
-
-### Navegacion
-- Sidebar fija + topbar con buscador rapido y recordatorios.
-
-### Permisos
-- Proteccion por token en middleware y guard cliente.
-- Restriccion por rol en UI de configuracion admin (parcial; enforcement fuerte en backend).
-
-## 8. Modulos Clinicos
-
-### Ficha Clinica
-- Implementada en `/pacientes/[id]` con bloques estructurados y actualizacion por secciones.
-
-### Odontograma 2D
-- Implementado (anatomico + superficies + snapshots + historial).
-
-### Odontograma 3D
-- No implementado operativo; existe documentacion conceptual (`docs/ODONTOGRAMA_3D.md`).
-
-### Agenda
-- Vista dia/semana/mes, alta/edicion de citas, validacion de horario y solape.
-
-### Caja
-- Apertura/cierre de sesion, ingresos/egresos, comprobante PDF.
-
-### Pacientes
-- CRUD principal + busqueda por documento/nombre.
-
-### Presupuestos
-- Generacion de presupuesto PDF desde plan activo de ficha.
-
-### Tratamientos
-- Catalogos de sugerencia y evolucion clinica con costos/estado.
-
-### Radiografias
-- Soporte de media dental por pieza (`tooth_media`), no PACS avanzado.
-
-### Consentimientos
-- Estado firmado, fecha y firmas (paciente/odontologo).
-
-### Documentos
-- Comprobante, cierre caja, ficha, evolucion, consentimiento, presupuesto.
-
-### Reportes
-- Caja, pacientes, tratamientos (JSON/PDF/CSV).
-
-### Usuarios
-- Setup inicial, login, CRUD usuarios por ADMIN, reset password.
-
-### Configuracion
-- Horario, especialidades, branding/identidad clinica, recordatorios, logo.
+---
 
 ## 9. Integraciones
 
-### WhatsApp
-- Integracion por deep link `wa.me` (sin API oficial).
+| Integración | Estado | Evidencia |
+|-------------|--------|-----------|
+| WhatsApp | PARCIAL (`wa.me`) | `lib/whatsapp.ts`, marcado enviado en API |
+| Correo SMTP | NO | — |
+| Storage cloud | NO | Disco local `assets/uploads` |
+| Pasarela de pagos | NO | — |
+| Google Drive backup | FUERA DE ALCANCE | — |
+| Sync multi-PC | FUERA DE ALCANCE | UUIDs como prerrequisito |
 
-### Correo
-- No implementado envio por SMTP/transaccional.
+---
 
-### Storage
-- Archivos en filesystem local dentro de `backend/app/assets/uploads`.
+## 10. Seguridad (matriz de controles)
 
-### Rembg
-- No detectado en dependencias ni codigo backend/frontend principal.
+| Área | Control | Estado | Evidencia / residual |
+|------|---------|--------|----------------------|
+| Identidad | JWT access/refresh | IMPLEMENTADO | `security.py` |
+| Revocación | `revoked_tokens` + `token_version` | IMPLEMENTADO | v1.1 |
+| Fuerza bruta | Rate limit login/setup | IMPLEMENTADO | in-memory (no compartido multi-réplica) |
+| Secretos | `JWT_SECRET` env | PARCIAL | default inseguro en código si no se override |
+| SQL injection | ORM parametrizado | IMPLEMENTADO | — |
+| XSS | Escape React | PARCIAL | sin CSP formal |
+| CSRF | N/A bearer | Aceptable API | — |
+| CORS | Allowlist | IMPLEMENTADO | `CORS_ORIGINS` |
+| HTTPS | Plataforma (Railway) | Dependiente deploy | — |
+| Uploads | Validaciones logo/media | PARCIAL | revisar límites tamaño/MIME en routers |
+| Auditoría de acceso | no SIEM | NO | solo logs print + clinical_audit_log |
 
-### Cloud
-- Railway (deploy backend/frontend + Postgres).
+---
 
-### APIs
-- API REST interna FastAPI consumida por Next.js.
+## 11. Configuración (variables de entorno)
 
-### Servicios externos
-- No hay gateways de pago ni ERP externos en v1.
+### 11.1 Backend (`backend/.env.example` / `config.py`)
 
-## 10. Seguridad
+| Variable | Default / rol |
+|----------|----------------|
+| `DATABASE_URL` | `sqlite:///./data/clinica.db` |
+| `JWT_SECRET` | **obligatorio cambiar en prod** |
+| `JWT_ALGORITHM` | `HS256` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `60` |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | `7` |
+| `RATE_LIMIT_LOGIN_PER_MINUTE` | `10` |
+| `RATE_LIMIT_SETUP_PER_MINUTE` | `3` |
+| `APP_NAME`, `CORS_ORIGINS`, `BACKEND_PORT` | clínica / CORS / puerto |
+| `CLINIC_NAME|PHONE|ADDRESS|RUC|EMAIL`, `CLINIC_TICKET_SERIE` | Identidad ticket |
+| `PUBLIC_APP_URL` | Links públicos |
+| `REMINDER_HOURS_BEFORE` | `24` |
+| `TOOTH_MEDIA_ROOT` | opcional (comentario) |
+| ETL cutover | `SOURCE_DATABASE_URL` / `TARGET_DATABASE_URL` (script, no Settings) |
 
-### JWT
-- Implementado con access/refresh y expiracion.
+### 11.2 Frontend (`frontend/.env.example`)
+| Variable | Uso |
+|----------|-----|
+| `NEXT_PUBLIC_API_URL` | Local directo al backend |
+| `BACKEND_URL` | Proxy server-side en Railway (cuando público API vacío) |
 
-### Roles
-- Roles disponibles: ADMIN/DOCTOR/ASISTENTE.
+---
 
-### Permisos
-- Enforced por backend (`require_roles`) y parcialmente por UI.
+## 12. Testing (evidencia de calidad)
 
-### RBAC
-- Activo en backend (ej. gestion usuarios y configuracion sensible).
+### 12.1 Backend pytest (`backend/tests/`)
 
-### Proteccion CSRF
-- No se observa mecanismo especifico CSRF (uso principal por bearer token).
+| Archivo | Qué prueba |
+|---------|------------|
+| `test_auth.py` | setup-status, login, refresh, logout, change-password / `token_version` |
+| `test_auth_rate_limit.py` | 429 login |
+| `test_patients.py` | alta + ficha; documento duplicado |
+| `test_appointments.py` | horario OK; solape 409; fuera de horario |
+| `test_cash.py` | open → tx → close |
+| `test_documents.py` | PDF comprobante |
+| `test_uuid_chain.py` | cadena UUID paciente→ficha→cita→caja→odontograma |
 
-### Proteccion XSS
-- Basada en escapes por defecto React; no hay capa dedicada CSP reportada.
+Comando: `cd backend && python -m pytest -q`  
+Expectativa post-v1.2: **17 passed** (referencia de desarrollo 2026-07-14).
 
-### Proteccion SQL Injection
-- Uso de ORM/queries SQLAlchemy parametrizadas.
+### 12.2 Frontend
+- Vitest: recuperación auth en `api.test.ts`
+- Playwright: `e2e/auth.spec.ts`, `pacientes.spec.ts`, `caja.spec.ts`
+- Odontograma: **fuera de cobertura intencional**
 
-### Rate Limiting
-- No implementado.
+### 12.3 Gaps de testing (deuda)
+- Tests de carga / concurrencia caja
+- Rate limit multi-worker
+- ETL `pg_to_sqlite_uuid` automatizado en CI
+- Cobertura formal % no definida
+- E2E odontograma/perio
 
-### CORS
-- Configurable via `CORS_ORIGINS` parseado por backend.
+---
 
-### Validaciones
-- Pydantic en entrada, validaciones de negocio adicionales en routers.
+## 13. Auditoría técnica (código)
 
-## 11. Configuracion
+| Hallazgo | Severidad | Estado v1.3 |
+|----------|-----------|-------------|
+| Ausencia total de tests flujos núcleo | Crítica (histórica) | **Mitigada** (pytest + parcial FE) |
+| Token inconsistente `apiFetch` vs localStorage | Alta (histórica) | **Mitigada** salvo excepción odontograma |
+| Docs desalineadas int/PK Postgres | Alta (histórica) | **Mitigada** (este doc + ER + changelog) |
+| Páginas monoliticas (`pacientes/[id]`, caja, config) | Media | Residual |
+| Componentes posiblemente huérfanos | Baja | `ClinicalAuditPanel`, `PatientSearch`, `SignaturePad`, `ui/Toolbar` — revalidar con search |
+| Unique compuestos odontograma en `create_all` SQLite | Media | Residual — validar en instalación nueva |
+| Rate limit in-memory | Media (multi-réplica) | Residual Railway |
+| Logs no estructurados | Baja | Residual |
+| `JWT_SECRET` default | Alta si prod sin override | Control operativo |
 
-### Variables ENV
-- Backend: `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, `CLINIC_*`, `REMINDER_HOURS_BEFORE`, `PUBLIC_APP_URL`.
-- Frontend: `NEXT_PUBLIC_API_URL` (local) y `BACKEND_URL` (proxy server-side).
+Marcadores `TODO`/`FIXME`/`HACK`: no hay uso sistemático relevante (revalidar con ripgrep en cada auditoría).
 
-### Build
-- Frontend: `npm run build`.
-- Backend: imagen Docker + `start.sh`.
+---
 
-### Deploy
-- Local: `docker compose up --build`.
-- Railway: archivos `backend/railway.toml` y `frontend/railway.toml`.
+## 14. Deuda técnica (priorizada)
 
-### Docker
-- Compose de tres servicios y healthchecks en backend/db.
-
-### Scripts
-- `Makefile` para db/install/migrate/backend/frontend.
-
-### CI/CD
-- No detectado pipeline CI/CD versionado.
-
-## 12. Testing
-
-### Cobertura
-- Cobertura automatizada: no definida.
-
-### Tests existentes
-- No se detectan archivos de tests versionados.
-
-### Tests faltantes
-- Unit tests backend (servicios, seguridad, validaciones).
-- Integration tests API (auth, pacientes, agenda, caja, docs).
-- E2E frontend (login, ficha, pago, documentos, reportes).
-
-### Mocks
-- No se detecta infraestructura de mocks.
-
-### Fixtures
-- No se detectan fixtures de prueba.
-
-## 13. Auditoria Tecnica
-
-### Codigo duplicado
-- Bloques repetidos y handlers extensos en paginas grandes (`pacientes/[id]`, `caja`, `configuracion`).
-
-### Codigo muerto
-- Componentes no referenciados en rutas activas (ver Cap. 7).
-
-### Archivos huerfanos
-- `ClinicalAuditPanel.tsx`, `PatientSearch.tsx`, `SignaturePad.tsx`, `components/ui/Toolbar.tsx`.
-
-### Dependencias sin uso
-- Requiere auditoria automatizada adicional; hay indicios de utilidades frontend no invocadas (ej. ciertas funciones de `validators.ts`).
-
-### Imports sin uso
-- Requiere corrida de linter estricto para listado exacto.
-
-### Funciones nunca llamadas
-- Detectadas por inspeccion parcial; requiere analisis estatico completo para cierre formal.
-
-### Componentes sin referencias
-- Ver seccion "Archivos huerfanos".
-
-### TODO
-- No se encontraron marcadores TODO reales en codigo con patron de busqueda aplicado.
-
-### FIXME
-- No se encontraron marcadores FIXME reales.
-
-### HACK
-- No se encontraron marcadores HACK reales.
-
-### Antipatrones
-- Paginas monoliticas >800 lineas.
-- Uso de `localStorage.getItem("access_token")` en algunos componentes en paralelo a abstraccion `apiFetch`.
-- Mezcla de estilos UI (inline CSS en login vs sistema de componentes en resto).
-
-### Riesgos
-- Mantenibilidad y regresiones por baja modularidad en vistas complejas.
-
-## 14. Deuda Tecnica
-
-Clasificada por prioridad:
-
-### Critica
-- Ausencia de testing automatizado para flujos nucleares.
+### Crítica
+- Ninguna abierta respecto a “cero tests” o “JWT irrevocable” (cerradas en v1.1).
 
 ### Alta
-- Inconsistencias de manejo de token entre `apiFetch` y fetches directos en frontend.
-- Documentacion de modelo/endpoints desactualizada respecto al codigo actual.
+1. Confirmar `JWT_SECRET` y CORS productivos en Railway en cada release.
+2. Unificar `ToothAttachments` a `getToken()` cuando se reabra odontograma.
+3. Garantizar uniques compuestos odontograma/perio en bootstrap SQLite.
 
 ### Media
-- Archivos de pagina sobredimensionados.
-- Logging tecnico limitado para observabilidad operativa.
+4. Observabilidad (logging estructurado / health checks ricos).
+5. Modularizar páginas frontend grandes.
+6. CI que ejecute `pytest` + `tsc` en PR.
 
 ### Baja
-- Limpieza de componentes huarfanos/utilidades no usadas.
+7. Limpieza componentes no montados.
+8. Eliminar dependencia Compose Postgres del camino “default local”.
+
+---
 
 ## 15. Riesgos
 
-### Escalabilidad
-- Scheduler embebido y ausencia de colas externas limitan escalamiento horizontal avanzado.
+| Riesgo | Impacto | Mitigación actual | Residual |
+|--------|---------|-------------------|----------|
+| Pérdida archivo SQLite | Alto | Backup operativo manual / ETL | Sin Drive aún |
+| Corrupción / un solo writer SQLite | Medio | WAL; un proceso backend típico | Multi-escritor frágil |
+| Despliegue multi-réplica rate-limit | Medio | — | Límites por proceso |
+| Sync futuro sin motor | — | UUIDs listos | No hay sync |
+| Regresión odontograma | Alto clínico | Módulo cerrado + excepciones doc | Tests FE ausentes |
+| Secreto JWT débil | Alto | `.env.example` + docs | Proceso humano |
 
-### Rendimiento
-- Consultas y render en paginas extensas pueden degradar UX en datasets grandes.
+---
 
-### Seguridad
-- Sin rate limiting; tokens JWT sin revocacion server-side.
+## 16. Reglas de negocio (verificables)
 
-### Mantenibilidad
-- Alta complejidad ciclomatica en paginas frontend extensas.
+| ID | Regla | Evidencia |
+|----|-------|-----------|
+| RN-01 | Setup inicial solo si cero usuarios | `/api/auth/setup-status`, `/setup` |
+| RN-02 | Roles válidos: ADMIN/DOCTOR/ASISTENTE | `roles.py` |
+| RN-03 | Alta paciente crea ficha clínica 1:1 | `patients.py` + `test_patients` |
+| RN-04 | `numero_ficha` único auto | modelo + router |
+| RN-05 | Documento único por tipo+número | índice + validación app |
+| RN-06 | Cita dentro de horario clínica (America/Lima) | `appointments._assert_within_clinic_hours` |
+| RN-07 | No solape mismo doctor (estados programada/completada) | `_check_overlap` → 409 |
+| RN-08 | `fecha_hora` persistida UTC | create/update appointments |
+| RN-09 | Una sesión de caja abierta | `cash.py` |
+| RN-10 | TX requiere caja abierta | `cash.py` |
+| RN-11 | Saldo financiero = sum costos evolución − ingresos caja | `clinical` financial |
+| RN-12 | Recordatorios: generar pendientes; envío = marcado manual | scheduler + `/reminders/{id}/send` |
+| RN-13 | Config sensible / usuarios: ADMIN | `require_roles` |
+| RN-14 | Logout / rotación / password invalidan tokens | `revoked_tokens` / `token_version` |
 
-### Acoplamiento
-- Acoplamiento moderado frontend-backend por contratos directos endpoint a endpoint.
+---
 
-### Complejidad
-- Complejidad creciente en modulo ficha clinica y configuracion.
+## 17. Flujo completo del sistema
 
-## 16. Reglas de Negocio
+1. Setup (primer ADMIN) o login JWT.
+2. Frontend guarda access/refresh; cookie forma gate.
+3. Alta/búsqueda paciente → ficha 1:1.
+4. Registro clínico: anamnesis, plan JSON, odontograma/perio, evolución, consentimiento.
+5. Agenda cita (horario + solape).
+6. Cobro en caja (sesión abierta) → comprobante PDF.
+7. Documentos clínicos/financieros PDF; opcional marcar WhatsApp.
+8. Scheduler genera recordatorios; usuario envía por `wa.me` y marca.
+9. Cierre de caja + reportes.
 
-Todas las reglas separadas por modulo (evidencia en rutas backend/frontend):
+---
 
-- Auth: setup inicial solo si no hay usuarios (`/api/auth/setup-status`, `/api/auth/setup`).
-- Pacientes: creacion de paciente dispara creacion de ficha clinica 1:1.
-- Agenda: no permitir solape de citas por doctor y respetar horario clinica (`appointments.py`).
-- Recordatorios: scheduler genera pendientes; envio real requiere accion humana (marcar enviado).
-- Ficha clinica: resumen financiero calculado por transacciones de caja y evolucion.
-- Caja: una sesion activa; cierre calcula resumen por metodo.
-- Documentos: formatos PDF por tipo y marcado manual de envio WhatsApp.
-- Configuracion: cambios criticos (usuarios, especialidades, perfil clinica) requieren rol ADMIN en backend.
+## 18. Matriz de dependencias entre módulos
 
-## 17. Flujo Completo del Sistema
-
-Desde inicio de sesion hasta cierre de proceso clinico:
-1. Usuario entra a `/` y autentica.
-2. Frontend carga contexto auth (`/api/users/me`).
-3. Operador crea/selecciona paciente.
-4. Se registra/actualiza ficha clinica, odontograma, periodonto, evolucion.
-5. Se agenda cita actual o proxima (con reglas de solape y horario).
-6. Se registra pago/egreso en caja.
-7. Sistema emite comprobante y/o documentos clinicos PDF.
-8. Scheduler crea recordatorios; usuario abre WhatsApp y marca envio.
-9. Se cierran sesiones de caja y se exportan reportes.
-
-## 18. Matriz de Dependencias
-
-| Modulo | Depende de | Tipo de dependencia |
-|---|---|---|
-| Auth | users, JWT, bcrypt | Seguridad/identidad |
+| Módulo | Depende de | Tipo |
+|--------|------------|------|
+| Auth | users, JWT, bcrypt, revoked_tokens | Seguridad |
 | Pacientes | patients, clinical_records | Dominio base |
-| Ficha Clinica | clinical_records, clinical_evolution_entries, cash_transactions | Clinico-financiera |
-| Odontograma | odontogram_entries, change_log, snapshots | Clinica dental |
-| Periodontograma | periodontogram_entries, tooth_media | Clinica periodontal |
-| Agenda | appointments, appointment_reminders, clinic_settings | Programacion y recordatorios |
-| Caja | cash_sessions, cash_transactions, patients | Financiera |
-| Documentos | multiples tablas + pdf_generator | Evidencia documental |
-| Reportes | cash/appointments/evolution/patients | Analitica |
-| Configuracion | clinic_settings, users | Parametrizacion |
+| Ficha | clinical_*, cash_transactions | Clínico-financiera |
+| Odontograma | odontogram_*, tooth_media | Clínica dental |
+| Periodontograma | periodontogram_entries | Clínica periodontal |
+| Agenda | appointments, reminders, clinic_settings | Operación |
+| Caja | cash_*, patients | Financiera |
+| Documentos | múltiples + PDF services | Evidencia |
+| Reportes | cash / appointments / evolution / patients | Analítica |
+| Configuración | clinic_settings, users | Parametrización |
+
+---
 
 ## 19. Matriz CRUD
 
-| Entidad | Crea | Consulta | Modifica | Elimina |
-|---|---|---|---|---|
-| users | `POST /api/users`, `POST /api/auth/setup` | `GET /api/users`, `GET /api/users/me`, `GET /api/users/doctors` | `PATCH /api/users/{id}`, `POST /api/users/{id}/reset-password`, `POST /api/auth/change-password` | Baja logica via `activo` |
-| patients | `POST /api/patients` | `GET /api/patients`, `GET /api/patients/{id}`, `GET /api/patients/search` | `PATCH /api/patients/{id}` | No endpoint delete |
-| clinical_records | Auto al crear paciente | `GET /api/clinical/{id}/record` | `PATCH /api/clinical/{id}/record`, `PATCH /api/clinical/{id}/consentimiento` | No delete |
-| clinical_evolution_entries | `POST /api/clinical/{id}/evolution` | `GET /api/clinical/{id}/evolution` | `PATCH /api/clinical/evolution/{id}` | `DELETE /api/clinical/{id}/evolution/{id}` |
-| odontogram_entries | `PUT /api/odontogram/{id}/{pieza}` | `GET /api/odontogram/{id}` | `PUT /api/odontogram/{id}/{pieza}` | `DELETE /api/odontogram/{id}/{pieza}`, `DELETE /api/odontogram/{id}` |
-| periodontogram_entries | `PUT /api/periodontogram/{id}/{pieza}` | `GET /api/periodontogram/{id}` | `PUT /api/periodontogram/{id}/{pieza}` | Sobrescritura por upsert |
-| appointments | `POST /api/appointments` | `GET /api/appointments` | `PATCH /api/appointments/{id}` | `DELETE /api/appointments/{id}` |
-| appointment_reminders | Scheduler | `GET /api/appointments/reminders/pending` | `POST /api/appointments/reminders/{id}/send` | No delete |
-| cash_sessions | `POST /api/cash/session/open` | `GET /api/cash/session` | `POST /api/cash/session/close` | No delete |
-| cash_transactions | `POST /api/cash/transactions` | `GET /api/cash/transactions`, `GET /api/cash/transactions/patient/{id}` | No update | No delete |
-| documents_generated | Auto en endpoints docs | Implito en tracking | `POST /api/documents/whatsapp-sent/{id}` | No delete |
-| clinic_settings | Seed/auto create | `GET /api/config/*` | `PATCH /api/config/*`, `PUT /api/config/especialidades`, `POST /api/config/clinic/logo` | Reset parcial (`/especialidades/reset`) |
-| tooth_media | `POST /api/tooth-media/{patient_id}` | `GET /api/tooth-media/{patient_id}`, `GET /api/tooth-media/file/{id}` | No update | `DELETE /api/tooth-media/{id}` |
-| clinical_audit_log | Auto por servicios | `GET /api/audit/{patient_id}` | No update | No delete |
+| Entidad | Crea | Lee | Actualiza | Elimina |
+|---------|------|-----|-----------|---------|
+| users | setup / POST users | list / me / doctors | PATCH / reset-password / change-password | baja lógica `activo` |
+| patients | POST | GET/search | PATCH | no delete API |
+| clinical_records | auto | GET record | PATCH record/consent | no |
+| evolution | POST | GET | PATCH | DELETE |
+| odontogram_entries | PUT upsert | GET | PUT | DELETE pieza/paciente |
+| periodontogram | PUT | GET | PUT | sobrescribe |
+| appointments | POST | GET | PATCH | DELETE |
+| reminders | scheduler | pending | mark send | no |
+| cash_sessions | open | get | close | no |
+| cash_transactions | POST | list | no | no |
+| documents | auto al generar PDF | implícito | whatsapp-sent | no |
+| clinic_settings | seed singleton | GET config | PATCH/PUT/logo | reset especialidades |
+| tooth_media | POST | GET/file | no | DELETE |
+| clinical_audit_log | servicios | GET audit | no | no |
+| revoked_tokens | logout/refresh | interno | no | GC opcional por expire |
 
-## 20. Matriz Endpoint -> Frontend
+*(Paths: ver Anexo C.1; IDs path params = UUID string.)*
 
-| Pantalla/Componente | Endpoints consumidos |
-|---|---|
-| Login (`/`) | `/api/auth/setup-status`, `/api/auth/login`, `/api/auth/setup`, `/api/users/me` |
-| Dashboard | `/api/cash/session`, `/api/appointments`, `/api/appointments/reminders/pending`, `/api/cash/transactions` |
-| Agenda | `/api/appointments`, `/api/users/doctors`, `/api/config/hours`, `/api/patients/{id}` |
-| Pacientes lista | `/api/patients` |
-| Nuevo paciente | `/api/patients/search`, `/api/patients` |
-| Ficha paciente (`/pacientes/[id]`) | `/api/patients/{id}`, `/api/clinical/{id}/record`, `/api/clinical/{id}/evolution`, `/api/clinical/{id}/financial`, `/api/odontogram/*`, `/api/periodontogram/*`, `/api/cash/transactions*`, `/api/documents/*` |
-| Caja | `/api/cash/session`, `/api/cash/session/open`, `/api/cash/session/close`, `/api/cash/transactions`, `/api/documents/comprobante/*`, `/api/documents/cierre-caja/*` |
-| Reportes | `/api/reports/caja`, `/api/reports/pacientes`, `/api/reports/tratamientos` |
-| Configuracion | `/api/config/clinic`, `/api/config/clinic/logo`, `/api/config/hours`, `/api/config/reminders`, `/api/config/especialidades`, `/api/users*`, `/api/auth/change-password` |
-| Topbar/FichaQuickOpen | `/api/appointments/reminders/pending`, `/api/appointments/reminders/{id}/send`, `/api/patients/search` |
+---
 
-## 21. Matriz Base de Datos -> Backend
+## 20. Matriz pantalla → API
 
-| Tabla | Endpoints principales que la usan |
-|---|---|
-| users | `/api/auth/*`, `/api/users*`, `/api/appointments` (doctor), `/api/audit/*` |
-| patients | `/api/patients*`, `/api/clinical/*`, `/api/appointments*`, `/api/documents/*`, `/api/reports/*` |
-| clinical_records | `/api/clinical/{id}/record`, `/api/clinical/{id}/consentimiento`, `/api/documents/ficha|consentimiento|presupuesto` |
-| clinical_evolution_entries | `/api/clinical/{id}/evolution*`, `/api/documents/evolucion`, `/api/reports/tratamientos` |
-| odontogram_entries | `/api/odontogram/*`, `/api/documents/ficha` |
-| odontogram_change_log | `/api/odontogram/{id}/history`, upserts/deletes en `/api/odontogram/*` |
-| odontogram_snapshots | `/api/odontogram/{id}/snapshots`, `/api/odontogram/{id}/compare` |
-| appointments | `/api/appointments*`, scheduler de recordatorios, `/api/reports/pacientes` |
-| appointment_reminders | `/api/appointments/reminders/*`, scheduler |
-| cash_sessions | `/api/cash/session*`, `/api/documents/cierre-caja/*` |
-| cash_transactions | `/api/cash/transactions*`, `/api/clinical/{id}/financial`, `/api/reports/caja` |
-| documents_generated | `/api/documents/*`, `/api/documents/whatsapp-sent/{id}` |
-| clinic_settings | `/api/config/*`, validacion horario agenda |
-| periodontogram_entries | `/api/periodontogram/*` |
-| tooth_media | `/api/tooth-media/*` |
-| clinical_audit_log | `/api/audit/{patient_id}` + escritura por servicios de auditoria |
+| Pantalla | Endpoints principales |
+|----------|----------------------|
+| `/` | setup-status, login, setup, users/me |
+| Dashboard | cash/session, appointments, reminders, transactions |
+| Agenda | appointments*, doctors, hours, patients/{id} |
+| Pacientes | patients* |
+| Ficha `[id]` | patients, clinical*, odontogram*, periodontogram*, cash, documents* |
+| Caja | cash/session*, transactions, documents comprobante/cierre |
+| Reportes | reports/* |
+| Configuración | config/*, users*, change-password |
+| Topbar | reminders, patients/search |
 
-## 22. Matriz Backend -> Frontend
+---
 
-| Backend modulo | Consumido por frontend |
-|---|---|
-| auth | `src/lib/auth.tsx`, pagina `/` |
-| users | `configuracion/page.tsx`, `agenda/page.tsx` |
-| patients | `pacientes/page.tsx`, `pacientes/nuevo/page.tsx`, `pacientes/[id]/page.tsx`, `Topbar.tsx`, `PatientPicker.tsx` |
-| clinical | `pacientes/[id]/page.tsx` |
-| odontogram | `components/odontogram/useOdontogramPatient.ts`, `pacientes/[id]/page.tsx` |
-| periodontogram | `components/periodontogram/Periodontograma.tsx` |
-| tooth_media | `components/odontogram/ToothAttachments.tsx` |
-| appointments | `agenda/page.tsx`, `dashboard/page.tsx`, `Topbar.tsx` |
-| cash | `caja/page.tsx`, `dashboard/page.tsx`, `pacientes/[id]/page.tsx` |
-| documents | `DocumentActions.tsx`, `caja/page.tsx`, `reportes/page.tsx`, `pacientes/[id]/page.tsx` |
-| reports | `reportes/page.tsx` |
-| config | `configuracion/page.tsx`, `SpecialtySelect.tsx`, `agenda/page.tsx` |
-| audit | `ClinicalAuditPanel.tsx` (no montado actualmente) |
+## 21. Matriz tabla → backend
+
+| Tabla | Uso principal |
+|-------|---------------|
+| users | auth, users, doctor FKs |
+| revoked_tokens | logout / refresh validation |
+| patients | patients, clinical, agenda, docs, reports |
+| clinical_records | clinical + PDFs ficha/consent/presupuesto |
+| clinical_evolution_entries | evolution + reportes tratamientos |
+| odontogram_* | odontogram routers + ficha PDF |
+| periodontogram_entries | periodontogram |
+| tooth_media | tooth-media |
+| appointments / reminders | agenda + scheduler |
+| cash_* | caja + financial + reportes |
+| documents_generated | documents |
+| clinic_settings | config + validación horario |
+| clinical_audit_log | audit |
+
+---
+
+## 22. Matriz backend → frontend
+
+| Backend | Consumidores FE |
+|---------|-----------------|
+| auth / users | `auth.tsx`, `/`, `configuracion`, `agenda` |
+| patients | pacientes/*, Topbar, PatientPicker |
+| clinical | `pacientes/[id]` |
+| odontogram | `useOdontogramPatient`, ficha |
+| periodontogram | `Periodontograma.tsx` |
+| tooth_media | `ToothAttachments.tsx` |
+| appointments | agenda, dashboard, Topbar |
+| cash | caja, dashboard, ficha |
+| documents | DocumentActions, caja, ficha, reportes |
+| reports | reportes |
+| config | configuracion, SpecialtySelect, agenda |
+| audit | ClinicalAuditPanel (posible no montado) |
+
+---
 
 ## 23. Convenciones
 
-### Naming
-- Backend: snake_case para campos/variables; endpoints REST en minuscula.
-- Frontend: PascalCase en componentes, camelCase en funciones/props.
+| Tema | Convención |
+|------|------------|
+| IDs API/FE | **string UUID**; `numero_ficha` permanece int de negocio |
+| Naming BE | snake_case campos; paths REST minúsculas |
+| Naming FE | PascalCase componentes; camelCase props |
+| Estilos | Tailwind + tokens brand (`DESIGN.md`); login unificado a componentes UI |
+| Patrones | Proxy Next `/api/[...path]`; upsert odontograma/perio; scheduler embebido |
 
-### Estilos
-- Predominio Tailwind en app principal.
-- Excepcion: login con estilos inline en objeto JS.
-
-### Buenas practicas
-- Separacion por modulos y capas.
-- Uso de schemas para contratos API.
-- Token refresh con reintento centralizado en `apiFetch`.
-
-### Patrones
-- API REST + BFF ligero por proxy Next (`src/app/api/[...path]/route.ts`).
-- Upsert en odontograma/periodonto.
-- Scheduler embebido para recordatorios.
+---
 
 ## 24. Glosario
 
-- Ficha Clinica: registro longitudinal clinico-financiero del paciente.
-- Evolucion: atencion/tratamiento puntual con costo, estado y proxima cita.
-- Odontograma: representacion del estado dental por pieza/superficie.
-- Periodontograma: medicion periodontal por pieza.
-- A cuenta: pago parcial imputado a tratamiento.
-- Caja: sesion diaria de movimientos financieros.
-- Recordatorio pendiente: mensaje preparado para cita proxima.
-- Consentimiento: aceptacion informada del plan/acto clinico.
-- Plan de tratamiento: propuesta estructurada (JSON) de tratamientos y costos.
-- Documento generado: evidencia PDF emitida por el sistema.
-- Rol ADMIN: perfil con permisos de administracion global.
-- Rol DOCTOR: perfil clinico asistencial.
-- Rol ASISTENTE: perfil operativo con permisos restringidos.
+| Término | Definición |
+|---------|------------|
+| Ficha clínica | Registro longitudinal clínico-financiero 1:1 con paciente |
+| Evolución | Atención/tratamiento con costo, a cuenta, estado |
+| Odontograma | Estado dental por pieza/superficie |
+| Periodontograma | Mediciones periodontales por pieza |
+| A cuenta | Pago parcial imputado |
+| Caja | Sesión financiera diaria |
+| Recordatorio pendiente | Mensaje sugerido previo a cita |
+| UUID | Identificador `String(36)` de entidad (sync-ready) |
+| Token version | Contador que invalida JWT tras password change |
+| JTI | ID único de JWT para revocación |
+| WAL | Write-Ahead Logging de SQLite |
+| Módulo cerrado | Sin cambios de lógica/UI salvo prompt explícito |
+
+---
 
 ## 25. Anexos
 
-### Diagramas
-- ER actual base: `docs/ER_diagram.md`.
-- Diagramas de odontograma: `docs/ODONTOGRAMA_SPEC.md`, `docs/ODONTOGRAMA_REALISTA.md`, `docs/ODONTOGRAMA_CLINICO_REALISTA.md`, `docs/ODONTOGRAMA_3D.md`.
+### A — Diagramas y referencias
+- ER: `docs/ER_diagram.md`
+- Migración SQLite/UUID: `MIGRATION_AUDIT_SQLITE.md`, `PROMPT_MIGRACION_SQLITE_UUID_DENTALSIMPLE.md`
+- Excepciones odontograma: `EXCEPCIONES_ODONTOGRAMA.md`
+- Deploy: `docs/RAILWAY.md`
+- Producto/diseño: `PRODUCT.md`, `DESIGN.md`, `README.md`
+- Specs odontograma: `docs/ODONTOGRAMA_*.md`
 
-### Tablas
-- Matrices tecnicas incluidas en capitulos 18 a 22.
+### B — Campos por tabla
+Fuente de verdad: `backend/app/models/*.py` + migraciones.  
+Para auditoría de columnas, preferir lectura de modelos + `inspect(engine)` sobre una BD de prueba, no copiar tablas estáticas obsoletas.
 
-### Referencias
-- `README.md`, `PRODUCT.md`, `DESIGN.md`, `docs/RAILWAY.md`, `docs/RESUMEN_EJECUTIVO.md`.
+### C.1 — Endpoints backend (núcleo; excluye detalle odontograma cerrado)
 
-### Estadisticas
-- Tablas modeladas: 16.
-- Migraciones Alembic versionadas: 13.
-- Routers backend principales: 11 (mas subrouter `config`).
-- Rutas frontend de negocio: 9.
+| Método | Path | Handler / notas |
+|--------|------|-----------------|
+| GET | `/api/auth/setup-status` | público |
+| POST | `/api/auth/setup` | rate limit |
+| POST | `/api/auth/login` | rate limit |
+| POST | `/api/auth/refresh` | rota refresh |
+| POST | `/api/auth/logout` | revoca JTIs |
+| POST | `/api/auth/change-password` | bump `token_version` |
+| GET | `/api/users/doctors` | autenticado |
+| GET/POST | `/api/users` | ADMIN |
+| PATCH | `/api/users/{user_id}` | ADMIN |
+| POST | `/api/users/{user_id}/reset-password` | ADMIN |
+| GET | `/api/users/me` | autenticado |
+| GET | `/api/patients`, `/search`, `/{id}` | |
+| POST/PATCH | `/api/patients`[`/{id}`] | |
+| GET/PATCH | `/api/clinical/{id}/record` | |
+| PATCH | `/api/clinical/{id}/consentimiento` | |
+| GET/POST | `/api/clinical/{id}/evolution` | |
+| PATCH | `/api/clinical/evolution/{entry_id}` | |
+| DELETE | `/api/clinical/{id}/evolution/{entry_id}` | |
+| GET | `/api/clinical/{id}/financial` | |
+| GET/POST | `/api/appointments` | |
+| PATCH/DELETE | `/api/appointments/{id}` | |
+| GET | `/api/appointments/reminders/pending` | |
+| POST | `/api/appointments/reminders/{id}/send` | marca enviado |
+| GET/PATCH | `/api/config/reminders`, `/hours` | |
+| GET/PUT/POST | `/api/config/especialidades`[+`/reset`] | mutación ADMIN |
+| GET/PATCH/POST/GET | `/api/config/clinic`[+logo] | |
+| GET/POST | `/api/cash/session`[+open/close] | |
+| GET/POST | `/api/cash/transactions`[+patient] | |
+| GET | `/api/documents/{comprobante\|cierre-caja\|ficha\|evolucion\|consentimiento\|presupuesto}/…` | PDF |
+| POST | `/api/documents/whatsapp-sent/{id}` | |
+| GET | `/api/reports/caja\|pacientes\|tratamientos` | |
+| GET | `/api/audit/{patient_id}` | |
+| GET | `/api/health` | público |
 
-### Inventarios completos
+Auth notes: access/refresh con `jti`+`ver`; path IDs = **UUID string**.
 
-#### Anexo A.1 - Directorios versionados
-```text
-backend
-backend/alembic
-backend/alembic/versions
-backend/app
-backend/app/assets
-backend/app/assets/uploads
-backend/app/constants
-backend/app/core
-backend/app/models
-backend/app/odontogram
-backend/app/routers
-backend/app/schemas
-backend/app/services
-backend/app/utils
-docs
-frontend
-frontend/public
-frontend/public/dientes
-frontend/public/odontogram
-frontend/src
-frontend/src/app
-frontend/src/app/agenda
-frontend/src/app/api/[...path]
-frontend/src/app/caja
-frontend/src/app/configuracion
-frontend/src/app/dashboard
-frontend/src/app/pacientes
-frontend/src/app/pacientes/[id]
-frontend/src/app/pacientes/nuevo
-frontend/src/app/reportes
-frontend/src/components
-frontend/src/components/agenda
-frontend/src/components/odontogram
-frontend/src/components/odontogram/realista
-frontend/src/components/periodontogram
-frontend/src/components/ui
-frontend/src/lib
-frontend/src/types
-scripts
-```
+### C.2 — Familia odontograma / perio / media (existencia, módulo cerrado)
+Prefijos: `/api/odontogram/*`, `/api/periodontogram/*`, `/api/tooth-media/*`.  
+Inventario funcional: specs en `docs/ODONTOGRAMA_*.md`. No ampliar en auditorías de infraestructura salvo schema UUID.
 
-#### Anexo A.2 - Archivos versionados (fuente: `git ls-files`)
-```text
-.gitattributes
-.gitignore
-DESIGN.md
-Dockerfile.backend
-Dockerfile.frontend
-Makefile
-PRODUCT.md
-README.md
-backend/.dockerignore
-backend/.env.example
-backend/Dockerfile
-backend/alembic.ini
-backend/alembic/env.py
-backend/alembic/script.py.mako
-backend/alembic/versions/2905d1e9dd7e_initial_schema_all_tables.py
-backend/alembic/versions/ad74dc2fd5c0_sync_schema_after_manual_column_.py
-backend/alembic/versions/b8e4f1a2c3d0_clinic_settings_horario.py
-backend/alembic/versions/c9f2a1b3d4e5_consentimiento_firmas.py
-backend/alembic/versions/d1a7e8f9b0c1_unique_patient_document.py
-backend/alembic/versions/e2b3c4d5e6f7_odontogram_anatomico.py
-backend/alembic/versions/f1030bfb1b16_ficha_clinica_fields_and_plan_jsonb.py
-backend/alembic/versions/f3c4d5e6f7a8_odontogram_history.py
-backend/alembic/versions/g4d5e6f7a8b9_periodonto_media_audit.py
-backend/alembic/versions/h5e6f7a8b9c0_appointment_especialidad.py
-backend/alembic/versions/i6f7a8b9c0d1_clinic_center_data.py
-backend/alembic/versions/j7a8b9c0d1e2_clinic_especialidades.py
-backend/alembic/versions/k8b9c0d1e2f3_clinic_reminder_config.py
-backend/app/__init__.py
-backend/app/alembic_helpers.py
-backend/app/assets/logo-md.png
-backend/app/assets/uploads/.gitkeep
-backend/app/config.py
-backend/app/constants/especialidades.py
-backend/app/core/__init__.py
-backend/app/core/deps.py
-backend/app/core/roles.py
-backend/app/core/security.py
-backend/app/database.py
-backend/app/db_health.py
-backend/app/main.py
-backend/app/migrate.py
-backend/app/models/__init__.py
-backend/app/models/appointment.py
-backend/app/models/cash.py
-backend/app/models/clinic_settings.py
-backend/app/models/clinical.py
-backend/app/models/document.py
-backend/app/models/patient.py
-backend/app/models/periodontogram.py
-backend/app/models/user.py
-backend/app/odontogram/__init__.py
-backend/app/odontogram/conditions.py
-backend/app/odontogram/numbering.py
-backend/app/odontogram/plans.py
-backend/app/odontogram/treatments.py
-backend/app/routers/__init__.py
-backend/app/routers/appointments.py
-backend/app/routers/audit.py
-backend/app/routers/auth.py
-backend/app/routers/cash.py
-backend/app/routers/clinical.py
-backend/app/routers/documents.py
-backend/app/routers/odontogram.py
-backend/app/routers/patients.py
-backend/app/routers/periodontogram.py
-backend/app/routers/reports.py
-backend/app/routers/tooth_media.py
-backend/app/schemas/__init__.py
-backend/app/schemas/appointment.py
-backend/app/schemas/cash.py
-backend/app/schemas/clinical.py
-backend/app/schemas/patient.py
-backend/app/schemas/user.py
-backend/app/services/__init__.py
-backend/app/services/audit.py
-backend/app/services/clinic_profile.py
-backend/app/services/pdf_generator.py
-backend/app/services/reminder_messages.py
-backend/app/services/ticket_comprobante.py
-backend/app/utils/__init__.py
-backend/app/utils/ficha.py
-backend/boot.py
-backend/railway.toml
-backend/requirements.txt
-backend/start.sh
-docker-compose.yml
-docs/AGENDA_GRILLA_SPEC.md
-docs/ER_diagram.md
-docs/Logo.png
-docs/ODONTOGRAMA_3D.md
-docs/ODONTOGRAMA_CLINICO_REALISTA.md
-docs/ODONTOGRAMA_REALISTA.md
-docs/ODONTOGRAMA_SPEC.md
-docs/Odontograma.jpg
-docs/RAILWAY.md
-docs/RESUMEN_AGENDA_GRILLA.md
-docs/RESUMEN_EJECUTIVO.md
-docs/RESUMEN_MODERNIZACION_UI.md
-docs/SISTEMA_DISENO.md
-docs/_sample_ticket_80mm.pdf
-frontend/.dockerignore
-frontend/.env.example
-frontend/Dockerfile
-frontend/next-env.d.ts
-frontend/next.config.js
-frontend/package-lock.json
-frontend/package.json
-frontend/postcss.config.js
-frontend/public/Logo.png
-frontend/public/apple-icon.png
-frontend/public/dientes/.gitkeep
-frontend/public/dientes/11.png
-frontend/public/dientes/12.png
-frontend/public/dientes/13.png
-frontend/public/dientes/14.png
-frontend/public/dientes/15.png
-frontend/public/dientes/16.png
-frontend/public/dientes/17.png
-frontend/public/dientes/18.png
-frontend/public/dientes/21.png
-frontend/public/dientes/22.png
-frontend/public/dientes/23.png
-frontend/public/dientes/24.png
-frontend/public/dientes/25.png
-frontend/public/dientes/26.png
-frontend/public/dientes/27.png
-frontend/public/dientes/28.png
-frontend/public/dientes/31.png
-frontend/public/dientes/32.png
-frontend/public/dientes/33.png
-frontend/public/dientes/34.png
-frontend/public/dientes/35.png
-frontend/public/dientes/36.png
-frontend/public/dientes/37.png
-frontend/public/dientes/38.png
-frontend/public/dientes/41.png
-frontend/public/dientes/42.png
-frontend/public/dientes/43.png
-frontend/public/dientes/44.png
-frontend/public/dientes/45.png
-frontend/public/dientes/46.png
-frontend/public/dientes/47.png
-frontend/public/dientes/48.png
-frontend/public/dientes/README.md
-frontend/public/favicon.png
-frontend/public/icon.png
-frontend/public/index.html
-frontend/public/logo-md.png
-frontend/public/odontogram/Odontograma-referencia.jpg
-frontend/railway.toml
-frontend/src/app/agenda/layout.tsx
-frontend/src/app/agenda/page.tsx
-frontend/src/app/api/[...path]/route.ts
-frontend/src/app/apple-icon.png
-frontend/src/app/caja/layout.tsx
-frontend/src/app/caja/page.tsx
-frontend/src/app/configuracion/layout.tsx
-frontend/src/app/configuracion/page.tsx
-frontend/src/app/dashboard/layout.tsx
-frontend/src/app/dashboard/page.tsx
-frontend/src/app/globals.css
-frontend/src/app/icon.png
-frontend/src/app/layout.tsx
-frontend/src/app/pacientes/[id]/page.tsx
-frontend/src/app/pacientes/layout.tsx
-frontend/src/app/pacientes/nuevo/page.tsx
-frontend/src/app/pacientes/page.tsx
-frontend/src/app/page.tsx
-frontend/src/app/reportes/layout.tsx
-frontend/src/app/reportes/page.tsx
-frontend/src/components/AppShell.tsx
-frontend/src/components/BrandLogo.tsx
-frontend/src/components/Button.tsx
-frontend/src/components/ClientProviders.tsx
-frontend/src/components/ClinicalAuditPanel.tsx
-frontend/src/components/DocumentActions.tsx
-frontend/src/components/FichaQuickOpen.tsx
-frontend/src/components/Input.tsx
-frontend/src/components/Odontograma.tsx
-frontend/src/components/PatientPicker.tsx
-frontend/src/components/PatientSearch.tsx
-frontend/src/components/ProtectedRoute.tsx
-frontend/src/components/Sidebar.tsx
-frontend/src/components/SignaturePad.tsx
-frontend/src/components/SpecialtySelect.tsx
-frontend/src/components/Topbar.tsx
-frontend/src/components/TreatmentAutocomplete.tsx
-frontend/src/components/UbigeoSelect.tsx
-frontend/src/components/VoiceDictation.tsx
-frontend/src/components/agenda/DayGrid.tsx
-frontend/src/components/agenda/MonthGrid.tsx
-frontend/src/components/agenda/WeekGrid.tsx
-frontend/src/components/odontogram/OdontogramaAnatomico.tsx
-frontend/src/components/odontogram/ProposeTreatmentModal.tsx
-frontend/src/components/odontogram/SurfaceCross.tsx
-frontend/src/components/odontogram/ToothAttachments.tsx
-frontend/src/components/odontogram/ToothSVG.tsx
-frontend/src/components/odontogram/realista/DienteImagenReal.tsx
-frontend/src/components/odontogram/realista/OdontogramaRealista.css
-frontend/src/components/odontogram/realista/OdontogramaRealista.tsx
-frontend/src/components/odontogram/realista/PanelTratamientoRealista.tsx
-frontend/src/components/odontogram/realista/cargadorImagenes.ts
-frontend/src/components/odontogram/realista/mapeoDientesRealista.ts
-frontend/src/components/odontogram/realista/useOdontogramaRealista.ts
-frontend/src/components/odontogram/realista/zonasTratamientoRealista.ts
-frontend/src/components/odontogram/toothAnatomy.ts
-frontend/src/components/odontogram/toothAssetsReferencia.ts
-frontend/src/components/odontogram/useOdontogramPatient.ts
-frontend/src/components/periodontogram/Periodontograma.tsx
-frontend/src/components/shell.ts
-frontend/src/components/ui/Badge.tsx
-frontend/src/components/ui/Button.tsx
-frontend/src/components/ui/Card.tsx
-frontend/src/components/ui/EmptyState.tsx
-frontend/src/components/ui/PageContainer.tsx
-frontend/src/components/ui/Toolbar.tsx
-frontend/src/components/ui/index.ts
-frontend/src/lib/api.ts
-frontend/src/lib/auth.tsx
-frontend/src/lib/authCookie.ts
-frontend/src/lib/calendar.ts
-frontend/src/lib/datetime.ts
-frontend/src/lib/especialidades.ts
-frontend/src/lib/ficha.ts
-frontend/src/lib/odontogramConditions.ts
-frontend/src/lib/odontogramNumbering.ts
-frontend/src/lib/odontogramTreatments.ts
-frontend/src/lib/printPdf.ts
-frontend/src/lib/tratamientos.ts
-frontend/src/lib/treatmentPlans.ts
-frontend/src/lib/ubigeo-peru.json
-frontend/src/lib/validators.ts
-frontend/src/lib/whatsapp.ts
-frontend/src/middleware.ts
-frontend/src/types/pdfjs-build.d.ts
-frontend/tailwind.config.ts
-frontend/tsconfig.json
-frontend/tsconfig.tsbuildinfo
-scripts/calibrate_teeth_boxes.py
-scripts/extract_teeth_from_reference.py
-```
+### D — Estadísticas de control (2026-07-14)
 
-#### Anexo B.1 - Campos por tabla
-La descomposicion detallada de campos (tipo, nullability, PK/FK/unique/index) se obtuvo de:
-- `backend/app/models/*.py`
-- `backend/alembic/versions/*.py`
+| Métrica | Valor |
+|---------|--------|
+| Tablas persistidas | 17 (16 + `revoked_tokens`) |
+| Revisines Alembic | 15 (HEAD `m0sqlite_uuid_baseline`) |
+| Tests pytest núcleo | 7 archivos / ~17 casos verdes |
+| Roles | 3 (`ADMIN`, `DOCTOR`, `ASISTENTE`) |
+| PK default | UUID string (no int) |
+| Motor default | SQLite |
 
-#### Anexo C.1 - Endpoints backend (sync código — excluye odontograma/periodontograma)
+### E — Procedimiento de cutover Postgres → SQLite (auditoría operativa)
 
-Fuente regenerada desde `backend/app/routers/*.py` (script `backend/scripts/dump_routes.py`). Endpoints de odontograma/periodontograma/tooth_media se omiten a propósito (módulo cerrado).
+**Local / ETL genérico**
+1. `pg_dump` de la instancia viva **fuera del repo**.
+2. `SOURCE_DATABASE_URL=… TARGET_DATABASE_URL=sqlite:///./data/clinica.db python -m scripts.pg_to_sqlite_uuid`
+3. Validar checklist §0.4 (A1–A10).
 
-| Método | Path | Handler |
-|--------|------|---------|
-| GET | `/api/auth/setup-status` | `setup_status` |
-| POST | `/api/auth/setup` | `setup` (rate limit) |
-| POST | `/api/auth/login` | `login` (rate limit) |
-| POST | `/api/auth/refresh` | `refresh` |
-| POST | `/api/auth/logout` | `logout` (revoca JTIs) |
-| POST | `/api/auth/change-password` | `change_password` (bump `token_version`) |
-| GET | `/api/users/doctors` | `list_doctors` |
-| GET | `/api/users` | `list_users` |
-| POST | `/api/users` | `create_user` |
-| PATCH | `/api/users/{user_id}` | `update_user` |
-| POST | `/api/users/{user_id}/reset-password` | `reset_password` (bump `token_version`) |
-| GET | `/api/users/me` | `me` |
-| GET | `/api/patients/search` | `search_patients` |
-| GET | `/api/patients` | `list_patients` |
-| GET | `/api/patients/{patient_id}` | `get_patient` |
-| POST | `/api/patients` | `create_patient` |
-| PATCH | `/api/patients/{patient_id}` | `update_patient` |
-| GET | `/api/clinical/{patient_id}/record` | `get_record` |
-| PATCH | `/api/clinical/{patient_id}/record` | `update_record` |
-| PATCH | `/api/clinical/{patient_id}/consentimiento` | `update_consentimiento` |
-| GET | `/api/clinical/{patient_id}/evolution` | `list_evolution` |
-| POST | `/api/clinical/{patient_id}/evolution` | `create_evolution` |
-| PATCH | `/api/clinical/evolution/{entry_id}` | `update_evolution` |
-| DELETE | `/api/clinical/{patient_id}/evolution/{entry_id}` | `delete_evolution` |
-| GET | `/api/clinical/{patient_id}/financial` | `financial_summary` |
-| GET | `/api/appointments` | `list_appointments` |
-| POST | `/api/appointments` | `create_appointment` |
-| PATCH | `/api/appointments/{appointment_id}` | `update_appointment` |
-| DELETE | `/api/appointments/{appointment_id}` | `delete_appointment` |
-| GET | `/api/appointments/reminders/pending` | `pending_reminders` |
-| POST | `/api/appointments/reminders/{reminder_id}/send` | `mark_reminder_sent` |
-| GET | `/api/config/reminders` | `get_reminder_config_api` |
-| PATCH | `/api/config/reminders` | `update_reminder_config_api` |
-| GET | `/api/config/hours` | `get_clinic_hours` |
-| PATCH | `/api/config/hours` | `update_clinic_hours` |
-| GET | `/api/config/especialidades` | `list_especialidades` |
-| PUT | `/api/config/especialidades` | `update_especialidades` |
-| POST | `/api/config/especialidades/reset` | `reset_especialidades` |
-| GET | `/api/config/clinic` | `get_clinic_profile_api` |
-| PATCH | `/api/config/clinic` | `update_clinic_profile_api` |
-| POST | `/api/config/clinic/logo` | `upload_clinic_logo` |
-| GET | `/api/config/clinic/logo-file` | `get_clinic_logo_file` |
-| GET | `/api/cash/session` | `get_current_session` |
-| POST | `/api/cash/session/open` | `open_session` |
-| POST | `/api/cash/session/close` | `close_session` |
-| GET | `/api/cash/transactions` | `list_transactions` |
-| GET | `/api/cash/transactions/patient/{patient_id}` | `list_patient_payments` |
-| POST | `/api/cash/transactions` | `create_transaction` |
-| GET | `/api/documents/comprobante/{transaction_id}` | `download_comprobante` |
-| GET | `/api/documents/cierre-caja/{session_id}` | `download_cierre_caja` |
-| GET | `/api/documents/ficha/{patient_id}` | `download_ficha` |
-| GET | `/api/documents/evolucion/{entry_id}` | `download_evolucion` |
-| GET | `/api/documents/consentimiento/{patient_id}` | `download_consentimiento` |
-| GET | `/api/documents/presupuesto/{patient_id}` | `download_presupuesto` |
-| POST | `/api/documents/whatsapp-sent/{document_id}` | `mark_whatsapp_sent` |
-| GET | `/api/reports/caja` | `report_caja` |
-| GET | `/api/reports/pacientes` | `report_pacientes` |
-| GET | `/api/reports/tratamientos` | `report_tratamientos` |
-| GET | `/api/audit/{patient_id}` | `list_audit` |
-| GET | `/api/health` | `health` |
-
-Auth notes (v1.1): access/refresh JWT incluyen `jti` + `ver`; logout y rotación de refresh escriben en `revoked_tokens`; cambio/reset de contraseña incrementan `users.token_version`.
-
-#### Anexo C.1 - Endpoints backend (nota histórica v1.0)
-Se listan en seccion dedicada del Capitulo 6 y matrices de capitulos 19-22, con fuente en:
-- `backend/app/routers/*.py`
-- `backend/app/main.py`
+**Railway staging remoto (pruebas pre-Tauri)** — ver `docs/RAILWAY.md` (fuente detallada):
+1. Volume Backend en `/data`.
+2. `DATABASE_URL=sqlite:////data/clinica.db` + `SOURCE_DATABASE_URL` = Postgres (solo cutover).
+3. `python -m scripts.railway_sqlite_cutover` en shell del Backend.
+4. Health: `engine=sqlite`, `user_count>0`; login + pacientes/agenda/caja.
+5. Quitar `SOURCE_DATABASE_URL`; apagar Postgres; **réplicas = 1**.
+6. Guardia de arranque: `app/schema_guard.py` aborta si Postgres aún tiene PK integer bajo este build.
 
 ---
 
-## Changelog v1.1
+## Changelog
 
-Fecha: 2026-07-13  
-Referencia: `PROMPT_FIX_CRITICOS_DENTALSIMPLE.md` (hallazgos críticos/altos de Caps. 14–15).
+### v1.3 — 2026-07-14 (edición auditoría)
 
 | Cambio | Por qué |
 |--------|---------|
-| Suite pytest de auth, pacientes, agenda, caja, documentos + Playwright/Vitest frontend | Cierra ausencia total de testing en flujos núcleo |
-| `getToken()` unificado; lint `check-token-access`; excepciones odontograma documentadas | Elimina inconsistencia `apiFetch` vs `localStorage` directo |
-| Tabla `revoked_tokens` + `users.token_version`; rate limit login/setup (`RATE_LIMIT_*`) | JWT revocable y mitigación fuerza bruta |
-| Anexo C.1 regenerado; ER con `revoked_tokens` / `token_version` | Docs alineadas al código real (sin retocar inventario odontograma) |
+| Reescritura orientada a auditoría: control documental, checklist A1–A10, matrices de controles, RN numeradas, residuales explícitos | Permitir auditorías sin depender de knowledge tribal |
+| Alineación total al estado **SQLite + UUID** y suite de tests real | El maestro v1.0–v1.1 todavía afirmaba Postgres/int/sin tests |
+| Inclusión de gaps residuales (uniques ORM, rate-limit memoria, excepción ToothAttachments, JWT_SECRET) | Auditar con honestidad |
+| Referencia commit `db0bc7b` (fix type agenda post-UUID) | Trazabilidad release Railway |
+| Railway staging = Volume `/data` + cutover script + schema guard | Mismo SQLite+UUID para testers remotos pre-Tauri |
 
-Odontograma 2D / periodontograma: **sin cambios** (módulo cerrado).
+### v1.2 — 2026-07-14
+
+Migración infraestructura: SQLite default, UUID PK/FK, Alembic batch + baseline, ETL PG→SQLite, UTC en citas, docs ER.  
+**Fuera de alcance:** sync multi-PC, Drive, rol CAJERO. Odontograma/perio: solo esquema.
+
+### v1.1 — 2026-07-13
+
+Tests flujos núcleo, token hub, `revoked_tokens` + `token_version`, rate limit login/setup. Odontograma sin cambios funcionales.
 
 ---
 
-## Changelog v1.2
-
-Fecha: 2026-07-14  
-Referencia: `PROMPT_MIGRACION_SQLITE_UUID_DENTALSIMPLE.md`, auditoría `MIGRATION_AUDIT_SQLITE.md`.
-
-**Motivo:** preparar instalación sin Docker ni daemon Postgres en 3 PCs del consultorio, y dejar IDs globales (UUID) listos para una futura sincronización multi-PC.
-
-| Antes | Después |
-|-------|---------|
-| PostgreSQL (TIMESTAMPTZ, SERIAL int PK) | **SQLite** archivo local (`sqlite:///./data/clinica.db`), WAL + `foreign_keys=ON` |
-| PK/FK enteras autoincrementales | **UUID `String(36)`** generados en aplicación |
-| `DATABASE_URL` Postgres por default | Default SQLite; Postgres queda opcional (legacy / transición) |
-
-| Cambio | Por qué |
-|--------|---------|
-| Modelos + routers/schemas/frontend tipados a `id: string` | FK y paths dejan de asumir entero |
-| Alembic `render_as_batch=True`; revisión `m0sqlite_uuid_baseline`; bootstrap `create_all` + stamp en SQLite nuevo | Histórico Alembic con JSONB/`now()` no es replayable en SQLite vacío |
-| Script ETL `backend/scripts/pg_to_sqlite_uuid.py` | Cutover de datos reales Postgres → SQLite con remapeo de FKs |
-| Citas: persistencia de `fecha_hora` en UTC (SQLite no conserva tz) | Solape y horarios siguen siendo correctos |
-| Docs: `ER_diagram.md`, `.env.example`, este changelog | Inventario alineado al código |
-
-**Fuera de alcance (explícito):** motor de sincronización entre PCs, backup Google Drive, rol `CAJERO`.  
-Odontograma / periodontograma: **solo esquema** (motor + tipo PK/FK); **sin** cambios de reglas clínicas ni UI.
+*Fin del Documento Maestro Enterprise v1.3. Para re-auditoría: actualizar §0.5 outs-of-scope, §12 resultados de test, §13 hallazas nuevas, y el commit de referencia en la portada.*

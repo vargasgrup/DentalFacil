@@ -14,17 +14,27 @@ def main() -> None:
     if db.lower().startswith("http"):
         print(
             "[dentalfacil] FATAL CONFIG: DATABASE_URL is an https:// URL. "
-            "Replace it with Variable Reference → Postgres → DATABASE_URL "
-            "(postgresql://user:pass@host:5432/db).",
+            "For Railway SQLite staging use sqlite:////data/clinica.db "
+            "(see docs/RAILWAY.md). Do not paste the public HTTPS site URL.",
             flush=True,
         )
+        sys.exit(1)
     elif not db:
-        print("[dentalfacil] WARNING: DATABASE_URL is empty", flush=True)
+        print(
+            "[dentalfacil] WARNING: DATABASE_URL empty — using Settings default "
+            "(sqlite:///./data/clinica.db). On Railway set sqlite:////data/clinica.db + Volume.",
+            flush=True,
+        )
     else:
-        safe = db.split("@")[-1] if "@" in db else "(set)"
-        print(f"[dentalfacil] DATABASE_URL host/db = {safe}", flush=True)
+        if db.strip().lower().startswith("sqlite"):
+            print(f"[dentalfacil] DATABASE_URL = sqlite ({db})", flush=True)
+        else:
+            safe = db.split("@")[-1] if "@" in db else "(set)"
+            print(f"[dentalfacil] DATABASE_URL host/db = {safe}", flush=True)
+
         from app.migrate import run_migrations_blocking
         from app.ensure_auth_schema import ensure_auth_schema
+        from app.schema_guard import assert_schema_compatible_with_uuid_models
 
         run_migrations_blocking()
         try:
@@ -33,6 +43,7 @@ def main() -> None:
             print(f"[dentalfacil] ensure_auth_schema FAILED: {exc}", flush=True)
             traceback.print_exc()
             sys.exit(1)
+        assert_schema_compatible_with_uuid_models()
 
     try:
         import uvicorn

@@ -75,10 +75,23 @@ def _new_id() -> str:
     return str(uuid.uuid4())
 
 
+def _normalize_pg(url: str) -> str:
+    raw = url.strip()
+    if raw.startswith("postgres://"):
+        raw = "postgresql://" + raw[len("postgres://") :]
+    if raw.startswith("postgresql://"):
+        raw = "postgresql+psycopg://" + raw[len("postgresql://") :]
+    return raw
+
+
 def _engine(url: str) -> Engine:
-    kwargs = {}
-    if url.startswith("sqlite"):
-        Path(url.split("://", 1)[-1].lstrip("./")).parent.mkdir(parents=True, exist_ok=True)
+    kwargs: dict = {}
+    if url.strip().lower().startswith("sqlite"):
+        from sqlalchemy.engine.url import make_url
+
+        db_path = make_url(url).database
+        if db_path and db_path != ":memory:":
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         kwargs["connect_args"] = {"check_same_thread": False}
     return create_engine(url, **kwargs)
 
@@ -86,10 +99,11 @@ def _engine(url: str) -> Engine:
 def main() -> int:
     src_url = os.environ.get("SOURCE_DATABASE_URL") or os.environ.get("DATABASE_URL")
     dst_url = os.environ.get("TARGET_DATABASE_URL") or "sqlite:///./data/clinica_from_pg.db"
-    if not src_url or src_url.startswith("sqlite"):
+    if not src_url or src_url.strip().lower().startswith("sqlite"):
         print("SOURCE_DATABASE_URL must be a PostgreSQL URL", file=sys.stderr)
         return 1
 
+    src_url = _normalize_pg(src_url)
     src = _engine(src_url)
     dst = _engine(dst_url)
 
@@ -139,6 +153,17 @@ def main() -> int:
                 dconn.execute(dst_table.insert().values(**payload))
 
         dconn.execute(text("PRAGMA foreign_keys=ON"))
+
+    # Stamp Alembic UUID head on the target (fresh sqlite engines)
+    os.environ["DATABASE_URL"] = dst_url
+    try:
+        from alembic import command
+        from alembic.config import Config
+
+        command.stamp(Config("alembic.ini"), "m0sqlite_uuid_baseline")
+        print("alembic stamped m0sqlite_uuid_baseline", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"WARNING: alembic stamp failed ({exc}); boot may re-bootstrap", flush=True)
 
     print(f"Done → {dst_url}")
     return 0

@@ -87,10 +87,24 @@ def health():
         )
         and "@127.0.0.1:1/" not in url
     )
+    engine_kind = "sqlite" if settings.is_sqlite else "postgres"
+    user_count = None
+    if db_connected and tables_ok:
+        try:
+            from sqlalchemy import text
+
+            from app.database import engine
+
+            with engine.connect() as conn:
+                user_count = int(conn.execute(text("SELECT COUNT(*) FROM users")).scalar() or 0)
+        except Exception:  # noqa: BLE001
+            user_count = None
     ready = url_ok and db_connected and mig["ok"] and tables_ok
     return {
         "status": "ok" if ready else "degraded",
         "app": settings.APP_NAME,
+        "engine": engine_kind,
+        "user_count": user_count,
         "database_url_configured": url_ok,
         "database_connected": db_connected,
         "migrations_ok": mig["ok"],

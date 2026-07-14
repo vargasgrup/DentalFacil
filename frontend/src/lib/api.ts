@@ -1,3 +1,5 @@
+import { clearAuthCookie, readAuthCookie, writeAuthCookie } from "./authCookie";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 export class ApiError extends Error {
@@ -43,7 +45,7 @@ export function formatApiDetail(detail: unknown, fallback = "Error en la solicit
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("access_token");
+  return localStorage.getItem("access_token") || readAuthCookie();
 }
 
 let refreshPromise: Promise<boolean> | null = null;
@@ -68,6 +70,7 @@ async function refreshAccessToken(): Promise<boolean> {
         };
         if (!body.access_token) return false;
         localStorage.setItem("access_token", body.access_token);
+        writeAuthCookie(body.access_token);
         if (body.refresh_token) {
           localStorage.setItem("refresh_token", body.refresh_token);
         }
@@ -114,6 +117,9 @@ export async function apiFetch<T>(
     if (renewed) {
       return apiFetch<T>(path, { ...options, _retryAuth: true });
     }
+    // Sesión inválida: limpiar tokens para forzar login
+    clearToken();
+    clearRefreshToken();
   }
 
   if (!res.ok) {
@@ -133,10 +139,12 @@ export async function apiFetch<T>(
 
 export function setToken(token: string) {
   localStorage.setItem("access_token", token);
+  writeAuthCookie(token);
 }
 
 export function clearToken() {
   localStorage.removeItem("access_token");
+  clearAuthCookie();
 }
 
 export function setRefreshToken(token: string | null) {

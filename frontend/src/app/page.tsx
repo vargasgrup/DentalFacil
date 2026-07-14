@@ -1,22 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { BrandLogo } from "@/components/BrandLogo";
 
 export default function LoginPage() {
-  const { needsSetup, loading, login, setup } = useAuth();
+  const { user, needsSetup, loading, login, setup } = useAuth();
   const router = useRouter();
 
-  const [email, setEmail] = useState("admin@nksystemas.com");
-  const [password, setPassword] = useState("admin,123");
-  const [nombre, setNombre] = useState("Administrador");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [nombre, setNombre] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  if (loading) {
+  // Si ya hay sesión válida, ir al panel (no mostrar login)
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace("/dashboard");
+    }
+  }, [loading, user, router]);
+
+  if (loading || user) {
     return (
       <div style={styles.loadingWrapper}>
         <div style={styles.spinner} />
@@ -34,9 +41,10 @@ export default function LoginPage() {
       } else {
         await login(email, password);
       }
-      router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message || "Credenciales incorrectas");
+      router.replace("/dashboard");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Credenciales incorrectas";
+      setError(msg || "Credenciales incorrectas");
     } finally {
       setBusy(false);
     }
@@ -82,9 +90,10 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Usuario o correo electrónico*"
+              placeholder="Correo electrónico*"
               required
-              autoComplete="email"
+              autoComplete="username"
+              autoFocus
               style={styles.input}
               onFocus={(e) => Object.assign(e.target.style, styles.inputFocus)}
               onBlur={(e) => Object.assign(e.target.style, styles.input)}

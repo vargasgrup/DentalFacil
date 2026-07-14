@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useRef, useCallback, ReactNode } from "react";
-import { apiFetch, setToken, clearToken, setRefreshToken } from "./api";
+import { apiFetch, setToken, clearToken, setRefreshToken, clearRefreshToken } from "./api";
+import { writeAuthCookie } from "./authCookie";
 
 interface User {
   id: number;
@@ -41,6 +42,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
     if (!token) {
+      clearToken();
+      setUser(null);
       setLoading(false);
       try {
         const status = await apiFetch<{ needs_setup: boolean }>("/api/auth/setup-status");
@@ -50,12 +53,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return;
     }
+
+    // Sync cookie so Next.js middleware can gate routes
+    writeAuthCookie(token);
+
     try {
       const me = await apiFetch<User>("/api/users/me");
-      if (mounted.current) setUser(me);
-      if (mounted.current) setNeedsSetup(false);
+      if (mounted.current) {
+        setUser(me);
+        setNeedsSetup(false);
+      }
     } catch {
       clearToken();
+      clearRefreshToken();
       if (mounted.current) {
         setUser(null);
         try {
@@ -95,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     clearToken();
-    if (typeof window !== "undefined") setRefreshToken(null);
+    clearRefreshToken();
     setUser(null);
   };
 

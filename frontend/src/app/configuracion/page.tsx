@@ -691,7 +691,7 @@ export default function ConfiguracionPage() {
               <select
                 value={espSelected}
                 onChange={(e) => setEspSelected(e.target.value)}
-                className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-smooth focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-smooth focus:border-brand-600 focus:ring-1 focus:ring-brand-600"
                 aria-label="Lista de especialidades odontológicas"
               >
                 {espItems.length === 0 ? (
@@ -789,7 +789,7 @@ export default function ConfiguracionPage() {
               value={reminderTemplate}
               onChange={(e) => setReminderTemplate(e.target.value)}
               rows={3}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm transition-smooth focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
             />
             <span className="mt-1 block text-help text-slate-400">
               Variables: {"{nombre_paciente}"}, {"{nombre_centro}"}, {"{fecha_cita}"}, {"{hora_cita}"}.
@@ -828,7 +828,7 @@ export default function ConfiguracionPage() {
                 <select
                   value={rol}
                   onChange={(e) => setRol(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm transition-smooth focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
                 >
                   <option value="ADMIN">ADMIN</option>
                   <option value="DOCTOR">DOCTOR</option>

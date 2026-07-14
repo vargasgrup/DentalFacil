@@ -4,10 +4,13 @@ import { Loader2 } from "lucide-react";
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-brand-500 text-white hover:bg-brand-600 focus:ring-brand-500 shadow-sm",
-  secondary: "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-slate-400 shadow-sm",
-  ghost: "bg-transparent text-slate-600 hover:bg-slate-100 focus:ring-slate-400",
-  danger: "bg-danger-500 text-white hover:bg-danger-600 focus:ring-danger-500 shadow-sm",
+  primary:
+    "bg-brand-600 text-white hover:bg-brand-700 focus:ring-brand-600 shadow-sm active:bg-brand-800",
+  secondary:
+    "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-brand-600 shadow-sm",
+  ghost: "bg-transparent text-slate-600 hover:bg-slate-100 focus:ring-brand-600",
+  danger:
+    "bg-danger-600 text-white hover:bg-danger-700 focus:ring-danger-600 shadow-sm active:bg-danger-800",
 };
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

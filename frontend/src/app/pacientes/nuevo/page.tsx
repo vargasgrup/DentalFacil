@@ -40,7 +40,7 @@ const ESTADO_CIVIL = [
 ] as const;
 
 const selectClass =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm transition-smooth focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600";
 
 function docMaxLen(tipo: DocTipo): number {
   if (tipo === "DNI") return DNI_LENGTH;

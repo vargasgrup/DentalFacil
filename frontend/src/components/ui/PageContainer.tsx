@@ -3,12 +3,12 @@ import { HTMLAttributes, ReactNode } from "react";
 type PageWidth = "full" | "wide" | "default" | "narrow";
 
 const widths: Record<PageWidth, string> = {
-  /** ~1280px — dashboards, agenda, pacientes, caja */
-  full: "max-w-7xl",
+  /** Lista / dashboard / agenda / caja */
+  full: "max-w-5xl xl:max-w-6xl",
   wide: "max-w-6xl",
-  /** ~896px — configuración */
+  /** Configuración */
   default: "max-w-4xl",
-  /** ~800px — reportes */
+  /** Reportes */
   narrow: "max-w-[50rem]",
 };
 

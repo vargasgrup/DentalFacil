@@ -149,7 +149,7 @@ export function FichaQuickOpen({
               }}
               placeholder="Abrir ficha: nombre, DNI o FC-00005…"
               autoComplete="off"
-              className="h-11 w-full rounded-lg border border-slate-200 bg-surface-subtle pl-10 pr-24 text-sm text-slate-800 transition-smooth placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="h-11 w-full rounded-lg border border-slate-200 bg-surface-subtle pl-10 pr-24 text-sm text-slate-800 transition-smooth placeholder:text-slate-400 focus:border-brand-600 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-600"
               aria-label="Buscar y abrir ficha clínica"
               aria-autocomplete="list"
               aria-expanded={open}
@@ -224,7 +224,7 @@ export function FichaQuickOpen({
                   onClick={() => openFicha(s.patientId)}
                   className="inline-flex max-w-full items-center gap-2 rounded-lg border border-slate-200 bg-surface-subtle px-3 py-2 text-left transition-smooth hover:border-brand-300 hover:bg-brand-50"
                 >
-                  <FileText className="h-3.5 w-3.5 shrink-0 text-brand-500" aria-hidden />
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-brand-600" aria-hidden />
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium text-slate-800">
                       {s.label}

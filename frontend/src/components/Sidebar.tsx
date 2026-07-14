@@ -44,9 +44,9 @@ function NavLink({
       }`}
     >
       {active && (
-        <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-brand-500" />
+        <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-brand-600" />
       )}
-      <Icon className={`h-[18px] w-[18px] ${active ? "text-brand-500" : "text-slate-400"}`} />
+      <Icon className={`h-[18px] w-[18px] ${active ? "text-brand-600" : "text-slate-400"}`} />
       {label}
     </Link>
   );

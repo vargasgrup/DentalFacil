@@ -163,7 +163,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
             placeholder="Abrir ficha: nombre, DNI o FC-00005…"
-            className={`${CTRL} w-full rounded-lg border border-slate-200 bg-surface-subtle pl-9 pr-3 text-sm leading-none text-slate-700 transition-smooth placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500`}
+            className={`${CTRL} w-full rounded-lg border border-slate-200 bg-surface-subtle pl-9 pr-3 text-sm leading-none text-slate-700 transition-smooth placeholder:text-slate-400 focus:border-brand-600 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-600`}
             aria-label="Buscar y abrir ficha clínica"
           />
         </div>
@@ -212,7 +212,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           >
             <Bell className="h-[18px] w-[18px]" />
             {reminders.length > 0 && (
-              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-500 px-1 text-[10px] font-bold leading-none text-white">
+              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-600 px-1 text-[10px] font-bold leading-none text-white">
                 {reminders.length}
               </span>
             )}

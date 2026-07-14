@@ -35,7 +35,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (loading || (!user && hasToken)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-muted">
-        <Loader2 className="h-6 w-6 animate-spin text-brand-500" aria-label="Verificando sesión" />
+        <Loader2 className="h-6 w-6 animate-spin text-brand-600" aria-label="Verificando sesión" />
       </div>
     );
   }
@@ -43,7 +43,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-muted">
-        <Loader2 className="h-6 w-6 animate-spin text-brand-500" aria-label="Redirigiendo al login" />
+        <Loader2 className="h-6 w-6 animate-spin text-brand-600" aria-label="Redirigiendo al login" />
       </div>
     );
   }

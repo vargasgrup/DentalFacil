@@ -2,38 +2,43 @@
 @tailwind components;
 @tailwind utilities;
 
+/* CSS vars mirror DESIGN.md / Tailwind tokens for non-Tailwind consumers */
 :root {
-  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
-  --bg: #F8FAFC;
-  --surface1: #FFFFFF;
-  --surface2: #F1F5F9;
-  --border: #E2E8F0;
-  --text1: #1E293B;
-  --text2: #64748B;
-  --text3: #94A3B8;
-  --accent: #1E88E5;
-  --accent-subtle: #E3F2FD;
-  --secondary: #43A047;
-  --attention: #FB8C00;
-  --shadow-sm: 0 2px 4px -1px rgba(0, 0, 0, 0.02);
-  --shadow-md: 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
-  --r-container: 12px;
+  --font-sans: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
+  --bg: #f8fafc;
+  --surface1: #ffffff;
+  --surface2: #f1f5f9;
+  --border: #e2e8f0;
+  --text1: #1e293b;
+  --text2: #64748b;
+  --text3: #94a3b8;
+  --accent: #1c66e8;
+  --accent-subtle: #eef6ff;
+  --secondary: #16a34a;
+  --attention: #f59e0b;
+  --danger: #dc2626;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 8px -2px rgba(15, 23, 42, 0.08);
+  --r-container: 0.75rem;
 }
 
 html,
 body {
   @apply bg-surface-muted text-slate-800 antialiased;
   font-family: var(--font-sans);
-  letter-spacing: 0.015em;
-  word-spacing: 0.04em;
+  letter-spacing: 0.01em;
   line-height: 1.55;
 }
 
 h1,
 h2,
 h3 {
-  letter-spacing: 0.01em;
+  letter-spacing: -0.01em;
   text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
 }
 
 ::-webkit-scrollbar {
@@ -51,18 +56,29 @@ h3 {
 }
 
 @media print {
-  .no-print { display: none !important; }
+  .no-print {
+    display: none !important;
+  }
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
+
 .skeleton {
   background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
   background-size: 200% 100%;
@@ -80,5 +96,12 @@ h3 {
   .skeleton {
     animation: none;
     background: #e2e8f0;
+  }
+}
+
+/* Shared focus ring for native controls outside Input/Button */
+@layer utilities {
+  .focus-brand {
+    @apply focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600;
   }
 }

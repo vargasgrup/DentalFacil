@@ -97,7 +97,7 @@ export function MonthGrid({
                 <span
                   className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${
                     isToday
-                      ? "bg-brand-500 text-white"
+                      ? "bg-brand-600 text-white"
                       : isSelected
                         ? "text-brand-700"
                         : inMonth

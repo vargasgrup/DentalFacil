@@ -105,7 +105,7 @@ function QuickPill({
       href={href}
       className={`inline-flex items-center gap-2 rounded-pill border px-4 py-2 text-sm font-medium transition-smooth ${
         primary
-          ? "border-brand-500 bg-brand-500 text-white shadow-sm hover:bg-brand-600"
+          ? "border-brand-600 bg-brand-600 text-white shadow-sm hover:bg-brand-700"
           : "border-slate-200 bg-white text-slate-700 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700"
       }`}
     >
@@ -446,7 +446,7 @@ export default function DashboardPage() {
               </Link>
             </li>
             <li className="flex items-center gap-3 px-5 py-3.5">
-              <FileText className="h-5 w-5 shrink-0 text-brand-500" />
+              <FileText className="h-5 w-5 shrink-0 text-brand-600" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-slate-700">Reportes</p>
                 <p className="text-help text-slate-400">Caja, pacientes y tratamientos</p>

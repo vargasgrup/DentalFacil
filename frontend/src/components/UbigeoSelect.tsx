@@ -23,7 +23,7 @@ interface UbigeoSelectProps {
 }
 
 function selectClass(extra = "") {
-  return `w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm transition-smooth focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-slate-50 disabled:text-slate-400 ${extra}`;
+  return `w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-slate-50 disabled:text-slate-400 ${extra}`;
 }
 
 /**

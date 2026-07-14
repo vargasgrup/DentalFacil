@@ -49,7 +49,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
                 ? "border-danger-500 focus:border-danger-500 focus:ring-danger-500"
                 : success
                   ? "border-success-600 focus:border-success-600 focus:ring-success-600"
-                  : "border-slate-300 focus:border-brand-500 focus:ring-brand-500"
+                  : "border-slate-300 focus:border-brand-600 focus:ring-brand-600"
             } ${rightPad} ${className}`}
           />
           {showToggle ? (

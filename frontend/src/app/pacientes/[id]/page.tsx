@@ -534,7 +534,7 @@ export default function FichaClinicaPage() {
   );
 
   const fieldClass =
-    "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm tracking-normal leading-relaxed focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
+    "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm tracking-normal leading-relaxed focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600";
 
   return (
     <PageContainer width="wide" className="space-y-5">
@@ -875,7 +875,7 @@ export default function FichaClinicaPage() {
                         value={it.pieza_fdi || ""}
                         onChange={(e) => updateItem(idx, "pieza_fdi", e.target.value)}
                         placeholder="—"
-                        className="w-14 rounded-lg border border-slate-200 px-1.5 py-1.5 text-center text-sm tabular-nums focus:border-brand-500 focus:outline-none"
+                        className="w-14 rounded-lg border border-slate-200 px-1.5 py-1.5 text-center text-sm tabular-nums focus:border-brand-600 focus:outline-none"
                       />
                       {it.origen === "odontogram" && (
                         <span className="mt-0.5 block text-[9px] text-emerald-700">Odonto</span>
@@ -915,7 +915,7 @@ export default function FichaClinicaPage() {
                         onChange={(e) =>
                           updateItem(idx, "cantidad", parseInt(e.target.value) || 1)
                         }
-                        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+                        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-brand-600 focus:outline-none"
                       />
                     </td>
                     <td className="py-2 pr-3">
@@ -931,7 +931,7 @@ export default function FichaClinicaPage() {
                             parseFloat(e.target.value) || 0
                           )
                         }
-                        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+                        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-brand-600 focus:outline-none"
                       />
                     </td>
                     <td className="py-2 pr-3 text-right font-medium text-slate-700">
@@ -941,7 +941,7 @@ export default function FichaClinicaPage() {
                       <select
                         value={it.estado || "pendiente"}
                         onChange={(e) => updateItem(idx, "estado", e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:border-brand-500 focus:outline-none"
+                        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:border-brand-600 focus:outline-none"
                       >
                         <option value="pendiente">Pendiente</option>
                         <option value="en_curso">En curso</option>

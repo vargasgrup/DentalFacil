@@ -574,7 +574,7 @@ export default function CajaPage() {
                         onClick={() => setIncomeConcepto(preset)}
                         className={`rounded-lg px-2.5 py-1 text-xs transition-smooth ${
                           incomeConcepto === preset
-                            ? "bg-brand-500 text-white"
+                            ? "bg-brand-600 text-white"
                             : "bg-surface-subtle text-slate-600 hover:bg-slate-200"
                         }`}
                       >
@@ -614,7 +614,7 @@ export default function CajaPage() {
                     <select
                       value={incomeMetodo}
                       onChange={(e) => setIncomeMetodo(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm transition-smooth focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
                     >
                       {METODOS.map((m) => (
                         <option key={m.value} value={m.value}>
@@ -789,7 +789,7 @@ export default function CajaPage() {
                     <select
                       value={expenseMetodo}
                       onChange={(e) => setExpenseMetodo(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm transition-smooth focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
                     >
                       {METODOS.map((m) => (
                         <option key={m.value} value={m.value}>

@@ -94,7 +94,7 @@ export default function ReportesPage() {
                 setType(e.target.value as ReportType);
                 setData(null);
               }}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm transition-smooth focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
             >
               <option value="caja">Caja (ingresos/egresos)</option>
               <option value="pacientes">Pacientes atendidos</option>

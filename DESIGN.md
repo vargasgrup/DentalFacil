@@ -18,7 +18,7 @@ Clinical product UI: restrained blue brand, dense but calm surfaces, familiar Sa
 | Ink | `slate-800` / `slate-500` / `slate-400` | Primary / secondary / tertiary text |
 
 ## Typography
-Family: system UI stack (`Segoe UI` / system-ui). Product scale (fixed rem, not fluid):
+Family: Plus Jakarta Sans (product UI), with system-ui fallbacks. Product scale (fixed rem, not fluid):
 - `text-page-title` — 1.5rem / 700 — page H1
 - `text-section-title` — 1.125rem / 600 — card/section H2
 - `text-label` — 0.875rem / 500 — field labels

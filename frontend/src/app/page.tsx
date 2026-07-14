@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { BrandLogo } from "@/components/BrandLogo";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/Input";
+import { AlertCircle } from "lucide-react";
 
 export default function LoginPage() {
   const { needsSetup, loading, login, setup } = useAuth();
@@ -10,14 +13,16 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nombre, setNombre] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   if (loading) {
     return (
-      <div style={styles.loadingWrapper}>
-        <div style={styles.spinner} />
+      <div className="flex min-h-screen items-center justify-center bg-surface-muted">
+        <div
+          className="h-9 w-9 animate-spin rounded-full border-[3px] border-slate-200 border-t-brand-600"
+          aria-label="Cargando"
+        />
       </div>
     );
   }
@@ -32,8 +37,6 @@ export default function LoginPage() {
       } else {
         await login(email, password);
       }
-      // Hard navigation: remonta AuthProvider con el token ya guardado
-      // (evita carreras soft-nav / cookie / ProtectedRoute).
       window.location.assign("/dashboard");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Credenciales incorrectas";
@@ -43,105 +46,61 @@ export default function LoginPage() {
   };
 
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
-        <div style={styles.logoWrapper}>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-surface-muted px-4 py-8">
+      <div className="w-full max-w-[440px] rounded-card border border-slate-200/80 bg-white p-8 shadow-card">
+        <div className="mb-4 flex justify-center overflow-hidden rounded-lg">
           <BrandLogo variant="login" priority />
         </div>
 
-        <p style={styles.brandTagline}>
-          SISTEMA INTEGRAL DE GESTIÓN CLÍNICA ODONTOLÓGICA
+        <p className="text-center text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-slate-500">
+          Sistema integral de gestión clínica odontológica
         </p>
 
-        <p style={styles.description}>
+        <p className="mt-3 mb-6 text-center text-sm leading-relaxed text-slate-600">
           {needsSetup
             ? "Crea tu cuenta administrador para comenzar."
             : "Accede con tu correo y contraseña al panel de M&D Odontología Especializada."}
         </p>
 
-        <form onSubmit={handleSubmit} style={styles.form} autoComplete="off">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3.5" autoComplete="off">
           {needsSetup && (
-            <div style={styles.fieldGroup}>
-              <input
-                id="login-nombre"
-                type="text"
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                placeholder="Nombre completo*"
-                required
-                autoComplete="off"
-                style={styles.input}
-                onFocus={(e) => Object.assign(e.target.style, styles.inputFocus)}
-                onBlur={(e) => Object.assign(e.target.style, styles.input)}
-              />
-            </div>
-          )}
-
-          <div style={styles.fieldGroup}>
-            <input
-              id="login-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Correo electrónico*"
+            <Input
+              id="login-nombre"
+              type="text"
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              placeholder="Nombre completo*"
               required
               autoComplete="off"
-              autoFocus
-              style={styles.input}
-              onFocus={(e) => Object.assign(e.target.style, styles.inputFocus)}
-              onBlur={(e) => Object.assign(e.target.style, styles.input)}
             />
-          </div>
+          )}
 
-          <div style={{ ...styles.fieldGroup, position: "relative" }}>
-            <input
-              id="login-password"
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Contraseña*"
-              required
-              autoComplete="new-password"
-              style={{ ...styles.input, paddingRight: "2.8rem" }}
-              onFocus={(e) =>
-                Object.assign(e.target.style, {
-                  ...styles.inputFocus,
-                  paddingRight: "2.8rem",
-                })
-              }
-              onBlur={(e) =>
-                Object.assign(e.target.style, {
-                  ...styles.input,
-                  paddingRight: "2.8rem",
-                })
-              }
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              style={styles.eyeBtn}
-              tabIndex={-1}
-              aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-            >
-              {showPassword ? (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                  <line x1="1" y1="1" x2="23" y2="23"/>
-                </svg>
-              ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                  <circle cx="12" cy="12" r="3"/>
-                </svg>
-              )}
-            </button>
-          </div>
+          <Input
+            id="login-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Correo electrónico*"
+            required
+            autoComplete="off"
+            autoFocus
+          />
+
+          <Input
+            id="login-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Contraseña*"
+            required
+            autoComplete="new-password"
+          />
 
           {!needsSetup && (
-            <div style={styles.forgotWrapper}>
+            <div className="-mt-1 text-right">
               <button
                 type="button"
-                style={styles.forgotLink}
+                className="text-sm text-brand-600 underline underline-offset-2 transition-smooth hover:text-brand-700"
                 onClick={() =>
                   alert(
                     "Contacta al administrador del sistema para restablecer tu contraseña."
@@ -154,43 +113,31 @@ export default function LoginPage() {
           )}
 
           {error && (
-            <div style={styles.errorBox}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              {error}
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-lg border border-danger-200 bg-danger-50 px-3.5 py-2.5 text-sm text-danger-600"
+            >
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span>{error}</span>
             </div>
           )}
 
-          <button
+          <Button
             id="login-submit"
             type="submit"
-            disabled={busy}
-            style={
-              busy
-                ? { ...styles.submitBtn, ...styles.submitBtnDisabled }
-                : styles.submitBtn
-            }
+            loading={busy}
+            className="mt-1 w-full py-2.5 text-[0.95rem] font-semibold"
           >
-            {busy ? (
-              <span style={styles.btnContent}>
-                <span style={styles.btnSpinner} />
-                Procesando...
-              </span>
-            ) : needsSetup ? (
-              "Crear cuenta"
-            ) : (
-              "Iniciar sesión"
-            )}
-          </button>
+            {needsSetup ? "Crear cuenta" : "Iniciar sesión"}
+          </Button>
         </form>
       </div>
 
-      <footer style={styles.footer}>
+      <footer className="mt-6 flex flex-col items-center gap-1 text-center text-help text-slate-400">
         <p>© 2026 M&D Odontología Especializada · Todos los derechos reservados.</p>
         <button
           type="button"
-          style={styles.footerLink}
+          className="text-brand-600 underline underline-offset-2 transition-smooth hover:text-brand-700"
           onClick={() =>
             alert(
               "M&D Odontología Especializada v1.0.0 — Sistema de Gestión Clínica Odontológica"
@@ -203,191 +150,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: "100vh",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "#f0f2f5",
-    fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
-    padding: "1rem",
-  },
-  card: {
-    width: "100%",
-    maxWidth: "440px",
-    background: "#ffffff",
-    borderRadius: "12px",
-    boxShadow: "0 4px 24px rgba(0,0,0,0.10)",
-    padding: "2rem 2rem 2rem",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-  },
-  logoWrapper: {
-    width: "100%",
-    display: "flex",
-    justifyContent: "center",
-    marginBottom: "0.85rem",
-    borderRadius: "10px",
-    overflow: "hidden",
-    background: "transparent",
-  },
-  brandTagline: {
-    fontSize: "0.62rem",
-    fontWeight: 600,
-    letterSpacing: "0.08em",
-    color: "#64748b",
-    textTransform: "uppercase",
-    textAlign: "center",
-    margin: 0,
-  },
-  description: {
-    fontSize: "0.875rem",
-    color: "#475569",
-    textAlign: "center",
-    margin: "0.75rem 0 1.5rem",
-    lineHeight: 1.5,
-  },
-  form: {
-    width: "100%",
-    display: "flex",
-    flexDirection: "column",
-    gap: "0.875rem",
-  },
-  fieldGroup: {
-    width: "100%",
-  },
-  input: {
-    width: "100%",
-    padding: "0.7rem 0.875rem",
-    border: "1px solid #cbd5e1",
-    borderRadius: "8px",
-    fontSize: "0.875rem",
-    color: "#1e293b",
-    background: "#fff",
-    outline: "none",
-    transition: "border-color 0.2s, box-shadow 0.2s",
-    boxSizing: "border-box",
-  } as React.CSSProperties,
-  inputFocus: {
-    width: "100%",
-    padding: "0.7rem 0.875rem",
-    border: "1px solid #3b82f6",
-    borderRadius: "8px",
-    fontSize: "0.875rem",
-    color: "#1e293b",
-    background: "#fff",
-    outline: "none",
-    boxShadow: "0 0 0 3px rgba(59,130,246,0.12)",
-    boxSizing: "border-box",
-  } as React.CSSProperties,
-  eyeBtn: {
-    position: "absolute",
-    right: "0.75rem",
-    top: "50%",
-    transform: "translateY(-50%)",
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    padding: "0.25rem",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  forgotWrapper: {
-    textAlign: "right",
-    marginTop: "-0.25rem",
-  },
-  forgotLink: {
-    background: "none",
-    border: "none",
-    color: "#3b82f6",
-    fontSize: "0.82rem",
-    cursor: "pointer",
-    padding: 0,
-    textDecoration: "underline",
-    textUnderlineOffset: "2px",
-  },
-  errorBox: {
-    display: "flex",
-    alignItems: "center",
-    gap: "0.5rem",
-    padding: "0.6rem 0.875rem",
-    background: "#fef2f2",
-    border: "1px solid #fecaca",
-    borderRadius: "6px",
-    color: "#dc2626",
-    fontSize: "0.8rem",
-  },
-  submitBtn: {
-    width: "100%",
-    padding: "0.78rem",
-    background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-    color: "#ffffff",
-    border: "none",
-    borderRadius: "8px",
-    fontSize: "0.95rem",
-    fontWeight: 600,
-    cursor: "pointer",
-    transition: "opacity 0.2s, transform 0.1s",
-    marginTop: "0.25rem",
-    letterSpacing: "0.01em",
-  },
-  submitBtnDisabled: {
-    opacity: 0.65,
-    cursor: "not-allowed",
-  },
-  btnContent: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "0.5rem",
-  },
-  btnSpinner: {
-    width: "14px",
-    height: "14px",
-    border: "2px solid rgba(255,255,255,0.4)",
-    borderTopColor: "#fff",
-    borderRadius: "50%",
-    animation: "spin 0.7s linear infinite",
-    display: "inline-block",
-  },
-  footer: {
-    marginTop: "1.5rem",
-    textAlign: "center",
-    color: "#94a3b8",
-    fontSize: "0.78rem",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "0.25rem",
-  },
-  footerLink: {
-    background: "none",
-    border: "none",
-    color: "#3b82f6",
-    fontSize: "0.78rem",
-    cursor: "pointer",
-    padding: 0,
-    textDecoration: "underline",
-    textUnderlineOffset: "2px",
-  },
-  loadingWrapper: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "#f0f2f5",
-  },
-  spinner: {
-    width: "36px",
-    height: "36px",
-    border: "3px solid #e2e8f0",
-    borderTopColor: "#3b82f6",
-    borderRadius: "50%",
-    animation: "spin 0.8s linear infinite",
-  },
-};

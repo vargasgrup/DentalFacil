@@ -58,9 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Main content area */}
       <div className="flex min-w-0 flex-1 flex-col lg:pl-56">
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8">
-          {children}
-        </main>
+        <main className="flex-1 overflow-x-hidden p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

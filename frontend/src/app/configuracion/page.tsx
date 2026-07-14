@@ -98,6 +98,7 @@ export default function ConfiguracionPage() {
   const [logoBusy, setLogoBusy] = useState(false);
 
   const [espItems, setEspItems] = useState<string[]>([...ESPECIALIDADES_ODONTOLOGICAS]);
+  const [espSelected, setEspSelected] = useState(ESPECIALIDADES_ODONTOLOGICAS[0] || "");
   const [espDraft, setEspDraft] = useState("");
   const [espMsg, setEspMsg] = useState("");
   const [espSaving, setEspSaving] = useState(false);
@@ -109,9 +110,11 @@ export default function ConfiguracionPage() {
         "/api/config/especialidades"
       );
       setEspItems(data.items);
+      setEspSelected(data.items[0] || "");
       setEspIsDefault(!!data.is_default);
     } catch {
       /* keep defaults */
+      setEspSelected(ESPECIALIDADES_ODONTOLOGICAS[0] || "");
     }
   };
 
@@ -122,18 +125,23 @@ export default function ConfiguracionPage() {
       setEspMsg("Esa especialidad ya está en el catálogo");
       return;
     }
-    setEspItems([...espItems, name]);
+    const next = [...espItems, name];
+    setEspItems(next);
+    setEspSelected(name);
     setEspDraft("");
     setEspMsg("");
     setEspIsDefault(false);
   };
 
-  const removeEspecialidad = (idx: number) => {
+  const removeEspecialidadByName = (name: string) => {
+    if (!name) return;
     if (espItems.length <= 1) {
       setEspMsg("Debe quedar al menos una especialidad");
       return;
     }
-    setEspItems(espItems.filter((_, i) => i !== idx));
+    const next = espItems.filter((e) => e !== name);
+    setEspItems(next);
+    setEspSelected(next[0] || "");
     setEspMsg("");
     setEspIsDefault(false);
   };
@@ -150,6 +158,7 @@ export default function ConfiguracionPage() {
         }
       );
       setEspItems(data.items);
+      setEspSelected(data.items[0] || "");
       setEspIsDefault(!!data.is_default);
       setEspMsg("Especialidades guardadas. Se usan en evolución y agenda.");
     } catch (err: any) {
@@ -168,6 +177,7 @@ export default function ConfiguracionPage() {
         { method: "POST" }
       );
       setEspItems(data.items);
+      setEspSelected(data.items[0] || "");
       setEspIsDefault(!!data.is_default);
       setEspMsg("Catálogo restablecido al valor por defecto.");
     } catch (err: any) {
@@ -672,72 +682,93 @@ export default function ConfiguracionPage() {
           )}
         </div>
 
-        <ul className="space-y-2">
-          {espItems.map((esp, idx) => (
-            <li
-              key={`${esp}-${idx}`}
-              className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-surface-subtle px-3 py-2.5 text-sm text-slate-700"
-            >
-              <span className="min-w-0 flex-1 truncate">{esp}</span>
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => removeEspecialidad(idx)}
-                  className="shrink-0 rounded p-1.5 text-slate-400 hover:bg-danger-50 hover:text-danger-600"
-                  title="Eliminar"
-                  aria-label={`Eliminar ${esp}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-
-        {isAdmin && (
-          <div className="mt-4 space-y-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-              <div className="min-w-0 flex-1">
-                <Input
-                  label="Nueva especialidad"
-                  value={espDraft}
-                  onChange={(e) => setEspDraft(e.target.value)}
-                  placeholder="Ej: Periodoncia"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addEspecialidad();
-                    }
-                  }}
-                />
-              </div>
-              <Button
-                type="button"
-                variant="secondary"
-                icon={<Plus className="h-4 w-4" />}
-                onClick={addEspecialidad}
+        <div className="space-y-3">
+          <label className="block">
+            <span className="mb-1 block text-label text-slate-700">
+              Catálogo ({espItems.length} especialidad{espItems.length === 1 ? "" : "es"})
+            </span>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <select
+                value={espSelected}
+                onChange={(e) => setEspSelected(e.target.value)}
+                className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-smooth focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                aria-label="Lista de especialidades odontológicas"
               >
-                Agregar
-              </Button>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button type="button" loading={espSaving} onClick={() => void saveEspecialidades()}>
-                Guardar especialidades
-              </Button>
-              {espMsg && (
-                <span
-                  className={`text-sm ${
-                    espMsg.includes("guardadas") || espMsg.includes("restablecido")
-                      ? "text-success-600"
-                      : "text-danger-600"
-                  }`}
+                {espItems.length === 0 ? (
+                  <option value="">Sin especialidades</option>
+                ) : (
+                  espItems.map((esp, idx) => (
+                    <option key={`${esp}-${idx}`} value={esp}>
+                      {esp}
+                    </option>
+                  ))
+                )}
+              </select>
+              {isAdmin && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="shrink-0 text-danger-600 hover:border-danger-200 hover:bg-danger-50"
+                  icon={<Trash2 className="h-4 w-4" />}
+                  onClick={() => removeEspecialidadByName(espSelected)}
+                  disabled={!espSelected || espItems.length <= 1}
+                  title="Eliminar especialidad seleccionada"
                 >
-                  {espMsg}
-                </span>
+                  Eliminar
+                </Button>
               )}
             </div>
-          </div>
-        )}
+          </label>
+
+          {isAdmin && (
+            <>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="min-w-0 flex-1">
+                  <Input
+                    label="Nueva especialidad"
+                    value={espDraft}
+                    onChange={(e) => setEspDraft(e.target.value)}
+                    placeholder="Ej: Periodoncia"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addEspecialidad();
+                      }
+                    }}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  icon={<Plus className="h-4 w-4" />}
+                  onClick={addEspecialidad}
+                >
+                  Agregar
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" loading={espSaving} onClick={() => void saveEspecialidades()}>
+                  Guardar especialidades
+                </Button>
+                {espMsg && (
+                  <span
+                    className={`text-sm ${
+                      espMsg.includes("guardadas") || espMsg.includes("restablecido")
+                        ? "text-success-600"
+                        : "text-danger-600"
+                    }`}
+                  >
+                    {espMsg}
+                  </span>
+                )}
+              </div>
+            </>
+          )}
+
+          {!isAdmin && espMsg && (
+            <p className="text-sm text-slate-500">{espMsg}</p>
+          )}
+        </div>
       </Card>
 
       <Card>

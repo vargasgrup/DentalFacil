@@ -113,6 +113,7 @@ export function ProposeTreatmentModal({
                 item: nombre.trim() || suggestion.nombre,
                 cantidad,
                 costo_unitario: costo,
+                a_cuenta: 0,
                 estado: "pendiente",
                 pieza_fdi: pieza,
                 condicion_id: condicionId,

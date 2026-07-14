@@ -12,10 +12,16 @@ const PUBLIC_PATHS = new Set([
   "/apple-icon.png",
 ]);
 
+function looksLikeJwt(token: string | undefined): boolean {
+  if (!token) return false;
+  const parts = token.split(".");
+  return parts.length === 3 && parts.every((p) => p.length > 0);
+}
+
 function isPublicAsset(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
   if (pathname.startsWith("/_next")) return true;
-  if (pathname.startsWith("/api/")) return true; // proxied API; backend enforces JWT
+  if (pathname.startsWith("/api/")) return true;
   if (pathname.startsWith("/dientes/")) return true;
   if (pathname.startsWith("/odontogram/")) return true;
   if (/\.(png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml|woff2?)$/i.test(pathname)) {
@@ -24,39 +30,52 @@ function isPublicAsset(pathname: string): boolean {
   return false;
 }
 
+function clearSessionCookie(res: NextResponse) {
+  res.cookies.set({
+    name: AUTH_COOKIE,
+    value: "",
+    path: "/",
+    maxAge: 0,
+    sameSite: "lax",
+  });
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const raw = request.cookies.get(AUTH_COOKIE)?.value;
+  const token = raw ? (() => {
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  })() : undefined;
+  const hasValidShape = looksLikeJwt(token);
+
+  // Login siempre visible al abrir la URL raíz — nunca saltar al panel por cookie.
+  // Borra cookie residual para obligar a ingresar usuario y contraseña.
+  if (pathname === "/") {
+    const res = NextResponse.next();
+    clearSessionCookie(res);
+    return res;
+  }
 
   if (isPublicAsset(pathname)) {
-    // Already logged in → skip login screen
-    if (pathname === "/") {
-      const token = request.cookies.get(AUTH_COOKIE)?.value;
-      if (token) {
-        const url = request.nextUrl.clone();
-        url.pathname = "/dashboard";
-        return NextResponse.redirect(url);
-      }
-    }
     return NextResponse.next();
   }
 
-  const token = request.cookies.get(AUTH_COOKIE)?.value;
-  if (!token) {
+  if (!hasValidShape) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.search = "";
-    return NextResponse.redirect(url);
+    const res = NextResponse.redirect(url);
+    clearSessionCookie(res);
+    return res;
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Protect all app routes except static assets handled above.
-     * Login "/" is public; authenticated users are redirected to dashboard.
-     */
-    "/((?!_next/static|_next/image).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image).*)"],
 };

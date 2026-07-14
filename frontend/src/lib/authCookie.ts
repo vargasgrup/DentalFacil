@@ -8,10 +8,13 @@ function cookieSecureFlag(): string {
   return window.location.protocol === "https:" ? "; Secure" : "";
 }
 
-/** Persist JWT for API calls + middleware (SameSite=Lax). */
-export function writeAuthCookie(token: string, maxAgeSeconds = 60 * 60 * 24 * 7) {
+/**
+ * Session cookie (no Max-Age): se borra al cerrar el navegador.
+ * Obliga a volver a autenticarse en la siguiente apertura del sistema.
+ */
+export function writeAuthCookie(token: string) {
   if (!isBrowser()) return;
-  document.cookie = `${AUTH_COOKIE}=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax${cookieSecureFlag()}`;
+  document.cookie = `${AUTH_COOKIE}=${encodeURIComponent(token)}; Path=/; SameSite=Lax${cookieSecureFlag()}`;
 }
 
 export function clearAuthCookie() {
@@ -28,4 +31,11 @@ export function readAuthCookie(): string | null {
   } catch {
     return match[1];
   }
+}
+
+/** JWT mínimo: tres segmentos separados por punto. */
+export function looksLikeJwt(token: string | null | undefined): boolean {
+  if (!token) return false;
+  const parts = token.split(".");
+  return parts.length === 3 && parts.every((p) => p.length > 0);
 }

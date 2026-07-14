@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { BrandLogo } from "@/components/BrandLogo";
 
 export default function LoginPage() {
-  const { user, needsSetup, loading, login, setup } = useAuth();
+  const { needsSetup, loading, login, setup } = useAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -16,14 +16,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Si ya hay sesión válida, ir al panel (no mostrar login)
-  useEffect(() => {
-    if (!loading && user) {
-      router.replace("/dashboard");
-    }
-  }, [loading, user, router]);
-
-  if (loading || user) {
+  if (loading) {
     return (
       <div style={styles.loadingWrapper}>
         <div style={styles.spinner} />
@@ -67,7 +60,7 @@ export default function LoginPage() {
             : "Accede con tu correo y contraseña al panel de M&D Odontología Especializada."}
         </p>
 
-        <form onSubmit={handleSubmit} style={styles.form}>
+        <form onSubmit={handleSubmit} style={styles.form} autoComplete="off">
           {needsSetup && (
             <div style={styles.fieldGroup}>
               <input
@@ -77,6 +70,7 @@ export default function LoginPage() {
                 onChange={(e) => setNombre(e.target.value)}
                 placeholder="Nombre completo*"
                 required
+                autoComplete="off"
                 style={styles.input}
                 onFocus={(e) => Object.assign(e.target.style, styles.inputFocus)}
                 onBlur={(e) => Object.assign(e.target.style, styles.input)}
@@ -92,7 +86,7 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Correo electrónico*"
               required
-              autoComplete="username"
+              autoComplete="off"
               autoFocus
               style={styles.input}
               onFocus={(e) => Object.assign(e.target.style, styles.inputFocus)}
@@ -108,7 +102,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Contraseña*"
               required
-              autoComplete="current-password"
+              autoComplete="new-password"
               style={{ ...styles.input, paddingRight: "2.8rem" }}
               onFocus={(e) =>
                 Object.assign(e.target.style, {

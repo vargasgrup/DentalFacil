@@ -1,6 +1,9 @@
-import { clearAuthCookie, readAuthCookie, writeAuthCookie } from "./authCookie";
+import { clearAuthCookie, looksLikeJwt, readAuthCookie, writeAuthCookie } from "./authCookie";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+
+const ACCESS_KEY = "access_token";
+const REFRESH_KEY = "refresh_token";
 
 export class ApiError extends Error {
   status: number;
@@ -43,16 +46,43 @@ export function formatApiDetail(detail: unknown, fallback = "Error en la solicit
   return String(detail);
 }
 
+function storageGet(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  // sessionStorage: no sobrevive al cerrar el navegador
+  const fromSession = sessionStorage.getItem(key);
+  if (fromSession) return fromSession;
+  // Migración puntual: limpiar tokens viejos de localStorage (sesión persistente indebida)
+  const legacy = localStorage.getItem(key);
+  if (legacy) {
+    localStorage.removeItem(ACCESS_KEY);
+    localStorage.removeItem(REFRESH_KEY);
+  }
+  return null;
+}
+
+function storageSet(key: string, value: string) {
+  sessionStorage.setItem(key, value);
+  localStorage.removeItem(key);
+}
+
+function storageRemove(key: string) {
+  sessionStorage.removeItem(key);
+  localStorage.removeItem(key);
+}
+
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("access_token") || readAuthCookie();
+  const fromStore = storageGet(ACCESS_KEY);
+  if (looksLikeJwt(fromStore)) return fromStore;
+  const fromCookie = readAuthCookie();
+  return looksLikeJwt(fromCookie) ? fromCookie : null;
 }
 
 let refreshPromise: Promise<boolean> | null = null;
 
 async function refreshAccessToken(): Promise<boolean> {
   if (typeof window === "undefined") return false;
-  const refresh = localStorage.getItem("refresh_token");
+  const refresh = storageGet(REFRESH_KEY);
   if (!refresh) return false;
 
   if (!refreshPromise) {
@@ -68,11 +98,11 @@ async function refreshAccessToken(): Promise<boolean> {
           access_token?: string;
           refresh_token?: string;
         };
-        if (!body.access_token) return false;
-        localStorage.setItem("access_token", body.access_token);
+        if (!body.access_token || !looksLikeJwt(body.access_token)) return false;
+        storageSet(ACCESS_KEY, body.access_token);
         writeAuthCookie(body.access_token);
         if (body.refresh_token) {
-          localStorage.setItem("refresh_token", body.refresh_token);
+          storageSet(REFRESH_KEY, body.refresh_token);
         }
         return true;
       } catch {
@@ -117,7 +147,6 @@ export async function apiFetch<T>(
     if (renewed) {
       return apiFetch<T>(path, { ...options, _retryAuth: true });
     }
-    // Sesión inválida: limpiar tokens para forzar login
     clearToken();
     clearRefreshToken();
   }
@@ -138,29 +167,29 @@ export async function apiFetch<T>(
 }
 
 export function setToken(token: string) {
-  localStorage.setItem("access_token", token);
+  storageSet(ACCESS_KEY, token);
   writeAuthCookie(token);
 }
 
 export function clearToken() {
-  localStorage.removeItem("access_token");
+  storageRemove(ACCESS_KEY);
   clearAuthCookie();
 }
 
 export function setRefreshToken(token: string | null) {
   if (token) {
-    localStorage.setItem("refresh_token", token);
+    storageSet(REFRESH_KEY, token);
   } else {
-    localStorage.removeItem("refresh_token");
+    storageRemove(REFRESH_KEY);
   }
 }
 
 export function getRefreshToken() {
-  return typeof window !== "undefined" ? localStorage.getItem("refresh_token") : null;
+  return storageGet(REFRESH_KEY);
 }
 
 export function clearRefreshToken() {
-  localStorage.removeItem("refresh_token");
+  storageRemove(REFRESH_KEY);
 }
 
 /** Multipart upload (e.g. clinic logo). Do not set Content-Type manually. */

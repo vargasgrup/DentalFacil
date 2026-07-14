@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useRef, useCallback, ReactNode } from "react";
 import { apiFetch, setToken, clearToken, setRefreshToken, clearRefreshToken } from "./api";
-import { writeAuthCookie } from "./authCookie";
+import { looksLikeJwt, writeAuthCookie } from "./authCookie";
 
 interface User {
   id: number;
@@ -24,6 +24,11 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function isLoginPath(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.location.pathname === "/" || window.location.pathname === "";
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,25 +42,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const loadSetupStatus = async () => {
+    try {
+      const status = await apiFetch<{ needs_setup: boolean }>("/api/auth/setup-status");
+      if (mounted.current) setNeedsSetup(status.needs_setup);
+    } catch {
+      /* ignore */
+    }
+  };
+
   const refreshUser = useCallback(async () => {
     if (!mounted.current) return;
 
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-    if (!token) {
+    // Abrir la URL raíz = siempre pedir credenciales (no restaurar sesión previa).
+    if (isLoginPath()) {
       clearToken();
-      setUser(null);
-      setLoading(false);
-      try {
-        const status = await apiFetch<{ needs_setup: boolean }>("/api/auth/setup-status");
-        if (mounted.current) setNeedsSetup(status.needs_setup);
-      } catch {
-        /* ignore */
+      clearRefreshToken();
+      if (mounted.current) {
+        setUser(null);
+        setLoading(false);
       }
+      await loadSetupStatus();
       return;
     }
 
-    // Sync cookie so Next.js middleware can gate routes
-    writeAuthCookie(token);
+    const token =
+      typeof window !== "undefined" ? sessionStorage.getItem("access_token") : null;
+
+    if (!looksLikeJwt(token)) {
+      clearToken();
+      clearRefreshToken();
+      if (mounted.current) {
+        setUser(null);
+        setLoading(false);
+      }
+      await loadSetupStatus();
+      return;
+    }
+
+    writeAuthCookie(token!);
 
     try {
       const me = await apiFetch<User>("/api/users/me");
@@ -68,35 +93,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearRefreshToken();
       if (mounted.current) {
         setUser(null);
-        try {
-          const status = await apiFetch<{ needs_setup: boolean }>("/api/auth/setup-status");
-          if (mounted.current) setNeedsSetup(status.needs_setup);
-        } catch { /* ignore */ }
       }
+      await loadSetupStatus();
     } finally {
       if (mounted.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    refreshUser();
+    void refreshUser();
   }, [refreshUser]);
 
   const login = async (email: string, password: string) => {
-    const resp = await apiFetch<{ access_token: string; refresh_token: string; user: User }>("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
+    const resp = await apiFetch<{ access_token: string; refresh_token: string; user: User }>(
+      "/api/auth/login",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      }
+    );
     setToken(resp.access_token);
     setRefreshToken(resp.refresh_token);
     setUser(resp.user);
   };
 
   const setup = async (nombre: string, email: string, password: string) => {
-    const resp = await apiFetch<{ access_token: string; refresh_token: string; user: User }>("/api/auth/setup", {
-      method: "POST",
-      body: JSON.stringify({ nombre, email, password }),
-    });
+    const resp = await apiFetch<{ access_token: string; refresh_token: string; user: User }>(
+      "/api/auth/setup",
+      {
+        method: "POST",
+        body: JSON.stringify({ nombre, email, password }),
+      }
+    );
     setToken(resp.access_token);
     setRefreshToken(resp.refresh_token);
     setUser(resp.user);
@@ -110,7 +138,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, needsSetup, refreshUser, login, setup, logout }}>
+    <AuthContext.Provider
+      value={{ user, loading, needsSetup, refreshUser, login, setup, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -283,6 +283,17 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             <span className="hidden md:inline">Nueva cita</span>
             <span className="md:hidden">Cita</span>
           </Link>
+          <button
+            type="button"
+            onClick={handleLogout}
+            title="Cerrar sesión"
+            aria-label="Cerrar sesión"
+            className={`inline-flex ${CTRL} items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium leading-none text-slate-600 transition-smooth hover:border-danger-200 hover:bg-danger-50 hover:text-danger-700 sm:px-3`}
+          >
+            <LogOut className="h-4 w-4 shrink-0" aria-hidden />
+            <span className="hidden lg:inline">Cerrar sesión</span>
+            <span className="hidden sm:inline lg:hidden">Salir</span>
+          </button>
         </div>
 
         <div className="mx-0.5 hidden h-5 w-px bg-slate-200 sm:block" aria-hidden />
@@ -292,6 +303,8 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             type="button"
             onClick={() => setUserOpen(!userOpen)}
             className={`inline-flex ${CTRL} items-center gap-2 rounded-lg px-1.5 transition-smooth hover:bg-slate-100 sm:pr-2`}
+            aria-expanded={userOpen}
+            aria-haspopup="menu"
           >
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
               {initials}
@@ -303,13 +316,17 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             <ChevronDown className="hidden h-3.5 w-3.5 shrink-0 text-slate-400 sm:inline" />
           </button>
           {userOpen && (
-            <div className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-dropdown">
+            <div
+              role="menu"
+              className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-dropdown"
+            >
               <div className="border-b border-slate-100 px-4 py-2">
                 <p className="truncate text-sm font-medium text-slate-700">{user?.nombre}</p>
                 <p className="truncate text-xs text-slate-400">{user?.email}</p>
               </div>
               <Link
                 href="/configuracion"
+                role="menuitem"
                 onClick={() => setUserOpen(false)}
                 className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 transition-smooth hover:bg-slate-50"
               >
@@ -318,6 +335,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
               </Link>
               <button
                 type="button"
+                role="menuitem"
                 onClick={handleLogout}
                 className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-danger-600 transition-smooth hover:bg-danger-50"
               >

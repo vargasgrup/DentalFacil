@@ -1,13 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { BrandLogo } from "@/components/BrandLogo";
 
 export default function LoginPage() {
   const { needsSetup, loading, login, setup } = useAuth();
-  const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -34,11 +32,12 @@ export default function LoginPage() {
       } else {
         await login(email, password);
       }
-      router.replace("/dashboard");
+      // Hard navigation: remonta AuthProvider con el token ya guardado
+      // (evita carreras soft-nav / cookie / ProtectedRoute).
+      window.location.assign("/dashboard");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Credenciales incorrectas";
       setError(msg || "Credenciales incorrectas");
-    } finally {
       setBusy(false);
     }
   };

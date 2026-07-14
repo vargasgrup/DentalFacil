@@ -52,12 +52,11 @@ export function middleware(request: NextRequest) {
   })() : undefined;
   const hasValidShape = looksLikeJwt(token);
 
-  // Login siempre visible al abrir la URL raíz — nunca saltar al panel por cookie.
-  // Borra cookie residual para obligar a ingresar usuario y contraseña.
+  // Login siempre visible en "/": no auto-redirigir al panel aunque haya cookie.
+  // La limpieza de sesión la hace AuthProvider en el cliente (no aquí),
+  // para no borrar la cookie justo después de un login exitoso.
   if (pathname === "/") {
-    const res = NextResponse.next();
-    clearSessionCookie(res);
-    return res;
+    return NextResponse.next();
   }
 
   if (isPublicAsset(pathname)) {

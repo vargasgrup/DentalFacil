@@ -117,6 +117,16 @@ async function refreshAccessToken(): Promise<boolean> {
 
 type ApiFetchOptions = RequestInit & { _retryAuth?: boolean };
 
+/** Login/setup/refresh: never treat their 401 as "sesión expirada" ni reintentar refresh. */
+function isAuthCredentialPath(path: string): boolean {
+  return (
+    path.startsWith("/api/auth/login") ||
+    path.startsWith("/api/auth/setup") ||
+    path.startsWith("/api/auth/refresh") ||
+    path.startsWith("/api/auth/setup-status")
+  );
+}
+
 export async function apiFetch<T>(
   path: string,
   options: ApiFetchOptions = {}
@@ -124,10 +134,16 @@ export async function apiFetch<T>(
   const { _retryAuth, ...fetchOptions } = options;
   const token = getToken();
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...(fetchOptions.headers as Record<string, string>),
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  // Solo forzar JSON cuando el body no es FormData
+  if (!(fetchOptions.body instanceof FormData) && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+  // No enviar Bearer en login/setup: evita interferir con credenciales nuevas
+  if (token && !isAuthCredentialPath(path)) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
 
   let res: Response;
   try {
@@ -142,7 +158,11 @@ export async function apiFetch<T>(
     );
   }
 
-  if (res.status === 401 && !_retryAuth && path !== "/api/auth/refresh") {
+  if (
+    res.status === 401 &&
+    !_retryAuth &&
+    !isAuthCredentialPath(path)
+  ) {
     const renewed = await refreshAccessToken();
     if (renewed) {
       return apiFetch<T>(path, { ...options, _retryAuth: true });
@@ -157,9 +177,14 @@ export async function apiFetch<T>(
       const body = await res.json();
       msg = formatApiDetail(body.detail ?? body.message, msg);
     } catch { /* ignore */ }
-    if (res.status === 401) {
+
+    // Solo rutas ya autenticadas hablan de "sesión expirada"
+    if (res.status === 401 && !isAuthCredentialPath(path)) {
       msg = "Sesión expirada. Cierra sesión e ingresa de nuevo.";
+    } else if (res.status === 401 && path.startsWith("/api/auth/login")) {
+      msg = msg || "Email o contraseña incorrectos";
     }
+
     throw new ApiError(msg, res.status);
   }
   if (res.status === 204) return null as T;

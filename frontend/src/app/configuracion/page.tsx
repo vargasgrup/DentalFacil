@@ -98,7 +98,7 @@ export default function ConfiguracionPage() {
   const [logoBusy, setLogoBusy] = useState(false);
 
   const [espItems, setEspItems] = useState<string[]>([...ESPECIALIDADES_ODONTOLOGICAS]);
-  const [espSelected, setEspSelected] = useState(ESPECIALIDADES_ODONTOLOGICAS[0] || "");
+  const [espSelected, setEspSelected] = useState<string>(ESPECIALIDADES_ODONTOLOGICAS[0] || "");
   const [espDraft, setEspDraft] = useState("");
   const [espMsg, setEspMsg] = useState("");
   const [espSaving, setEspSaving] = useState(false);

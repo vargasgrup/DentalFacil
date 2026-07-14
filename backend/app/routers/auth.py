@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_roles
-from app.core.rate_limit import limiter, login_limit_value, setup_limit_value
+from app.core.rate_limit import enforce_login_rate_limit, enforce_setup_rate_limit
 from app.core.roles import Rol
 from app.core.security import (
     create_access_token,
@@ -34,7 +34,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def _user_tokens(user: User) -> TokenResponse:
-    ver = int(user.token_version or 0)
+    ver = int(getattr(user, "token_version", 0) or 0)
     access = create_access_token(str(user.id), user.rol, ver)
     refresh = create_refresh_token(str(user.id), ver)
     return TokenResponse(
@@ -45,7 +45,7 @@ def _user_tokens(user: User) -> TokenResponse:
 
 
 def _bump_token_version(user: User) -> None:
-    user.token_version = int(user.token_version or 0) + 1
+    user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
 
 
 def _safe_decode(token: str) -> dict | None:
@@ -63,9 +63,9 @@ def setup_status(db: Session = Depends(get_db)):
 
 
 @router.post("/setup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-@limiter.limit(setup_limit_value)
 def setup(request: Request, payload: SetupRequest, db: Session = Depends(get_db)):
     """Create the first ADMIN user. Only works when no users exist."""
+    enforce_setup_rate_limit(request)
     if db.query(User).count() > 0:
         raise HTTPException(status_code=400, detail="El sistema ya está configurado")
     user = User(
@@ -82,8 +82,8 @@ def setup(request: Request, payload: SetupRequest, db: Session = Depends(get_db)
 
 
 @router.post("/login", response_model=TokenResponse)
-@limiter.limit(login_limit_value)
 def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)):
+    enforce_login_rate_limit(request)
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")

@@ -82,20 +82,10 @@ def _truncate_all(session: Session) -> None:
 
 
 def _clear_rate_limiter(app) -> None:
-    limiter = getattr(app.state, "limiter", None)
-    if limiter is None:
-        return
-    storage = getattr(limiter, "_storage", None) or getattr(limiter, "storage", None)
-    if storage is None:
-        return
-    for attr in ("reset", "clear"):
-        fn = getattr(storage, attr, None)
-        if callable(fn):
-            try:
-                fn()
-                return
-            except Exception:  # noqa: BLE001
-                continue
+    from app.core import rate_limit as rl
+
+    with rl._lock:
+        rl._hits.clear()
 
 
 try:

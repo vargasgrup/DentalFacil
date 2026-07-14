@@ -4,11 +4,8 @@ from datetime import datetime, timedelta
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import settings
-from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 from app.migrate import migrations_status, run_migrations_blocking
 from app.routers.auth import router as auth_router, users_router
 from app.routers.patients import router as patients_router
@@ -64,10 +61,6 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
-
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

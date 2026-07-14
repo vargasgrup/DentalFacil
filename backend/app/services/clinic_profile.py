@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.clinic_settings import ClinicSettings
+from app.models.ids import CLINIC_SETTINGS_ID
 
 _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 _DEFAULT_LOGO = _ASSETS_DIR / "logo-md.png"
@@ -56,9 +57,9 @@ class ClinicProfile:
 
 
 def _get_or_create_row(db: Session) -> ClinicSettings:
-    row = db.get(ClinicSettings, 1)
+    row = db.get(ClinicSettings, CLINIC_SETTINGS_ID)
     if not row:
-        row = ClinicSettings(id=1, hora_apertura="08:00", hora_cierre="20:00")
+        row = ClinicSettings(id=CLINIC_SETTINGS_ID, hora_apertura="08:00", hora_cierre="20:00")
         db.add(row)
         db.commit()
         db.refresh(row)

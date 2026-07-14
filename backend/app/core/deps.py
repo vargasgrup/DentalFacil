@@ -23,7 +23,7 @@ def get_current_user(
         payload = decode_token(token)
         if payload.get("type") != "access":
             raise cred_exc
-        user_id = int(payload["sub"])
+        user_id = payload["sub"]
     except HTTPException:
         raise
     except Exception:

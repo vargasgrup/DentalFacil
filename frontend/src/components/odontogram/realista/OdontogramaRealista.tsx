@@ -35,7 +35,7 @@ export function OdontogramaRealista({
   patientId,
   onProposeTreatment,
 }: {
-  patientId: number;
+  patientId: string;
   onProposeTreatment?: (item: PlanProposalItem) => void;
 }) {
   const api = useOdontogramaRealista(patientId);
@@ -453,10 +453,10 @@ function HistorialLite({
   fetchHistory,
   pieza,
 }: {
-  patientId: number;
+  patientId: string;
   fetchHistory: (pieza?: string | null) => Promise<
     Array<{
-      id: number;
+      id: string;
       pieza_fdi: string;
       estado_antes: string | null;
       estado_despues: string | null;
@@ -498,16 +498,16 @@ function CompararLite({
   saveSnapshot,
   compareSnapshots,
 }: {
-  fetchSnapshots: () => Promise<Array<{ id: number; label: string; taken_at: string }>>;
+  fetchSnapshots: () => Promise<Array<{ id: string; label: string; taken_at: string }>>;
   saveSnapshot: (label?: string) => Promise<unknown>;
   compareSnapshots: (
-    a: number,
-    b: number
+    a: string,
+    b: string
   ) => Promise<{ changed_count: number; diffs: Array<{ pieza_fdi: string; status: string }> }>;
 }) {
-  const [snaps, setSnaps] = useState<Array<{ id: number; label: string; taken_at: string }>>([]);
-  const [a, setA] = useState<number | "">("");
-  const [b, setB] = useState<number | "">("");
+  const [snaps, setSnaps] = useState<Array<{ id: string; label: string; taken_at: string }>>([]);
+  const [a, setA] = useState<string>("");
+  const [b, setB] = useState<string>("");
   const [result, setResult] = useState<string>("");
 
   useEffect(() => {
@@ -527,7 +527,7 @@ function CompararLite({
         <select
           className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
           value={a}
-          onChange={(e) => setA(e.target.value ? Number(e.target.value) : "")}
+          onChange={(e) => setA(e.target.value)}
         >
           <option value="">Snapshot A</option>
           {snaps.map((s) => (
@@ -539,7 +539,7 @@ function CompararLite({
         <select
           className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
           value={b}
-          onChange={(e) => setB(e.target.value ? Number(e.target.value) : "")}
+          onChange={(e) => setB(e.target.value)}
         >
           <option value="">Snapshot B</option>
           {snaps.map((s) => (

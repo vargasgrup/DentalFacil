@@ -7,7 +7,7 @@ import { useOdontogramPatient } from "../useOdontogramPatient";
 /**
  * Extiende el hook de paciente con estado de UI del odontograma realista (vista, zoom).
  */
-export function useOdontogramaRealista(patientId: number) {
+export function useOdontogramaRealista(patientId: string) {
   const api = useOdontogramPatient(patientId);
   const [selectedPieza, setSelectedPieza] = useState<string | null>(null);
   const [vistaPorPieza, setVistaPorPieza] = useState<Record<string, VistaDiente>>({});

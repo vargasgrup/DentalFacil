@@ -6,9 +6,9 @@ export const DEFAULT_OPEN = "08:00";
 export const DEFAULT_CLOSE = "20:00";
 
 export interface CalendarAppointment {
-  id: number;
-  patient_id: number;
-  doctor_id?: number | null;
+  id: string;
+  patient_id: string;
+  doctor_id?: string | null;
   doctor_nombre?: string | null;
   patient_nombre?: string | null;
   fecha_hora: string;

@@ -23,7 +23,7 @@ import { formatFichaCode } from "@/lib/ficha";
 import { SHELL_HEADER_CLASS } from "./shell";
 
 interface SearchResult {
-  id: number;
+  id: string;
   numero_ficha: number;
   nombres: string;
   apellidos: string;
@@ -32,9 +32,9 @@ interface SearchResult {
 }
 
 interface Reminder {
-  id: number;
-  appointment_id: number;
-  patient_id: number;
+  id: string;
+  appointment_id: string;
+  patient_id: string;
   patient_nombre?: string;
   patient_telefono?: string;
   appointment_fecha?: string;
@@ -57,7 +57,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
 
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [sendingId, setSendingId] = useState<number | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
   const [userOpen, setUserOpen] = useState(false);

@@ -5,21 +5,25 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def normalize_database_url(url: str) -> str:
-    """Railway delivers postgres:// or postgresql://; SQLAlchemy+psycopg needs +psycopg."""
+    """Normalize DATABASE_URL for SQLAlchemy (SQLite default, Postgres still supported)."""
     raw = url.strip()
     lower = raw.lower()
     if lower.startswith(("http://", "https://")):
         raise ValueError(
-            "DATABASE_URL must be postgresql://... (Variable Reference → Postgres → DATABASE_URL), "
-            "not an https:// hostname."
+            "DATABASE_URL must be sqlite:///... or postgresql://... — not an https:// URL."
         )
+    if lower.startswith("sqlite:"):
+        # Prefer Absolute / relative file URLs as-is (sqlite:///./data/clinica.db)
+        return raw
     if raw.startswith("postgres://"):
         raw = "postgresql://" + raw[len("postgres://") :]
     if raw.startswith("postgresql://"):
         raw = "postgresql+psycopg://" + raw[len("postgresql://") :]
-    if not raw.startswith("postgresql+psycopg://"):
-        raise ValueError("DATABASE_URL must start with postgresql:// or postgres://")
-    return raw
+    if raw.startswith("postgresql+psycopg://"):
+        return raw
+    raise ValueError(
+        "DATABASE_URL must start with sqlite:/// or postgresql:// (or postgres://)"
+    )
 
 
 def parse_cors_origins(value: str | list[str]) -> list[str]:
@@ -38,8 +42,8 @@ def parse_cors_origins(value: str | list[str]) -> list[str]:
 
 
 class Settings(BaseSettings):
-    # Database
-    DATABASE_URL: str = "postgresql+psycopg://dentalsimple:dentalsimple@db:5432/dentalsimple"
+    # Local default: SQLite file (no Docker / no Postgres daemon required)
+    DATABASE_URL: str = "sqlite:///./data/clinica.db"
 
     # JWT
     JWT_SECRET: str = "change-me-in-production-please-use-a-long-random-string"
@@ -53,8 +57,6 @@ class Settings(BaseSettings):
 
     # App
     APP_NAME: str = "M&D Odontología Especializada"
-    # Keep as str so pydantic-settings does NOT json.loads the Railway env value.
-    # Use settings.cors_origins for the list form.
     CORS_ORIGINS: str = "http://localhost:3001"
     BACKEND_PORT: int = 8001
     CLINIC_NAME: str = "M&D Odontología Especializada"
@@ -80,6 +82,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return parse_cors_origins(self.CORS_ORIGINS)
+
+    @property
+    def is_sqlite(self) -> bool:
+        return self.DATABASE_URL.strip().lower().startswith("sqlite")
 
 
 settings = Settings()

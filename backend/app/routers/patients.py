@@ -54,7 +54,7 @@ def _find_by_document(
     db: Session,
     tipo_documento: str,
     numero_documento: str | None,
-    exclude_id: int | None = None,
+    exclude_id: str | None = None,
 ) -> Patient | None:
     doc = _normalize_documento(numero_documento)
     if not doc:
@@ -72,7 +72,7 @@ def _assert_unique_document(
     db: Session,
     tipo_documento: str,
     numero_documento: str | None,
-    exclude_id: int | None = None,
+    exclude_id: str | None = None,
 ) -> None:
     existing = _find_by_document(db, tipo_documento, numero_documento, exclude_id)
     if existing:
@@ -154,7 +154,7 @@ def list_patients(
 
 @router.get("/{patient_id}", response_model=PatientOut)
 def get_patient(
-    patient_id: int,
+    patient_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -244,7 +244,7 @@ def create_patient(
 
 @router.patch("/{patient_id}", response_model=PatientOut)
 def update_patient(
-    patient_id: int,
+    patient_id: str,
     payload: PatientUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),

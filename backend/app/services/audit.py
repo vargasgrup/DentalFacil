@@ -8,10 +8,10 @@ from app.models.periodontogram import ClinicalAuditLog
 def log_audit(
     db: Session,
     *,
-    patient_id: int | None,
+    patient_id: str | None,
     entity_type: str,
     action: str,
-    user_id: int | None,
+    user_id: str | None,
     entity_id: str | None = None,
     detail: dict | None = None,
 ) -> None:

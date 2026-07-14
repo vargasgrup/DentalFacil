@@ -27,8 +27,8 @@ class PerioIn(BaseModel):
 
 
 class PerioOut(BaseModel):
-    id: int
-    patient_id: int
+    id: str
+    patient_id: str
     pieza_fdi: str
     denticion: str
     movilidad: int
@@ -47,7 +47,7 @@ class PerioOut(BaseModel):
 
 @router.get("/{patient_id}", response_model=list[PerioOut])
 def list_perio(
-    patient_id: int,
+    patient_id: str,
     denticion: str = Query("permanente"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -67,7 +67,7 @@ def list_perio(
 
 @router.put("/{patient_id}/{pieza_fdi}", response_model=PerioOut)
 def upsert_perio(
-    patient_id: int,
+    patient_id: str,
     pieza_fdi: str,
     payload: PerioIn,
     db: Session = Depends(get_db),

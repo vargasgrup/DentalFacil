@@ -12,7 +12,7 @@ class ClinicalRecordBase(BaseModel):
     diagnostico: Optional[str] = None
     plan_tratamiento: Optional[Union[list, str]] = None
     observaciones: Optional[str] = None
-    doctor_responsable_id: Optional[int] = None
+    doctor_responsable_id: Optional[str] = None
 
     @field_validator("plan_tratamiento", mode="before")
     @classmethod
@@ -31,8 +31,8 @@ class ClinicalRecordUpdate(ClinicalRecordBase):
 
 
 class ClinicalRecordOut(ClinicalRecordBase):
-    id: int
-    patient_id: int
+    id: str
+    patient_id: str
     consentimiento_firmado: bool
     consentimiento_fecha: Optional[datetime] = None
     firma_odontologo: Optional[str] = None
@@ -49,7 +49,7 @@ class ConsentimientoUpdate(BaseModel):
 
 
 class ClinicalEvolutionEntryCreate(BaseModel):
-    doctor_id: Optional[int] = None
+    doctor_id: Optional[str] = None
     especialidad: Optional[str] = None
     tratamiento_descripcion: str
     costo: float = 0
@@ -59,7 +59,7 @@ class ClinicalEvolutionEntryCreate(BaseModel):
 
 
 class ClinicalEvolutionEntryUpdate(BaseModel):
-    doctor_id: Optional[int] = None
+    doctor_id: Optional[str] = None
     especialidad: Optional[str] = None
     tratamiento_descripcion: Optional[str] = None
     costo: Optional[float] = None
@@ -69,9 +69,9 @@ class ClinicalEvolutionEntryUpdate(BaseModel):
 
 
 class ClinicalEvolutionEntryOut(BaseModel):
-    id: int
-    patient_id: int
-    doctor_id: Optional[int] = None
+    id: str
+    patient_id: str
+    doctor_id: Optional[str] = None
     especialidad: Optional[str] = None
     tratamiento_descripcion: str
     costo: float

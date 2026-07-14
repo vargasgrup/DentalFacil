@@ -10,6 +10,7 @@ from app.core.deps import get_current_user, require_roles
 from app.core.roles import Rol
 from app.database import SessionLocal, get_db
 from app.models import Appointment, AppointmentReminder, Patient, User, ClinicSettings
+from app.models.ids import CLINIC_SETTINGS_ID
 from app.schemas.appointment import (
     AppointmentCreate,
     AppointmentOut,
@@ -61,9 +62,17 @@ def _appointment_to_out(a: Appointment, db: Session) -> AppointmentOut:
     )
 
 
-def _check_overlap(db: Session, doctor_id: int | None, fecha_hora: datetime, duracion: int, exclude_id: int | None = None) -> bool:
+def _as_utc(dt: datetime) -> datetime:
+    """Normalize datetimes for comparison (SQLite often returns naive UTC)."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _check_overlap(db: Session, doctor_id: str | None, fecha_hora: datetime, duracion: int, exclude_id: str | None = None) -> bool:
     if not doctor_id:
         return False
+    fecha_hora = _as_utc(fecha_hora)
     end_time = fecha_hora + timedelta(minutes=duracion)
     existing = (
         db.query(Appointment)
@@ -76,8 +85,9 @@ def _check_overlap(db: Session, doctor_id: int | None, fecha_hora: datetime, dur
     for a in existing:
         if exclude_id and a.id == exclude_id:
             continue
-        a_end = a.fecha_hora + timedelta(minutes=a.duracion_minutos)
-        if fecha_hora < a_end and end_time > a.fecha_hora:
+        a_start = _as_utc(a.fecha_hora)
+        a_end = a_start + timedelta(minutes=a.duracion_minutos)
+        if fecha_hora < a_end and end_time > a_start:
             return True
     return False
 
@@ -133,12 +143,14 @@ def create_appointment(
     if not db.get(Patient, payload.patient_id):
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
     _assert_within_clinic_hours(db, payload.fecha_hora)
-    if _check_overlap(db, payload.doctor_id, payload.fecha_hora, payload.duracion_minutos):
+    fecha_utc = _as_utc(payload.fecha_hora)
+    if _check_overlap(db, payload.doctor_id, fecha_utc, payload.duracion_minutos):
         raise HTTPException(status_code=409, detail="El doctor ya tiene una cita en ese horario")
     apt = Appointment(
         patient_id=payload.patient_id,
         doctor_id=payload.doctor_id or user.id,
-        fecha_hora=payload.fecha_hora,
+        # SQLite strips tzinfo; always persist UTC wall-clock so overlaps compare correctly.
+        fecha_hora=fecha_utc,
         duracion_minutos=payload.duracion_minutos,
         especialidad=payload.especialidad,
         notas=payload.notas,
@@ -151,7 +163,7 @@ def create_appointment(
 
 @router.patch("/{appointment_id}", response_model=AppointmentOut)
 def update_appointment(
-    appointment_id: int,
+    appointment_id: str,
     payload: AppointmentUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -160,14 +172,17 @@ def update_appointment(
     if not apt:
         raise HTTPException(status_code=404, detail="Cita no encontrada")
     if payload.fecha_hora or payload.duracion_minutos:
-        new_time = payload.fecha_hora or apt.fecha_hora
+        new_time = _as_utc(payload.fecha_hora) if payload.fecha_hora else _as_utc(apt.fecha_hora)
         new_dur = payload.duracion_minutos or apt.duracion_minutos
         doctor = payload.doctor_id or apt.doctor_id
         if payload.fecha_hora:
-            _assert_within_clinic_hours(db, new_time)
+            _assert_within_clinic_hours(db, payload.fecha_hora)
         if _check_overlap(db, doctor, new_time, new_dur, exclude_id=apt.id):
             raise HTTPException(status_code=409, detail="El doctor ya tiene una cita en ese horario")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "fecha_hora" in data and data["fecha_hora"] is not None:
+        data["fecha_hora"] = _as_utc(data["fecha_hora"])
+    for field, value in data.items():
         setattr(apt, field, value)
     db.commit()
     db.refresh(apt)
@@ -176,7 +191,7 @@ def update_appointment(
 
 @router.delete("/{appointment_id}", status_code=204)
 def delete_appointment(
-    appointment_id: int,
+    appointment_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -231,7 +246,7 @@ def pending_reminders(
 
 @router.post("/reminders/{reminder_id}/send", response_model=AppointmentReminderOut)
 def mark_reminder_sent(
-    reminder_id: int,
+    reminder_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -280,9 +295,9 @@ def update_reminder_config_api(
 
 
 def _get_or_create_clinic_settings(db: Session) -> ClinicSettings:
-    row = db.get(ClinicSettings, 1)
+    row = db.get(ClinicSettings, CLINIC_SETTINGS_ID)
     if not row:
-        row = ClinicSettings(id=1, hora_apertura="08:00", hora_cierre="20:00")
+        row = ClinicSettings(id=CLINIC_SETTINGS_ID, hora_apertura="08:00", hora_cierre="20:00")
         db.add(row)
         db.commit()
         db.refresh(row)

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.appointment import Appointment
 from app.models.clinic_settings import ClinicSettings
+from app.models.ids import CLINIC_SETTINGS_ID
 from app.models.patient import Patient
 from app.services.clinic_profile import get_clinic_profile
 
@@ -56,7 +57,7 @@ def normalize_reminder_template(template: str | None) -> str:
 
 
 def get_reminder_config(db: Session) -> dict:
-    row = db.get(ClinicSettings, 1)
+    row = db.get(ClinicSettings, CLINIC_SETTINGS_ID)
     hours = settings.REMINDER_HOURS_BEFORE
     template = DEFAULT_REMINDER_TEMPLATE
     if row:
@@ -76,9 +77,9 @@ def save_reminder_config(
     reminder_hours_before: int | None = None,
     reminder_template: str | None = None,
 ) -> dict:
-    row = db.get(ClinicSettings, 1)
+    row = db.get(ClinicSettings, CLINIC_SETTINGS_ID)
     if not row:
-        row = ClinicSettings(id=1, hora_apertura="08:00", hora_cierre="20:00")
+        row = ClinicSettings(id=CLINIC_SETTINGS_ID, hora_apertura="08:00", hora_cierre="20:00")
         db.add(row)
         db.flush()
     if reminder_hours_before is not None:

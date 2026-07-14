@@ -41,7 +41,7 @@ import {
 
 
 interface Patient {
-  id: number;
+  id: string;
   numero_ficha: number;
   nombres: string;
   apellidos: string;
@@ -50,7 +50,7 @@ interface Patient {
 }
 
 interface Doctor {
-  id: number;
+  id: string;
   nombre: string;
 }
 
@@ -92,7 +92,7 @@ function AgendaPageInner() {
   const [duracion, setDuracion] = useState("30");
   const [notas, setNotas] = useState("");
   const [especialidad, setEspecialidad] = useState("");
-  const [doctorId, setDoctorId] = useState<number | undefined>();
+  const [doctorId, setDoctorId] = useState<string | undefined>();
 
   // Prefill from Ficha Clínica: /agenda?patient_id=123
   // Quick create from topbar: /agenda?nueva=1
@@ -185,7 +185,7 @@ function AgendaPageInner() {
     });
   }, [appointments, estadoFilter, filterPatient]);
 
-  const openNewForm = (date?: Date, timeHHMM?: string, docId?: number) => {
+  const openNewForm = (date?: Date, timeHHMM?: string, docId?: string) => {
     const d = date || currentDate;
     setFecha(dateToLocalInput(d));
     setHora(timeHHMM || "09:00");
@@ -239,7 +239,7 @@ function AgendaPageInner() {
     }
   };
 
-  const cancelAppointment = async (id: number) => {
+  const cancelAppointment = async (id: string) => {
     if (!confirm("¿Cancelar esta cita?")) return;
     try {
       await apiFetch(`/api/appointments/${id}`, {

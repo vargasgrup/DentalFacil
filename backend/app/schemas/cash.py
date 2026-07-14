@@ -9,8 +9,8 @@ class CashSessionOpen(BaseModel):
 
 
 class CashSessionOut(BaseModel):
-    id: int
-    usuario_id: int
+    id: str
+    usuario_id: str
     monto_inicial: float
     monto_final: Optional[float] = None
     abierta_en: datetime
@@ -21,7 +21,7 @@ class CashSessionOut(BaseModel):
 
 
 class CashTransactionCreate(BaseModel):
-    patient_id: Optional[int] = None
+    patient_id: Optional[str] = None
     tipo: str  # ingreso/egreso
     concepto: str
     monto: float
@@ -31,9 +31,9 @@ class CashTransactionCreate(BaseModel):
 
 
 class CashTransactionOut(BaseModel):
-    id: int
-    cash_session_id: int
-    patient_id: Optional[int] = None
+    id: str
+    cash_session_id: str
+    patient_id: Optional[str] = None
     patient_nombre: Optional[str] = None
     patient_telefono: Optional[str] = None
     tipo: str
@@ -48,7 +48,7 @@ class CashTransactionOut(BaseModel):
 
 
 class CashCloseSummary(BaseModel):
-    session_id: int
+    session_id: str
     monto_inicial: float
     ingresos: float
     egresos: float

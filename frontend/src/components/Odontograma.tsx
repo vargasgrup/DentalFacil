@@ -11,7 +11,7 @@ export function Odontograma({
   patientId,
   onProposeTreatment,
 }: {
-  patientId: number;
+  patientId: string;
   onProposeTreatment?: (item: PlanProposalItem) => void;
 }) {
   return (

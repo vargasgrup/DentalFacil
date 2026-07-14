@@ -31,7 +31,7 @@ import { especialidadShort } from "@/lib/especialidades";
 /* ─── types ─────────────────────────────────────────────── */
 
 interface Patient {
-  id: number;
+  id: string;
   numero_ficha: number;
   nombres: string;
   apellidos: string;
@@ -51,15 +51,15 @@ interface Patient {
 }
 
 interface ClinicalRecord {
-  id: number;
-  patient_id: number;
+  id: string;
+  patient_id: string;
   motivo_consulta?: string;
   antecedentes_medicos?: string;
   antecedentes_odontologicos?: string;
   diagnostico?: string;
   plan_tratamiento?: string | PlanItem[];
   observaciones?: string;
-  doctor_responsable_id?: number;
+  doctor_responsable_id?: string;
   consentimiento_firmado: boolean;
   consentimiento_fecha?: string;
   firma_odontologo?: string;
@@ -68,9 +68,9 @@ interface ClinicalRecord {
 }
 
 interface EvolutionEntry {
-  id: number;
-  patient_id: number;
-  doctor_id?: number;
+  id: string;
+  patient_id: string;
+  doctor_id?: string;
   especialidad?: string;
   tratamiento_descripcion: string;
   costo: number;
@@ -88,7 +88,7 @@ interface FinancialSummary {
 }
 
 interface PaymentTx {
-  id: number;
+  id: string;
   concepto: string;
   monto: number;
   metodo_pago: string;
@@ -135,7 +135,7 @@ export default function FichaClinicaPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
-  const patientId = Number(params.id);
+  const patientId = String(params.id);
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [record, setRecord] = useState<ClinicalRecord | null>(null);
@@ -423,7 +423,7 @@ export default function FichaClinicaPage() {
     }
   };
 
-  const deleteEvolution = async (entryId: number) => {
+  const deleteEvolution = async (entryId: string) => {
     if (!confirm("¿Eliminar esta entrada de evolución?")) return;
     try {
       await apiFetch(`/api/clinical/${patientId}/evolution/${entryId}`, {
@@ -435,7 +435,7 @@ export default function FichaClinicaPage() {
     }
   };
 
-  const updateEvolutionEstado = async (entryId: number, estado: string) => {
+  const updateEvolutionEstado = async (entryId: string, estado: string) => {
     try {
       await apiFetch(`/api/clinical/evolution/${entryId}`, {
         method: "PATCH",

@@ -13,13 +13,13 @@ router = APIRouter(prefix="/api/audit", tags=["audit"])
 
 
 class AuditOut(BaseModel):
-    id: int
-    patient_id: int | None
+    id: str
+    patient_id: str | None
     entity_type: str
     entity_id: str | None
     action: str
     detail: dict | None
-    user_id: int | None
+    user_id: str | None
     user_name: str | None = None
     created_at: datetime
 
@@ -28,7 +28,7 @@ class AuditOut(BaseModel):
 
 @router.get("/{patient_id}", response_model=list[AuditOut])
 def list_audit(
-    patient_id: int,
+    patient_id: str,
     limit: int = Query(100, ge=1, le=500),
     entity_type: str | None = None,
     db: Session = Depends(get_db),

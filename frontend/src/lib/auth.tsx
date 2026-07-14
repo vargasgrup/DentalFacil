@@ -13,7 +13,7 @@ import {
 import { looksLikeJwt, writeAuthCookie } from "./authCookie";
 
 interface User {
-  id: number;
+  id: string;
   nombre: string;
   email: string;
   rol: string;

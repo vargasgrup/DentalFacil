@@ -12,7 +12,7 @@ class UserCreate(BaseModel):
 
 
 class UserOut(BaseModel):
-    id: int
+    id: str
     nombre: str
     email: str
     rol: str

@@ -71,7 +71,7 @@ def revoke_token_payload(
     db: Session,
     payload: dict,
     *,
-    user_id: int | None = None,
+    user_id: str | None = None,
     reason: str | None = None,
 ) -> None:
     jti = payload.get("jti")
@@ -82,10 +82,7 @@ def revoke_token_payload(
         return
     uid = user_id
     if uid is None and payload.get("sub") is not None:
-        try:
-            uid = int(payload["sub"])
-        except (TypeError, ValueError):
-            uid = None
+        uid = str(payload["sub"])
     db.add(
         RevokedToken(
             jti=jti,

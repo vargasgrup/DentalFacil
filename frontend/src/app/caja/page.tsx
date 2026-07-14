@@ -26,15 +26,15 @@ import { PatientPicker, type PickedPatient } from "@/components/PatientPicker";
 import { TreatmentAutocomplete } from "@/components/TreatmentAutocomplete";
 
 interface CashSession {
-  id: number;
+  id: string;
   monto_inicial: number;
   abierta_en: string;
   estado: string;
 }
 
 interface CashTransaction {
-  id: number;
-  patient_id?: number | null;
+  id: string;
+  patient_id?: string | null;
   patient_nombre?: string | null;
   patient_telefono?: string | null;
   tipo: string;
@@ -45,7 +45,7 @@ interface CashTransaction {
 }
 
 interface CloseSummary {
-  session_id: number;
+  session_id: string;
   monto_inicial: number;
   ingresos: number;
   egresos: number;

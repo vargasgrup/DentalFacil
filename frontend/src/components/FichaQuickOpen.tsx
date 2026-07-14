@@ -9,7 +9,7 @@ import { formatFichaCode } from "@/lib/ficha";
 import { Badge } from "@/components/ui/Badge";
 
 export interface FichaSearchHit {
-  id: number;
+  id: string;
   numero_ficha: number;
   nombres: string;
   apellidos: string;
@@ -18,7 +18,7 @@ export interface FichaSearchHit {
 }
 
 export interface FichaShortcut {
-  patientId: number;
+  patientId: string;
   label: string;
   meta?: string;
 }
@@ -87,7 +87,7 @@ export function FichaQuickOpen({
     return () => window.clearTimeout(timer);
   }, [query]);
 
-  const openFicha = (patientId: number) => {
+  const openFicha = (patientId: string) => {
     setQuery("");
     setOpen(false);
     router.push(`/pacientes/${patientId}`);

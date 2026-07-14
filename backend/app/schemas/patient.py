@@ -43,7 +43,7 @@ class PatientUpdate(BaseModel):
 
 
 class PatientOut(PatientBase):
-    id: int
+    id: str
     numero_ficha: int
     created_at: datetime
 
@@ -51,7 +51,7 @@ class PatientOut(PatientBase):
 
 
 class PatientSearchResult(BaseModel):
-    id: int
+    id: str
     numero_ficha: int
     nombres: str
     apellidos: str

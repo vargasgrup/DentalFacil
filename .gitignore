@@ -26,6 +26,13 @@ Thumbs.db
 # Docker volumes
 pgdata/
 
+# Local SQLite / runtime data
+backend/data/
+backend/tests/_testdata/
+*.db
+*.db-wal
+*.db-shm
+
 # Local tooling
 .claude/
 .impeccable/

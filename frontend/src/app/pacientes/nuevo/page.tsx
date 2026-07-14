@@ -21,7 +21,7 @@ import {
 import { formatFichaLabel } from "@/lib/ficha";
 
 interface Patient {
-  id: number;
+  id: string;
   numero_ficha: number;
   nombres?: string;
   apellidos?: string;

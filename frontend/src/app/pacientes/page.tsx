@@ -12,7 +12,7 @@ import { PageContainer } from "@/components/ui/PageContainer";
 import { formatFichaCode } from "@/lib/ficha";
 
 interface Patient {
-  id: number;
+  id: string;
   numero_ficha: number;
   nombres: string;
   apellidos: string;

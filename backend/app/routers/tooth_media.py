@@ -24,14 +24,14 @@ UPLOAD_ROOT = Path(os.environ.get("TOOTH_MEDIA_ROOT", "/app/uploads/tooth_media"
 
 
 class MediaOut(BaseModel):
-    id: int
-    patient_id: int
+    id: str
+    patient_id: str
     pieza_fdi: str
     tipo: str
     filename: str
     content_type: str
     notas: str | None
-    uploaded_by: int | None
+    uploaded_by: str | None
     created_at: datetime
     url: str
 
@@ -55,7 +55,7 @@ def _to_out(m: ToothMedia) -> MediaOut:
 
 @router.get("/{patient_id}", response_model=list[MediaOut])
 def list_media(
-    patient_id: int,
+    patient_id: str,
     pieza_fdi: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -70,7 +70,7 @@ def list_media(
 
 @router.post("/{patient_id}", response_model=MediaOut, status_code=201)
 async def upload_media(
-    patient_id: int,
+    patient_id: str,
     pieza_fdi: str = Form(...),
     tipo: str = Form("foto"),
     notas: str | None = Form(None),
@@ -120,7 +120,7 @@ async def upload_media(
 
 @router.get("/file/{media_id}")
 def get_file(
-    media_id: int,
+    media_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -135,7 +135,7 @@ def get_file(
 
 @router.delete("/{media_id}", status_code=204)
 def delete_media(
-    media_id: int,
+    media_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):

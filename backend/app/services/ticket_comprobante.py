@@ -145,10 +145,18 @@ def monto_en_letras(amount: float) -> str:
     return f"{palabras} CON {centavos:02d}/100 SOLES"
 
 
-def format_serie(transaction_id: int, serie: str | None = None) -> str:
+def format_serie(transaction_id: str | int, serie: str | None = None) -> str:
     profile = get_clinic_profile()
     prefix = (serie or profile.ticket_serie or "T001").strip().upper()
-    return f"{prefix}-{int(transaction_id):08d}"
+    raw = str(transaction_id).replace("-", "")
+    try:
+        n = int(raw[-8:], 16) % 100_000_000
+    except ValueError:
+        try:
+            n = int(transaction_id) % 100_000_000
+        except (TypeError, ValueError):
+            n = 0
+    return f"{prefix}-{n:08d}"
 
 
 def build_receipt_hash(payload: str) -> str:
@@ -166,7 +174,7 @@ def build_qr_payload(data: dict[str, Any]) -> str:
     Payload del QR: URL de consulta si hay PUBLIC_APP_URL,
     o cadena compacta con datos del comprobante.
     """
-    serie = data.get("serie") or format_serie(int(data.get("transaction_id") or 0))
+    serie = data.get("serie") or format_serie(data.get("transaction_id") or "0")
     base = (settings.PUBLIC_APP_URL or "").rstrip("/")
     if base:
         return f"{base}/caja?comprobante={serie}"
@@ -324,7 +332,7 @@ def build_comprobante_story(
     content_w = page_w - 2 * margin
     story: list = []
 
-    tx_id = int(data.get("transaction_id") or 0)
+    tx_id = data.get("transaction_id") or "0"
     serie = data.get("serie") or format_serie(tx_id)
     monto = float(data.get("monto") or 0)
     concepto = str(data.get("concepto") or "Servicio odontológico")

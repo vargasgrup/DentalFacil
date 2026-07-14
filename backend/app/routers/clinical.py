@@ -25,7 +25,7 @@ from app.odontogram.plans import normalize_plans, active_items
 router = APIRouter(prefix="/api/clinical", tags=["clinical"])
 
 
-def _get_or_create_record(db: Session, patient_id: int) -> ClinicalRecord:
+def _get_or_create_record(db: Session, patient_id: str) -> ClinicalRecord:
     patient = db.get(Patient, patient_id)
     if not patient:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
@@ -40,7 +40,7 @@ def _get_or_create_record(db: Session, patient_id: int) -> ClinicalRecord:
 
 @router.get("/{patient_id}/record", response_model=ClinicalRecordOut)
 def get_record(
-    patient_id: int,
+    patient_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -49,7 +49,7 @@ def get_record(
 
 @router.patch("/{patient_id}/record", response_model=ClinicalRecordOut)
 def update_record(
-    patient_id: int,
+    patient_id: str,
     payload: ClinicalRecordUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -75,7 +75,7 @@ def update_record(
 
 @router.patch("/{patient_id}/consentimiento", response_model=ClinicalRecordOut)
 def update_consentimiento(
-    patient_id: int,
+    patient_id: str,
     payload: ConsentimientoUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -111,7 +111,7 @@ def update_consentimiento(
 
 @router.get("/{patient_id}/evolution", response_model=list[ClinicalEvolutionEntryOut])
 def list_evolution(
-    patient_id: int,
+    patient_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -129,7 +129,7 @@ def list_evolution(
     status_code=status.HTTP_201_CREATED,
 )
 def create_evolution(
-    patient_id: int,
+    patient_id: str,
     payload: ClinicalEvolutionEntryCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -153,7 +153,7 @@ def create_evolution(
 
 @router.patch("/evolution/{entry_id}", response_model=ClinicalEvolutionEntryOut)
 def update_evolution(
-    entry_id: int,
+    entry_id: str,
     payload: ClinicalEvolutionEntryUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -170,8 +170,8 @@ def update_evolution(
 
 @router.delete("/{patient_id}/evolution/{entry_id}", status_code=204)
 def delete_evolution(
-    patient_id: int,
-    entry_id: int,
+    patient_id: str,
+    entry_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -186,7 +186,7 @@ def delete_evolution(
 
 @router.get("/{patient_id}/financial", response_model=FinancialSummary)
 def financial_summary(
-    patient_id: int,
+    patient_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):

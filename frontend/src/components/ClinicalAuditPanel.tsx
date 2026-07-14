@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 
 interface AuditRow {
-  id: number;
+  id: string;
   entity_type: string;
   entity_id: string | null;
   action: string;
@@ -14,7 +14,7 @@ interface AuditRow {
 }
 
 /** Trazabilidad legal — quién modificó qué y cuándo */
-export function ClinicalAuditPanel({ patientId }: { patientId: number }) {
+export function ClinicalAuditPanel({ patientId }: { patientId: string }) {
   const [rows, setRows] = useState<AuditRow[]>([]);
 
   const load = useCallback(async () => {

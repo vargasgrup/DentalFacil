@@ -78,7 +78,15 @@ def health():
     mig = migrations_status()
     db_connected = ping_database()
     tables_ok, tables_err = schema_ready() if db_connected else (False, None)
-    url_ok = settings.DATABASE_URL.startswith("postgresql+psycopg://") and "@127.0.0.1:1/" not in settings.DATABASE_URL
+    url = settings.DATABASE_URL or ""
+    url_ok = (
+        (
+            url.startswith("postgresql+psycopg://")
+            or url.startswith("postgresql://")
+            or url.startswith("sqlite:")
+        )
+        and "@127.0.0.1:1/" not in url
+    )
     ready = url_ok and db_connected and mig["ok"] and tables_ok
     return {
         "status": "ok" if ready else "degraded",

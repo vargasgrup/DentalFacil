@@ -5,7 +5,7 @@ import { apiFetch } from "@/lib/api";
 import { PERMANENT, TEMPORAL, type Denticion } from "@/lib/odontogramConditions";
 
 interface PerioRow {
-  id?: number;
+  id?: string;
   pieza_fdi: string;
   denticion: string;
   movilidad: number;
@@ -22,7 +22,7 @@ interface PerioRow {
 /**
  * Periodontograma vinculado al odontograma: movilidad, recesión, sondaje, sangrado/placa.
  */
-export function Periodontograma({ patientId }: { patientId: number }) {
+export function Periodontograma({ patientId }: { patientId: string }) {
   const [denticion, setDenticion] = useState<Denticion>("permanente");
   const [rows, setRows] = useState<Record<string, PerioRow>>({});
   const [pieza, setPieza] = useState("16");

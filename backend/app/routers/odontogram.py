@@ -39,8 +39,8 @@ class OdontogramEntryUpdate(BaseModel):
 
 
 class OdontogramEntryOut(BaseModel):
-    id: int
-    patient_id: int
+    id: str
+    patient_id: str
     pieza_fdi: str
     estado: str
     denticion: str = "permanente"
@@ -52,15 +52,15 @@ class OdontogramEntryOut(BaseModel):
 
 
 class ChangeLogOut(BaseModel):
-    id: int
-    patient_id: int
+    id: str
+    patient_id: str
     pieza_fdi: str
     denticion: str
     estado_antes: str | None
     estado_despues: str | None
     superficies_antes: dict | None
     superficies_despues: dict | None
-    user_id: int | None
+    user_id: str | None
     user_name: str | None = None
     accion: str
     changed_at: datetime
@@ -71,18 +71,18 @@ class ChangeLogOut(BaseModel):
 class SnapshotCreate(BaseModel):
     denticion: str = "permanente"
     label: str = "Estado de cita"
-    evolution_entry_id: int | None = None
+    evolution_entry_id: str | None = None
 
 
 class SnapshotOut(BaseModel):
-    id: int
-    patient_id: int
+    id: str
+    patient_id: str
     denticion: str
     label: str
     entries: list
-    taken_by: int | None
+    taken_by: str | None
     taken_by_name: str | None = None
-    evolution_entry_id: int | None
+    evolution_entry_id: str | None
     taken_at: datetime
 
     model_config = {"from_attributes": True}
@@ -121,14 +121,14 @@ def _surfaces_copy(raw: dict | None) -> dict:
 def _log_change(
     db: Session,
     *,
-    patient_id: int,
+    patient_id: str,
     pieza_fdi: str,
     denticion: str,
     estado_antes: str | None,
     estado_despues: str | None,
     superficies_antes: dict | None,
     superficies_despues: dict | None,
-    user_id: int | None,
+    user_id: str | None,
     accion: str,
 ) -> None:
     db.add(
@@ -181,7 +181,7 @@ def treatment_suggest(condicion_id: str, user: User = Depends(get_current_user))
 
 @router.get("/{patient_id}/history", response_model=list[ChangeLogOut])
 def get_history(
-    patient_id: int,
+    patient_id: str,
     pieza_fdi: str | None = Query(None),
     denticion: str = Query("permanente"),
     limit: int = Query(100, ge=1, le=500),
@@ -221,7 +221,7 @@ def get_history(
 
 @router.get("/{patient_id}/snapshots", response_model=list[SnapshotOut])
 def list_snapshots(
-    patient_id: int,
+    patient_id: str,
     denticion: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -253,7 +253,7 @@ def list_snapshots(
 
 @router.post("/{patient_id}/snapshots", response_model=SnapshotOut, status_code=201)
 def create_snapshot(
-    patient_id: int,
+    patient_id: str,
     payload: SnapshotCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -295,9 +295,9 @@ def create_snapshot(
 
 @router.get("/{patient_id}/compare")
 def compare_snapshots(
-    patient_id: int,
-    a: int = Query(..., description="Snapshot A id"),
-    b: int = Query(..., description="Snapshot B id"),
+    patient_id: str,
+    a: str = Query(..., description="Snapshot A id"),
+    b: str = Query(..., description="Snapshot B id"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -371,7 +371,7 @@ def compare_snapshots(
 
 @router.get("/{patient_id}", response_model=list[OdontogramEntryOut])
 def get_odontogram(
-    patient_id: int,
+    patient_id: str,
     denticion: str = Query("permanente"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -388,7 +388,7 @@ def get_odontogram(
 
 @router.put("/{patient_id}/{pieza_fdi}", response_model=OdontogramEntryOut)
 def upsert_entry(
-    patient_id: int,
+    patient_id: str,
     pieza_fdi: str,
     payload: OdontogramEntryUpdate,
     db: Session = Depends(get_db),
@@ -460,7 +460,7 @@ def upsert_entry(
 
 @router.delete("/{patient_id}", status_code=status.HTTP_204_NO_CONTENT)
 def clear_odontogram(
-    patient_id: int,
+    patient_id: str,
     denticion: str = Query("permanente"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -502,7 +502,7 @@ def clear_odontogram(
 
 @router.delete("/{patient_id}/{pieza_fdi}", status_code=204)
 def delete_entry(
-    patient_id: int,
+    patient_id: str,
     pieza_fdi: str,
     denticion: str = Query("permanente"),
     db: Session = Depends(get_db),

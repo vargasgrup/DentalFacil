@@ -22,21 +22,21 @@ import { Button } from "@/components/ui/Button";
 import { FichaQuickOpen } from "@/components/FichaQuickOpen";
 
 interface CashSession {
-  id: number;
+  id: string;
   monto_inicial: number;
   estado: string;
   abierta_en: string;
 }
 
 interface CashTransaction {
-  id: number;
+  id: string;
   tipo: string;
   monto: number;
 }
 
 interface Appointment {
-  id: number;
-  patient_id: number;
+  id: string;
+  patient_id: string;
   patient_nombre?: string;
   fecha_hora: string;
   duracion_minutos: number;
@@ -134,7 +134,7 @@ export default function DashboardPage() {
       apiFetch<Appointment[]>(
         `/api/appointments?start=${start.toISOString()}&end=${end.toISOString()}`
       ).catch(() => []),
-      apiFetch<{ id: number }[]>("/api/appointments/reminders/pending").catch(() => []),
+      apiFetch<{ id: string }[]>("/api/appointments/reminders/pending").catch(() => []),
     ]).then(async ([cs, appts, rems]) => {
       setCashSession(cs);
       setTodayAppts(

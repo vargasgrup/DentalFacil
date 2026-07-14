@@ -4,11 +4,19 @@ from __future__ import annotations
 
 from sqlalchemy import text
 
+from app.config import settings
 from app.database import engine
 
 
 def ensure_auth_schema() -> None:
-    """Idempotent DDL for JWT revocation columns/tables introduced in l9c0d1e2f3a4."""
+    """Idempotent DDL for JWT revocation (Postgres residual installs).
+
+    SQLite greenfield already creates the full UUID schema via metadata.create_all.
+    """
+    if settings.is_sqlite:
+        print("[dentalfacil] auth schema (SQLite): managed by create_all", flush=True)
+        return
+
     statements = [
         """
         ALTER TABLE users
@@ -18,7 +26,7 @@ def ensure_auth_schema() -> None:
         CREATE TABLE IF NOT EXISTS revoked_tokens (
             jti VARCHAR(64) PRIMARY KEY,
             expires_at TIMESTAMPTZ NOT NULL,
-            user_id INTEGER REFERENCES users(id),
+            user_id VARCHAR(36) REFERENCES users(id),
             reason VARCHAR(100),
             revoked_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )

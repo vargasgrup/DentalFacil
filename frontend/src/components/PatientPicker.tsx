@@ -6,7 +6,7 @@ import { apiFetch } from "@/lib/api";
 import { formatFichaCode } from "@/lib/ficha";
 
 export interface PickedPatient {
-  id: number;
+  id: string;
   numero_ficha: number;
   nombres: string;
   apellidos: string;

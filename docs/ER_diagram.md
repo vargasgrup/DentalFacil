@@ -1,5 +1,9 @@
 # Diagrama Entidad-Relación — M&D Odontología Especializada
 
+**Motor:** SQLite (archivo local; Postgres legacy opcional vía `DATABASE_URL`).  
+**PK/FK:** UUID `string(36)` en todas las tablas con `id` (generados en aplicación).  
+`revoked_tokens.jti` sigue siendo string JWT id; su FK `user_id` es UUID.
+
 ```mermaid
 erDiagram
     users ||--o{ clinical_records : "doctor_responsable"
@@ -22,7 +26,7 @@ erDiagram
     cash_sessions ||--o{ cash_transactions : "1:N"
 
     users {
-        int id PK
+        string id PK "UUID"
         string nombre
         string email UK
         string password_hash
@@ -35,13 +39,13 @@ erDiagram
     revoked_tokens {
         string jti PK
         datetime expires_at
-        int user_id FK
+        string user_id FK "UUID"
         string reason
         datetime revoked_at
     }
 
     patients {
-        int id PK
+        string id PK "UUID"
         int numero_ficha UK
         string nombres
         string apellidos
@@ -57,23 +61,23 @@ erDiagram
     }
 
     clinical_records {
-        int id PK
-        int patient_id FK
+        string id PK "UUID"
+        string patient_id FK "UUID"
         text motivo_consulta
         text antecedentes_medicos
         text antecedentes_odontologicos
         text diagnostico
         text plan_tratamiento
-        int doctor_responsable_id FK
+        string doctor_responsable_id FK "UUID"
         bool consentimiento_firmado
         datetime consentimiento_fecha
         datetime updated_at
     }
 
     clinical_evolution_entries {
-        int id PK
-        int patient_id FK
-        int doctor_id FK
+        string id PK "UUID"
+        string patient_id FK "UUID"
+        string doctor_id FK "UUID"
         string especialidad
         text tratamiento_descripcion
         numeric costo
@@ -85,8 +89,8 @@ erDiagram
     }
 
     odontogram_entries {
-        int id PK
-        int patient_id FK
+        string id PK "UUID"
+        string patient_id FK "UUID"
         string pieza_fdi
         string estado
         text notas
@@ -94,10 +98,10 @@ erDiagram
     }
 
     appointments {
-        int id PK
-        int patient_id FK
-        int doctor_id FK
-        datetime fecha_hora
+        string id PK "UUID"
+        string patient_id FK "UUID"
+        string doctor_id FK "UUID"
+        datetime fecha_hora "UTC"
         int duracion_minutos
         string estado
         text notas
@@ -106,20 +110,20 @@ erDiagram
     }
 
     appointment_reminders {
-        int id PK
-        int appointment_id FK
+        string id PK "UUID"
+        string appointment_id FK "UUID"
         string canal
         datetime programado_para
         text mensaje_sugerido
         datetime marcado_enviado_en
-        int marcado_enviado_por_user_id FK
+        string marcado_enviado_por_user_id FK "UUID"
         string estado
         datetime created_at
     }
 
     cash_sessions {
-        int id PK
-        int usuario_id FK
+        string id PK "UUID"
+        string usuario_id FK "UUID"
         numeric monto_inicial
         numeric monto_final
         datetime abierta_en
@@ -128,9 +132,9 @@ erDiagram
     }
 
     cash_transactions {
-        int id PK
-        int cash_session_id FK
-        int patient_id FK
+        string id PK "UUID"
+        string cash_session_id FK "UUID"
+        string patient_id FK "UUID"
         string tipo
         string concepto
         numeric monto
@@ -139,8 +143,8 @@ erDiagram
     }
 
     documents_generated {
-        int id PK
-        int patient_id FK
+        string id PK "UUID"
+        string patient_id FK "UUID"
         string tipo
         string formato
         string archivo_ref
@@ -148,3 +152,5 @@ erDiagram
         datetime created_at
     }
 ```
+
+Notas: tablas de odontograma histórico / periodontograma / media (`odontogram_change_log`, `odontogram_snapshots`, `periodontogram_entries`, `tooth_media`, `clinic_settings`) también usan UUID string como PK/FK; solo el tipo de ID cambió — la lógica clínica no.

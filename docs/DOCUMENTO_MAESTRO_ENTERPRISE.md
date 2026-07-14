@@ -1,7 +1,7 @@
 # Documento Maestro Enterprise - DentalSimple (M&D Odontologia Especializada)
 
-Version: v1.1 (sync post-fix críticos/altos — ver Changelog v1.1)
-Fecha: 2026-07-13
+Version: v1.2 (SQLite + UUID — ver Changelog v1.2)
+Fecha: 2026-07-14
 Repositorio analizado: `C:\PROYECTOS\DentalSimple`
 
 ## 1. Resumen Ejecutivo
@@ -28,7 +28,7 @@ Consolidar, en un solo artefacto tecnico, la arquitectura, inventario, flujos, r
 
 ### Arquitectura
 - Monorepo con frontend y backend desacoplados por API REST.
-- Persistencia central en PostgreSQL.
+- Persistencia central en **SQLite** (archivo local; Postgres opcional vía `DATABASE_URL`). PK/FK UUID string.
 - Scheduler embebido (APScheduler) para recordatorios.
 - Generacion documental PDF en backend (ReportLab).
 
@@ -59,7 +59,7 @@ Consolidar, en un solo artefacto tecnico, la arquitectura, inventario, flujos, r
 ### Arquitectura logica
 - Capa Presentacion: Next.js (paginas, layouts, componentes UI).
 - Capa Aplicacion: routers FastAPI + servicios de negocio.
-- Capa Dominio/Persistencia: modelos SQLAlchemy + PostgreSQL.
+- Capa Dominio/Persistencia: modelos SQLAlchemy + **SQLite** (UUID PK/FK).
 - Capa Integracion: WhatsApp por enlace `wa.me`, archivos media, logo clinica.
 
 ### Arquitectura fisica
@@ -189,7 +189,7 @@ scripts
 - Next.js 14 App Router + React 18 + TypeScript + Tailwind CSS.
 
 ### Backend
-- FastAPI + SQLAlchemy ORM + Alembic + PostgreSQL.
+- FastAPI + SQLAlchemy ORM + Alembic + **SQLite** (Postgres opcional).
 
 ### Frameworks
 - FastAPI (API REST), Next.js (SSR/CSR), Pydantic v2 (validacion).
@@ -1141,3 +1141,29 @@ Referencia: `PROMPT_FIX_CRITICOS_DENTALSIMPLE.md` (hallazgos críticos/altos de 
 | Anexo C.1 regenerado; ER con `revoked_tokens` / `token_version` | Docs alineadas al código real (sin retocar inventario odontograma) |
 
 Odontograma 2D / periodontograma: **sin cambios** (módulo cerrado).
+
+---
+
+## Changelog v1.2
+
+Fecha: 2026-07-14  
+Referencia: `PROMPT_MIGRACION_SQLITE_UUID_DENTALSIMPLE.md`, auditoría `MIGRATION_AUDIT_SQLITE.md`.
+
+**Motivo:** preparar instalación sin Docker ni daemon Postgres en 3 PCs del consultorio, y dejar IDs globales (UUID) listos para una futura sincronización multi-PC.
+
+| Antes | Después |
+|-------|---------|
+| PostgreSQL (TIMESTAMPTZ, SERIAL int PK) | **SQLite** archivo local (`sqlite:///./data/clinica.db`), WAL + `foreign_keys=ON` |
+| PK/FK enteras autoincrementales | **UUID `String(36)`** generados en aplicación |
+| `DATABASE_URL` Postgres por default | Default SQLite; Postgres queda opcional (legacy / transición) |
+
+| Cambio | Por qué |
+|--------|---------|
+| Modelos + routers/schemas/frontend tipados a `id: string` | FK y paths dejan de asumir entero |
+| Alembic `render_as_batch=True`; revisión `m0sqlite_uuid_baseline`; bootstrap `create_all` + stamp en SQLite nuevo | Histórico Alembic con JSONB/`now()` no es replayable en SQLite vacío |
+| Script ETL `backend/scripts/pg_to_sqlite_uuid.py` | Cutover de datos reales Postgres → SQLite con remapeo de FKs |
+| Citas: persistencia de `fecha_hora` en UTC (SQLite no conserva tz) | Solape y horarios siguen siendo correctos |
+| Docs: `ER_diagram.md`, `.env.example`, este changelog | Inventario alineado al código |
+
+**Fuera de alcance (explícito):** motor de sincronización entre PCs, backup Google Drive, rol `CAJERO`.  
+Odontograma / periodontograma: **solo esquema** (motor + tipo PK/FK); **sin** cambios de reglas clínicas ni UI.

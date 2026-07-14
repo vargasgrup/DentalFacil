@@ -13,7 +13,7 @@ import { ESPECIALIDADES_ODONTOLOGICAS } from "@/lib/especialidades";
 import { UbigeoSelect } from "@/components/UbigeoSelect";
 
 interface User {
-  id: number;
+  id: string;
   nombre: string;
   email: string;
   rol: string;

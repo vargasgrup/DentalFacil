@@ -109,7 +109,7 @@ def report_caja(
 def report_pacientes(
     start: datetime = Query(...),
     end: datetime = Query(...),
-    doctor_id: Optional[int] = Query(None),
+    doctor_id: Optional[str] = Query(None),
     fmt: Optional[str] = Query(None, regex="^(80mm|A5|A4)$"),
     csv_export: bool = Query(False),
     db: Session = Depends(get_db),

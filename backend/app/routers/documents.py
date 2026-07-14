@@ -47,7 +47,7 @@ def _calc_age(birthdate) -> str | None:
 
 @router.get("/comprobante/{transaction_id}")
 def download_comprobante(
-    transaction_id: int,
+    transaction_id: str,
     fmt: str = Query("80mm", regex="^(80mm|A5|A4)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -94,7 +94,7 @@ def download_comprobante(
 
 @router.get("/cierre-caja/{session_id}")
 def download_cierre_caja(
-    session_id: int,
+    session_id: str,
     fmt: str = Query("A5", regex="^(80mm|A5|A4)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -141,7 +141,7 @@ def download_cierre_caja(
 
 @router.get("/ficha/{patient_id}")
 def download_ficha(
-    patient_id: int,
+    patient_id: str,
     fmt: str = Query("A4", regex="^(80mm|A5|A4)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -232,7 +232,7 @@ def download_ficha(
 
 @router.get("/evolucion/{entry_id}")
 def download_evolucion(
-    entry_id: int,
+    entry_id: str,
     fmt: str = Query("A5", regex="^(80mm|A5|A4)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -267,7 +267,7 @@ def download_evolucion(
 
 @router.get("/consentimiento/{patient_id}")
 def download_consentimiento(
-    patient_id: int,
+    patient_id: str,
     fmt: str = Query("A4", regex="^(80mm|A5|A4)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -308,7 +308,7 @@ def download_consentimiento(
 
 @router.get("/presupuesto/{patient_id}")
 def download_presupuesto(
-    patient_id: int,
+    patient_id: str,
     plan_id: str | None = Query(None),
     fmt: str = Query("A4", regex="^(80mm|A5|A4)$"),
     db: Session = Depends(get_db),
@@ -360,7 +360,7 @@ def download_presupuesto(
 
 @router.post("/whatsapp-sent/{document_id}")
 def mark_whatsapp_sent(
-    document_id: int,
+    document_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -375,7 +375,7 @@ def mark_whatsapp_sent(
 
 def _register_document(
     db: Session,
-    patient_id: int | None,
+    patient_id: str | None,
     doc_type: str,
     fmt: str,
     filename: str,

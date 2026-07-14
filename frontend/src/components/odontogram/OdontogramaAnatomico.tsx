@@ -115,7 +115,7 @@ export function OdontogramaAnatomico({
   patientId,
   onProposeTreatment,
 }: {
-  patientId: number;
+  patientId: string;
   onProposeTreatment?: (item: PlanProposalItem) => void;
 }) {
   const api = useOdontogramPatient(patientId);
@@ -142,8 +142,8 @@ export function OdontogramaAnatomico({
   const [history, setHistory] = useState<ChangeLogEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [snapshots, setSnapshots] = useState<OdontogramSnapshot[]>([]);
-  const [snapA, setSnapA] = useState<number | "">("");
-  const [snapB, setSnapB] = useState<number | "">("");
+  const [snapA, setSnapA] = useState<string>("");
+  const [snapB, setSnapB] = useState<string>("");
   const [compare, setCompare] = useState<CompareResult | null>(null);
   const [mobileArch, setMobileArch] = useState<MobileArch>("both");
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -773,7 +773,7 @@ export function OdontogramaAnatomico({
               Estado A
               <select
                 value={snapA}
-                onChange={(e) => setSnapA(e.target.value ? Number(e.target.value) : "")}
+                onChange={(e) => setSnapA(e.target.value)}
                 className="mt-1 block w-56 rounded border border-slate-300 px-2 py-1.5 text-sm"
               >
                 <option value="">Seleccionar…</option>
@@ -788,7 +788,7 @@ export function OdontogramaAnatomico({
               Estado B
               <select
                 value={snapB}
-                onChange={(e) => setSnapB(e.target.value ? Number(e.target.value) : "")}
+                onChange={(e) => setSnapB(e.target.value)}
                 className="mt-1 block w-56 rounded border border-slate-300 px-2 py-1.5 text-sm"
               >
                 <option value="">Seleccionar…</option>
@@ -804,7 +804,7 @@ export function OdontogramaAnatomico({
               disabled={!snapA || !snapB || snapA === snapB}
               onClick={async () => {
                 if (!snapA || !snapB) return;
-                const res = await compareSnapshots(Number(snapA), Number(snapB));
+                const res = await compareSnapshots(snapA, snapB);
                 setCompare(res);
               }}
               className="border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"

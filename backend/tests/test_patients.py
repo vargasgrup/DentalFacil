@@ -21,7 +21,7 @@ def test_create_patient_creates_clinical_record(
     )
     assert resp.status_code == 201, resp.text
     patient = resp.json()
-    assert patient["id"] > 0
+    assert isinstance(patient["id"], str) and len(patient["id"]) == 36
     assert patient["numero_ficha"] >= 1
 
     record = client.get(

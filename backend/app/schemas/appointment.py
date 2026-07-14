@@ -5,8 +5,8 @@ from pydantic import BaseModel
 
 
 class AppointmentCreate(BaseModel):
-    patient_id: int
-    doctor_id: Optional[int] = None
+    patient_id: str
+    doctor_id: Optional[str] = None
     fecha_hora: datetime
     duracion_minutos: int = 30
     especialidad: Optional[str] = None
@@ -14,8 +14,8 @@ class AppointmentCreate(BaseModel):
 
 
 class AppointmentUpdate(BaseModel):
-    patient_id: Optional[int] = None
-    doctor_id: Optional[int] = None
+    patient_id: Optional[str] = None
+    doctor_id: Optional[str] = None
     fecha_hora: Optional[datetime] = None
     duracion_minutos: Optional[int] = None
     estado: Optional[str] = None
@@ -24,9 +24,9 @@ class AppointmentUpdate(BaseModel):
 
 
 class AppointmentOut(BaseModel):
-    id: int
-    patient_id: int
-    doctor_id: Optional[int] = None
+    id: str
+    patient_id: str
+    doctor_id: Optional[str] = None
     doctor_nombre: Optional[str] = None
     patient_nombre: Optional[str] = None
     fecha_hora: datetime
@@ -41,15 +41,15 @@ class AppointmentOut(BaseModel):
 
 
 class AppointmentReminderOut(BaseModel):
-    id: int
-    appointment_id: int
+    id: str
+    appointment_id: str
     canal: str
     programado_para: datetime
     mensaje_sugerido: str
     marcado_enviado_en: Optional[datetime] = None
     estado: str
     # Extra fields for display
-    patient_id: Optional[int] = None
+    patient_id: Optional[str] = None
     patient_nombre: Optional[str] = None
     patient_telefono: Optional[str] = None
     appointment_fecha: Optional[datetime] = None

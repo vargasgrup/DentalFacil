@@ -105,7 +105,7 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
     if is_token_revoked(db, token_data.get("jti")):
         raise HTTPException(status_code=401, detail="Token de refresco inválido")
 
-    user = db.get(User, int(token_data["sub"]))
+    user = db.get(User, token_data["sub"])
     if not user or not user.activo:
         raise HTTPException(status_code=401, detail="Usuario inválido")
 
@@ -164,7 +164,7 @@ users_router = APIRouter(prefix="/api/users", tags=["users"])
 
 
 class DoctorBrief(BaseModel):
-    id: int
+    id: str
     nombre: str
 
     model_config = {"from_attributes": True}
@@ -217,7 +217,7 @@ def create_user(
 
 @users_router.patch("/{user_id}", response_model=UserOut)
 def update_user(
-    user_id: int,
+    user_id: str,
     payload: UserUpdate,
     admin: User = Depends(require_roles(Rol.ADMIN)),
     db: Session = Depends(get_db),
@@ -245,7 +245,7 @@ def update_user(
 
 @users_router.post("/{user_id}/reset-password", status_code=204)
 def reset_password(
-    user_id: int,
+    user_id: str,
     payload: PasswordReset,
     admin: User = Depends(require_roles(Rol.ADMIN)),
     db: Session = Depends(get_db),

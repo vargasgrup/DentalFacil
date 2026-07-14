@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 
 interface MediaItem {
-  id: number;
+  id: string;
   pieza_fdi: string;
   tipo: string;
   filename: string;
@@ -34,7 +34,7 @@ export function ToothAttachments({
   patientId,
   pieza,
 }: {
-  patientId: number;
+  patientId: string;
   pieza: string;
 }) {
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -44,7 +44,7 @@ export function ToothAttachments({
     item: MediaItem;
     src: string;
   } | null>(null);
-  const [loadingId, setLoadingId] = useState<number | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {

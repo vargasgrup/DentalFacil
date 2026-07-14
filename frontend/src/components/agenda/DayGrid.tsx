@@ -20,7 +20,7 @@ import {
 import { formatTime } from "@/lib/datetime";
 
 interface Doctor {
-  id: number;
+  id: string;
   nombre: string;
 }
 
@@ -30,7 +30,7 @@ interface DayGridProps {
   doctors: Doctor[];
   openHHMM: string;
   closeHHMM: string;
-  onSlotClick: (date: Date, timeHHMM: string, doctorId?: number) => void;
+  onSlotClick: (date: Date, timeHHMM: string, doctorId?: string) => void;
   onAppointmentClick: (apt: CalendarAppointment) => void;
 }
 
@@ -99,8 +99,8 @@ function Column({
   dayStartMin: number;
   dayEndMin: number;
   marks: number[];
-  doctorId?: number;
-  onSlotClick: (date: Date, timeHHMM: string, doctorId?: number) => void;
+  doctorId?: string;
+  onSlotClick: (date: Date, timeHHMM: string, doctorId?: string) => void;
   onAppointmentClick: (apt: CalendarAppointment) => void;
 }) {
   const totalHeight = ((dayEndMin - dayStartMin) / 60) * HOUR_HEIGHT_PX;

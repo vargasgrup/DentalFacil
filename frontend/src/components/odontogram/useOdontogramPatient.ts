@@ -10,8 +10,8 @@ import {
 import { denticionOfPieza } from "@/lib/odontogramNumbering";
 
 export interface OdontogramEntry {
-  id?: number;
-  patient_id?: number;
+  id?: string;
+  patient_id?: string;
   pieza_fdi: string;
   estado: string;
   denticion?: string;
@@ -21,23 +21,23 @@ export interface OdontogramEntry {
 }
 
 export interface ChangeLogEntry {
-  id: number;
-  patient_id: number;
+  id: string;
+  patient_id: string;
   pieza_fdi: string;
   denticion: string;
   estado_antes: string | null;
   estado_despues: string | null;
   superficies_antes: Record<string, string | null> | null;
   superficies_despues: Record<string, string | null> | null;
-  user_id: number | null;
+  user_id: string | null;
   user_name: string | null;
   accion: string;
   changed_at: string;
 }
 
 export interface OdontogramSnapshot {
-  id: number;
-  patient_id: number;
+  id: string;
+  patient_id: string;
   denticion: string;
   label: string;
   entries: Array<{
@@ -46,15 +46,15 @@ export interface OdontogramSnapshot {
     superficies?: Record<string, string | null>;
     notas?: string | null;
   }>;
-  taken_by: number | null;
+  taken_by: string | null;
   taken_by_name: string | null;
-  evolution_entry_id: number | null;
+  evolution_entry_id: string | null;
   taken_at: string;
 }
 
 export interface CompareResult {
-  snapshot_a: { id: number; label: string; taken_at: string; denticion: string };
-  snapshot_b: { id: number; label: string; taken_at: string; denticion: string };
+  snapshot_a: { id: string; label: string; taken_at: string; denticion: string };
+  snapshot_b: { id: string; label: string; taken_at: string; denticion: string };
   diffs: Array<{
     pieza_fdi: string;
     status: "igual" | "cambio" | "solo_a" | "solo_b";
@@ -72,7 +72,7 @@ export function isMarked(estado: string | null | undefined) {
   return Boolean(estado && estado !== "sano");
 }
 
-export function useOdontogramPatient(patientId: number) {
+export function useOdontogramPatient(patientId: string) {
   const [denticion, setDenticion] = useState<Denticion>("permanente");
   const [tool, setTool] = useState<string>("caries");
   const [entries, setEntries] = useState<Record<string, OdontogramEntry>>({});
@@ -205,7 +205,7 @@ export function useOdontogramPatient(patientId: number) {
     }
   };
 
-  const compareSnapshots = async (a: number, b: number) => {
+  const compareSnapshots = async (a: string, b: string) => {
     return apiFetch<CompareResult>(
       `/api/odontogram/${patientId}/compare?a=${a}&b=${b}`
     );

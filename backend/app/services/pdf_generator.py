@@ -116,8 +116,10 @@ def _build_styles(fmt: str) -> dict:
 
 
 def _safe_filename(text: str) -> str:
-    """Sanitize text for use in filename."""
-    return "".join(c if c.isalnum() or c in "-_" else "_" for c in text)[:60]
+    """Sanitize text for Content-Disposition (ASCII-only; accents are not isalnum-safe across clients)."""
+    return "".join(
+        c if c.isascii() and (c.isalnum() or c in "-_") else "_" for c in text
+    )[:60]
 
 
 def _clinic_logo(fmt: str) -> RLImage | None:

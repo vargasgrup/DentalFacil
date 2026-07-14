@@ -1,4 +1,5 @@
 from app.models.user import User
+from app.models.revoked_token import RevokedToken
 from app.models.patient import Patient
 from app.models.clinical import (
     ClinicalRecord,
@@ -15,6 +16,7 @@ from app.models.clinic_settings import ClinicSettings
 
 __all__ = [
     "User",
+    "RevokedToken",
     "Patient",
     "ClinicalRecord",
     "ClinicalEvolutionEntry",

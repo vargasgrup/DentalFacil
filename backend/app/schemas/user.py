@@ -60,5 +60,9 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class LogoutRequest(BaseModel):
+    refresh_token: Optional[str] = None
+
+
 class SetupStatus(BaseModel):
     needs_setup: bool

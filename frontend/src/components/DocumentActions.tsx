@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { downloadAndOpenWhatsApp, isValidPhone } from "@/lib/whatsapp";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getToken } from "@/lib/api";
 import {
   getSavedPrintFormat,
   printPdfBlob,
@@ -73,7 +73,7 @@ function withFormat(url: string, format: PrintFormat): string {
 }
 
 async function fetchPdfBlob(url: string): Promise<{ blob: Blob; filename: string }> {
-  const token = localStorage.getItem("access_token");
+  const token = getToken();
   const resp = await fetch(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });

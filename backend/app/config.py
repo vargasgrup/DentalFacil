@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Rate limiting (auth endpoints)
+    RATE_LIMIT_LOGIN_PER_MINUTE: int = 10
+    RATE_LIMIT_SETUP_PER_MINUTE: int = 3
+
     # App
     APP_NAME: str = "M&D Odontología Especializada"
     # Keep as str so pydantic-settings does NOT json.loads the Railway env value.

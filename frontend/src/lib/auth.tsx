@@ -1,7 +1,15 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useRef, useCallback, ReactNode } from "react";
-import { apiFetch, setToken, clearToken, setRefreshToken, clearRefreshToken } from "./api";
+import {
+  apiFetch,
+  getToken,
+  setToken,
+  clearToken,
+  getRefreshToken,
+  setRefreshToken,
+  clearRefreshToken,
+} from "./api";
 import { looksLikeJwt, writeAuthCookie } from "./authCookie";
 
 interface User {
@@ -66,8 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const token =
-      typeof window !== "undefined" ? sessionStorage.getItem("access_token") : null;
+    const token = getToken();
 
     if (!looksLikeJwt(token)) {
       clearToken();
@@ -132,6 +139,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    const refresh = getRefreshToken();
+    // Fire-and-forget server-side revocation before clearing local tokens
+    void apiFetch("/api/auth/logout", {
+      method: "POST",
+      body: JSON.stringify(refresh ? { refresh_token: refresh } : {}),
+    }).catch(() => {});
     clearToken();
     clearRefreshToken();
     setUser(null);

@@ -1,20 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_roles
+from app.core.rate_limit import limiter, login_limit_value, setup_limit_value
 from app.core.roles import Rol
 from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
     hash_password,
+    is_token_revoked,
+    revoke_token_payload,
     verify_password,
 )
 from app.database import get_db
 from app.models import User
 from app.schemas.user import (
     LoginRequest,
+    LogoutRequest,
     PasswordChange,
     PasswordReset,
     RefreshRequest,
@@ -30,13 +34,25 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def _user_tokens(user: User) -> TokenResponse:
-    access = create_access_token(str(user.id), user.rol)
-    refresh = create_refresh_token(str(user.id))
+    ver = int(user.token_version or 0)
+    access = create_access_token(str(user.id), user.rol, ver)
+    refresh = create_refresh_token(str(user.id), ver)
     return TokenResponse(
         access_token=access,
         refresh_token=refresh,
         user=UserOut.model_validate(user),
     )
+
+
+def _bump_token_version(user: User) -> None:
+    user.token_version = int(user.token_version or 0) + 1
+
+
+def _safe_decode(token: str) -> dict | None:
+    try:
+        return decode_token(token)
+    except Exception:
+        return None
 
 
 @router.get("/setup-status", response_model=SetupStatus)
@@ -47,7 +63,8 @@ def setup_status(db: Session = Depends(get_db)):
 
 
 @router.post("/setup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def setup(payload: SetupRequest, db: Session = Depends(get_db)):
+@limiter.limit(setup_limit_value)
+def setup(request: Request, payload: SetupRequest, db: Session = Depends(get_db)):
     """Create the first ADMIN user. Only works when no users exist."""
     if db.query(User).count() > 0:
         raise HTTPException(status_code=400, detail="El sistema ya está configurado")
@@ -65,7 +82,8 @@ def setup(payload: SetupRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit(login_limit_value)
+def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
@@ -78,20 +96,52 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
     try:
         token_data = decode_token(payload.refresh_token)
-        if token_data.get("type") != "refresh":
-            raise HTTPException(status_code=401, detail="Token inválido")
-        user = db.get(User, int(token_data["sub"]))
-        if not user or not user.activo:
-            raise HTTPException(status_code=401, detail="Usuario inválido")
     except Exception:
         raise HTTPException(status_code=401, detail="Token de refresco inválido")
+
+    if token_data.get("type") != "refresh":
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+    if is_token_revoked(db, token_data.get("jti")):
+        raise HTTPException(status_code=401, detail="Token de refresco inválido")
+
+    user = db.get(User, int(token_data["sub"]))
+    if not user or not user.activo:
+        raise HTTPException(status_code=401, detail="Usuario inválido")
+
+    token_ver = int(token_data.get("ver") or 0)
+    if token_ver != int(user.token_version or 0):
+        raise HTTPException(status_code=401, detail="Token de refresco inválido")
+
+    revoke_token_payload(db, token_data, user_id=user.id, reason="refresh_rotated")
+    db.commit()
     return _user_tokens(user)
 
 
 @router.post("/logout", status_code=204)
-def logout():
-    # Stateless JWT: client just discards the token.
-    # No server-side session to invalidate.
+def logout(
+    payload: LogoutRequest = LogoutRequest(),
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Revoke access/refresh JTIs. Auth optional if refresh_token is sent in body."""
+    revoked_any = False
+
+    if authorization and authorization.lower().startswith("bearer "):
+        access_token = authorization.split(" ", 1)[1].strip()
+        access_payload = _safe_decode(access_token)
+        if access_payload and access_payload.get("type") == "access":
+            revoke_token_payload(db, access_payload, reason="logout")
+            revoked_any = True
+
+    if payload.refresh_token:
+        refresh_payload = _safe_decode(payload.refresh_token)
+        if refresh_payload and refresh_payload.get("type") == "refresh":
+            revoke_token_payload(db, refresh_payload, reason="logout")
+            revoked_any = True
+
+    if revoked_any:
+        db.commit()
     return None
 
 
@@ -104,6 +154,7 @@ def change_password(
     if not verify_password(payload.old_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Contraseña actual incorrecta")
     user.password_hash = hash_password(payload.new_password)
+    _bump_token_version(user)
     db.commit()
 
 
@@ -203,6 +254,7 @@ def reset_password(
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     user.password_hash = hash_password(payload.new_password)
+    _bump_token_version(user)
     db.commit()
 
 

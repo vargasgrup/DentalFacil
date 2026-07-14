@@ -1,10 +1,11 @@
 "use client";
 
 import { useAuth } from "@/lib/auth";
+import { getToken } from "@/lib/api";
+import { looksLikeJwt } from "@/lib/authCookie";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
-import { looksLikeJwt } from "@/lib/authCookie";
 
 /**
  * Client-side gate for authenticated app areas.
@@ -14,15 +15,12 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, refreshUser } = useAuth();
   const router = useRouter();
   const recovering = useRef(false);
+  const hasToken = looksLikeJwt(getToken());
 
   useEffect(() => {
     if (loading || user || recovering.current) return;
 
-    const token =
-      typeof window !== "undefined" ? sessionStorage.getItem("access_token") : null;
-
-    // Tras login con hard-nav, a veces el contexto aún no hidrató el usuario
-    // pero el token ya está en sessionStorage: intentar recuperarlo.
+    const token = getToken();
     if (looksLikeJwt(token)) {
       recovering.current = true;
       void refreshUser().finally(() => {
@@ -34,9 +32,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     router.replace("/");
   }, [user, loading, router, refreshUser]);
 
-  if (loading || (!user && looksLikeJwt(
-    typeof window !== "undefined" ? sessionStorage.getItem("access_token") : null
-  ))) {
+  if (loading || (!user && hasToken)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-muted">
         <Loader2 className="h-6 w-6 animate-spin text-brand-500" aria-label="Verificando sesión" />

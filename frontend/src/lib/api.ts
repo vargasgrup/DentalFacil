@@ -70,7 +70,8 @@ function storageRemove(key: string) {
   localStorage.removeItem(key);
 }
 
-function getToken(): string | null {
+/** Punto único de lectura del access token (sessionStorage → cookie legada). */
+export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   const fromStore = storageGet(ACCESS_KEY);
   if (looksLikeJwt(fromStore)) return fromStore;

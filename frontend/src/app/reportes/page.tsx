@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PageContainer } from "@/components/ui/PageContainer";
 import { Input } from "@/components/Input";
 import { DocumentActions } from "@/components/DocumentActions";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getToken } from "@/lib/api";
 
 type ReportType = "caja" | "pacientes" | "tratamientos";
 
@@ -53,7 +53,7 @@ export default function ReportesPage() {
     if (!start || !end) return;
     const startIso = new Date(start + "T00:00:00").toISOString();
     const endIso = new Date(end + "T23:59:59").toISOString();
-    const token = localStorage.getItem("access_token");
+    const token = getToken();
     fetch(`/api/reports/${type}?start=${startIso}&end=${endIso}&csv_export=true`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })

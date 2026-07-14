@@ -11,6 +11,8 @@
  *  3. User manually attaches the downloaded file in the chat (cannot be automated)
  */
 
+import { getToken } from "@/lib/api";
+
 export function buildWhatsAppUrl(telefono: string | undefined | null, mensaje: string): string | null {
   if (!telefono) return null;
   let num = telefono.replace(/\D/g, "");
@@ -44,7 +46,7 @@ export async function downloadAndOpenWhatsApp(
 ): Promise<{ success: boolean; error?: string }> {
   // Step A: Download the PDF
   try {
-    const token = localStorage.getItem("access_token");
+    const token = getToken();
     const resp = await fetch(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });

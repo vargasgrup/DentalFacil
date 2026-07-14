@@ -8,6 +8,7 @@ erDiagram
     users ||--o{ cash_sessions : "usuario"
     users ||--o{ appointment_reminders : "marcado_enviado_por"
     users ||--o{ documents_generated : "indirecto"
+    users ||--o{ revoked_tokens : "user_id"
 
     patients ||--|| clinical_records : "1:1"
     patients ||--o{ clinical_evolution_entries : "1:N"
@@ -27,7 +28,16 @@ erDiagram
         string password_hash
         string rol
         bool activo
+        int token_version
         datetime created_at
+    }
+
+    revoked_tokens {
+        string jti PK
+        datetime expires_at
+        int user_id FK
+        string reason
+        datetime revoked_at
     }
 
     patients {

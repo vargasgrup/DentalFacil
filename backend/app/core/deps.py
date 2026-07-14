@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.core.roles import Rol
-from app.core.security import decode_token
+from app.core.security import decode_token, is_token_revoked
 from app.database import get_db
 from app.models import User
 
@@ -24,11 +24,22 @@ def get_current_user(
         if payload.get("type") != "access":
             raise cred_exc
         user_id = int(payload["sub"])
+    except HTTPException:
+        raise
     except Exception:
         raise cred_exc
+
+    if is_token_revoked(db, payload.get("jti")):
+        raise cred_exc
+
     user = db.get(User, user_id)
     if not user or not user.activo:
         raise cred_exc
+
+    token_ver = int(payload.get("ver") or 0)
+    if token_ver != int(user.token_version or 0):
+        raise cred_exc
+
     return user
 
 

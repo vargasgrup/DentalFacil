@@ -1,4 +1,4 @@
-.PHONY: dev backend frontend db migrate db-shell install
+.PHONY: dev backend frontend db migrate db-shell install test-backend
 
 db:
 	docker compose up -d db
@@ -24,6 +24,9 @@ db-shell:
 install:
 	cd backend && pip install -r requirements.txt
 	cd frontend && npm install
+
+test-backend:
+	cd backend && pip install -q -r requirements-dev.txt && python -m pytest -q
 
 dev:
 	@echo "Inicia db, backend y frontend en terminales separadas:"

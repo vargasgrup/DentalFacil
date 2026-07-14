@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { KeyRound, UserX, UserCheck, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { apiFetch, apiUpload } from "@/lib/api";
+import { apiFetch, apiUpload, getToken } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -192,7 +192,7 @@ export default function ConfiguracionPage() {
       const cfg = await apiFetch<ClinicProfile>("/api/config/clinic");
       setClinic(cfg);
       if (cfg.logo_url) {
-        const token = localStorage.getItem("access_token");
+        const token = getToken();
         const res = await fetch(cfg.logo_url, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
@@ -255,7 +255,7 @@ export default function ConfiguracionPage() {
       fd.append("file", file);
       const updated = await apiUpload<ClinicProfile>("/api/config/clinic/logo", fd);
       setClinic(updated);
-      const token = localStorage.getItem("access_token");
+      const token = getToken();
       const res = await fetch(updated.logo_url || "/api/config/clinic/logo-file", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });

@@ -177,7 +177,11 @@ export async function apiFetch<T>(
     try {
       const body = await res.json();
       msg = formatApiDetail(body.detail ?? body.message, msg);
-    } catch { /* ignore */ }
+    } catch {
+      if (res.status >= 500) {
+        msg = "Error del servidor. Espera unos segundos e intenta de nuevo.";
+      }
+    }
 
     // Solo rutas ya autenticadas hablan de "sesión expirada"
     if (res.status === 401 && !isAuthCredentialPath(path)) {

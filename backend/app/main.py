@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import settings
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
@@ -31,10 +32,17 @@ def _run_migrations() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.services.clinic_profile import ensure_uploads_dir
+    from app.ensure_auth_schema import ensure_auth_schema
 
     print("[dentalfacil] lifespan start", flush=True)
     ensure_uploads_dir()
     _run_migrations()
+    # Guarantees JWT revocation columns even if Alembic stamped head without applying them.
+    try:
+        ensure_auth_schema()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[dentalfacil] ensure_auth_schema FAILED: {exc}", flush=True)
+        raise
 
     scheduler = BackgroundScheduler()
     # Delay first run so boot/healthcheck are not competing with DB work
@@ -59,6 +67,7 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

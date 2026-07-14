@@ -32,6 +32,9 @@ def schema_ready() -> tuple[bool, str | None]:
             conn.execute(
                 text("SELECT observaciones, plan_tratamiento FROM clinical_records LIMIT 1")
             )
+            # Auth / JWT revocation (l9c0d1e2f3a4) — required for login
+            conn.execute(text("SELECT token_version FROM users LIMIT 1"))
+            conn.execute(text("SELECT 1 FROM revoked_tokens LIMIT 1"))
         return True, None
     except Exception as exc:
         return False, str(exc)

@@ -24,8 +24,15 @@ def main() -> None:
         safe = db.split("@")[-1] if "@" in db else "(set)"
         print(f"[dentalfacil] DATABASE_URL host/db = {safe}", flush=True)
         from app.migrate import run_migrations_blocking
+        from app.ensure_auth_schema import ensure_auth_schema
 
         run_migrations_blocking()
+        try:
+            ensure_auth_schema()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[dentalfacil] ensure_auth_schema FAILED: {exc}", flush=True)
+            traceback.print_exc()
+            sys.exit(1)
 
     try:
         import uvicorn

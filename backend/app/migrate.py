@@ -62,12 +62,14 @@ def run_migrations_blocking(retries: int = 3) -> bool:
                         _migrations_error = None
                         print("[dentalfacil] migrations ok after stamp+upgrade", flush=True)
                         return True
+                    # NUNCA stamp a "head" solo porque el esquema clínico base existe:
+                    # eso salta revisiones nuevas (ej. revoked_tokens / token_version).
                     if ready:
-                        print("[dentalfacil] stamping head (schema already ready)", flush=True)
-                        command.stamp(cfg, "head")
-                        _migrations_ok = True
-                        _migrations_error = None
-                        return True
+                        print(
+                            "[dentalfacil] schema_ready but duplicate-column mid-upgrade; "
+                            "NOT stamping head — re-raise for retry/manual fix",
+                            flush=True,
+                        )
                 except Exception as stamp_exc:  # noqa: BLE001
                     print(f"[dentalfacil] stamp recovery failed: {stamp_exc}", flush=True)
                     _migrations_error = f"{err} | stamp: {stamp_exc}"

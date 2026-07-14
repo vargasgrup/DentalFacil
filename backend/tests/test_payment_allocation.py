@@ -95,3 +95,42 @@ def test_payment_allocates_to_evolution_and_plan(
     assert float(f["pagado_total"]) == 40.0
     assert float(f["saldo"]) == 60.0
     assert float(f["a_cuenta_clinico"]) == 40.0
+
+
+def test_payment_auto_opens_caja_when_closed(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    patient: dict,
+):
+    """Registrar pago must work even if no caja session was opened first."""
+    sess = client.get("/api/cash/session", headers=admin_headers)
+    assert sess.status_code == 200
+    assert sess.json() is None
+
+    pay = client.post(
+        "/api/cash/transactions",
+        headers=admin_headers,
+        json={
+            "patient_id": patient["id"],
+            "tipo": "ingreso",
+            "concepto": "Abono sin caja previa",
+            "monto": 25.0,
+            "metodo_pago": "efectivo",
+            "allocate": True,
+        },
+    )
+    assert pay.status_code == 201, pay.text
+    assert pay.json()["cash_session_id"]
+
+    opened = client.get("/api/cash/session", headers=admin_headers)
+    assert opened.status_code == 200
+    assert opened.json() is not None
+    assert opened.json()["estado"] == "abierta"
+    assert float(opened.json()["monto_inicial"]) == 0.0
+
+    fin = client.get(
+        f"/api/clinical/{patient['id']}/financial",
+        headers=admin_headers,
+    )
+    assert fin.status_code == 200
+    assert float(fin.json()["pagado_total"]) == 25.0

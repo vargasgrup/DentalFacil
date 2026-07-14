@@ -202,6 +202,10 @@ export default function FichaClinicaPage() {
   const [payMetodo, setPayMetodo] = useState("efectivo");
   const [payTarget, setPayTarget] = useState("auto"); // auto | evolution:<id> | plan:<id>
   const [paymentTargets, setPaymentTargets] = useState<PaymentTarget[]>([]);
+  const [paySaving, setPaySaving] = useState(false);
+  const [payError, setPayError] = useState("");
+  const [payInfo, setPayInfo] = useState("");
+  const [cashOpen, setCashOpen] = useState<boolean | null>(null);
   const [allergyInput, setAllergyInput] = useState("");
 
   const loadPayments = useCallback(async () => {
@@ -268,15 +272,50 @@ export default function FichaClinicaPage() {
 
   const refreshFinancial = async () => {
     try {
-      const [f, targets] = await Promise.all([
+      const [f, targets, session] = await Promise.all([
         apiFetch<FinancialSummary>(`/api/clinical/${patientId}/financial`),
         apiFetch<{ targets: PaymentTarget[] }>(
           `/api/clinical/${patientId}/payment-targets`
         ),
+        apiFetch<{ id: string; estado: string } | null>("/api/cash/session").catch(
+          () => null
+        ),
       ]);
       setFinancial(f);
       setPaymentTargets(targets.targets || []);
+      setCashOpen(Boolean(session && session.estado === "abierta"));
       await loadPayments();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const refreshClinicalMoney = async () => {
+    const [evo, fin, targets, pays, session] = await Promise.all([
+      apiFetch<EvolutionEntry[]>(`/api/clinical/${patientId}/evolution`),
+      apiFetch<FinancialSummary>(`/api/clinical/${patientId}/financial`),
+      apiFetch<{ targets: PaymentTarget[] }>(
+        `/api/clinical/${patientId}/payment-targets`
+      ).catch(() => ({ targets: [] as PaymentTarget[] })),
+      apiFetch<PaymentTx[]>(`/api/cash/transactions/patient/${patientId}`).catch(
+        () => [] as PaymentTx[]
+      ),
+      apiFetch<{ id: string; estado: string } | null>("/api/cash/session").catch(
+        () => null
+      ),
+    ]);
+    setEvolution(evo);
+    setFinancial(fin);
+    setPaymentTargets(targets.targets || []);
+    setPayments(pays);
+    setCashOpen(Boolean(session && session.estado === "abierta"));
+    // Keep plan economics in sync after allocation
+    try {
+      const r = await apiFetch<ClinicalRecord>(
+        `/api/clinical/${patientId}/record`
+      );
+      setRecord(r);
+      setPlanBundle(normalizePlans(r.plan_tratamiento));
     } catch {
       /* ignore */
     }
@@ -285,9 +324,36 @@ export default function FichaClinicaPage() {
   const openPaymentForm = async () => {
     const next = !showPayment;
     setShowPayment(next);
+    setPayError("");
+    setPayInfo("");
     if (next) {
       setPayTarget("auto");
       await refreshFinancial();
+    }
+  };
+
+  const ensureCashSessionOpen = async (): Promise<void> => {
+    const session = await apiFetch<{ id: string; estado: string } | null>(
+      "/api/cash/session"
+    );
+    if (session && session.estado === "abierta") {
+      setCashOpen(true);
+      return;
+    }
+    try {
+      await apiFetch("/api/cash/session/open", {
+        method: "POST",
+        body: JSON.stringify({ monto_inicial: 0 }),
+      });
+      setCashOpen(true);
+      setPayInfo("Se abrió la caja automáticamente (monto inicial S/ 0.00).");
+    } catch (err: any) {
+      // Race: another tab/user opened caja between check and open
+      if (/Ya hay una caja/i.test(String(err?.message || ""))) {
+        setCashOpen(true);
+        return;
+      }
+      throw err;
     }
   };
 
@@ -462,14 +528,18 @@ export default function FichaClinicaPage() {
   const registerPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setPayError("");
     const monto = parseFloat(payMonto);
-    if (!monto || monto <= 0) {
-      setError("Ingresa un monto válido mayor a cero.");
+    if (!Number.isFinite(monto) || monto <= 0) {
+      setPayError("Ingresa un monto válido mayor a cero.");
       return;
     }
+    setPaySaving(true);
     try {
-      let evolution_entry_id: string | null = null;
-      let plan_item_ref: string | null = null;
+      await ensureCashSessionOpen();
+
+      let evolution_entry_id: string | undefined;
+      let plan_item_ref: string | undefined;
       if (payTarget.startsWith("evolution:")) {
         evolution_entry_id = payTarget.slice("evolution:".length);
       } else if (payTarget.startsWith("plan:")) {
@@ -477,43 +547,55 @@ export default function FichaClinicaPage() {
       }
 
       const targetMeta = paymentTargets.find((t) =>
-        payTarget === "auto"
-          ? false
-          : payTarget === `${t.kind}:${t.id}`
+        payTarget === "auto" ? false : payTarget === `${t.kind}:${t.id}`
       );
       const concepto =
-        payConcepto ||
+        (payConcepto || "").trim() ||
         (targetMeta
           ? `Abono — ${targetMeta.label}${
               targetMeta.pieza_fdi ? ` (pieza ${targetMeta.pieza_fdi})` : ""
             }`
           : "Pago de tratamiento");
 
-      await apiFetch("/api/cash/transactions", {
-        method: "POST",
-        body: JSON.stringify({
-          patient_id: patientId,
-          tipo: "ingreso",
-          concepto,
-          monto,
-          metodo_pago: payMetodo,
-          allocate: true,
-          evolution_entry_id,
-          plan_item_ref,
-          pieza_fdi: targetMeta?.pieza_fdi || null,
-        }),
-      });
+      const payload: Record<string, unknown> = {
+        patient_id: patientId,
+        tipo: "ingreso",
+        concepto,
+        monto,
+        metodo_pago: payMetodo,
+        allocate: true,
+      };
+      if (evolution_entry_id) payload.evolution_entry_id = evolution_entry_id;
+      if (plan_item_ref) payload.plan_item_ref = plan_item_ref;
+      if (targetMeta?.pieza_fdi) payload.pieza_fdi = targetMeta.pieza_fdi;
+
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 45000);
+      try {
+        await apiFetch("/api/cash/transactions", {
+          method: "POST",
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
       setShowPayment(false);
       setPayMonto("");
       setPayConcepto("");
       setPayTarget("auto");
-      await loadData();
+      setPayInfo("");
+      // Soft refresh — avoid full-page skeleton (felt like a hang)
+      await refreshClinicalMoney();
     } catch (err: any) {
-      setError(
-        err.message?.includes("caja")
-          ? `${err.message} Ve a Caja para abrir una sesión.`
-          : err.message
-      );
+      const msg = String(err?.message || "No se pudo registrar el pago");
+      const friendly = /caja/i.test(msg)
+        ? `${msg} Abre Caja o reintenta: se intentará abrir automáticamente.`
+        : msg;
+      setPayError(friendly);
+      setError(friendly);
+    } finally {
+      setPaySaving(false);
     }
   };
 
@@ -1602,9 +1684,25 @@ export default function FichaClinicaPage() {
             >
               <h3 className="font-medium text-slate-700">Registrar pago</h3>
               <p className="text-help text-slate-400">
-                Requiere caja abierta. El monto entra a Caja y actualiza A cuenta / Saldo del
-                destino clínico (FIFO automático o línea elegida).
+                {cashOpen === false
+                  ? "No hay caja abierta: al registrar se abrirá automáticamente (monto inicial S/ 0)."
+                  : cashOpen === true
+                    ? "Caja abierta. El monto entra a Caja y actualiza A cuenta / Saldo del destino clínico."
+                    : "El monto entra a Caja y actualiza A cuenta / Saldo (FIFO automático o línea elegida). Si la caja está cerrada, se abrirá al registrar."}
               </p>
+              {payError && (
+                <p
+                  role="alert"
+                  className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-800"
+                >
+                  {payError}
+                </p>
+              )}
+              {payInfo && !payError && (
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                  {payInfo}
+                </p>
+              )}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <Input
                   label="Monto (S/)"
@@ -1614,6 +1712,7 @@ export default function FichaClinicaPage() {
                   value={payMonto}
                   onChange={(e) => setPayMonto(e.target.value)}
                   required
+                  disabled={paySaving}
                 />
                 <label className="block sm:col-span-1 lg:col-span-1">
                   <span className="mb-1 block text-label text-slate-700">
@@ -1621,6 +1720,7 @@ export default function FichaClinicaPage() {
                   </span>
                   <select
                     value={payTarget}
+                    disabled={paySaving}
                     onChange={(e) => {
                       setPayTarget(e.target.value);
                       const t = paymentTargets.find(
@@ -1667,6 +1767,7 @@ export default function FichaClinicaPage() {
                   <span className="mb-1 block text-label text-slate-700">Método</span>
                   <select
                     value={payMetodo}
+                    disabled={paySaving}
                     onChange={(e) => setPayMetodo(e.target.value)}
                     className={fieldClass}
                   >
@@ -1684,7 +1785,9 @@ export default function FichaClinicaPage() {
                   abono del paciente (podrás asignarlo cuando existan costos).
                 </p>
               )}
-              <Button type="submit">Registrar</Button>
+              <Button type="submit" loading={paySaving} disabled={paySaving}>
+                {paySaving ? "Registrando…" : "Registrar"}
+              </Button>
             </form>
           )}
 

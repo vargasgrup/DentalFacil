@@ -156,15 +156,31 @@ def list_patient_payments(
     return [_tx_to_out(t, db) for t in txs]
 
 
+def _ensure_open_session(db: Session, user: User) -> CashSession:
+    """Return open caja, creating one with monto_inicial=0 if needed.
+
+    Clinical «Registrar pago» must not hang or fail silently when caja was never
+    opened that day — auto-open keeps money flow continuous on Railway / local.
+    """
+    session = _get_open_session(db)
+    if session:
+        return session
+    session = CashSession(
+        usuario_id=user.id,
+        monto_inicial=0,
+        estado="abierta",
+    )
+    db.add(session)
+    db.flush()
+    return session
+
+
 @router.post("/transactions", response_model=CashTransactionOut, status_code=status.HTTP_201_CREATED)
 def create_transaction(
     payload: CashTransactionCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    session = _get_open_session(db)
-    if not session:
-        raise HTTPException(status_code=400, detail="No hay caja abierta. Abre caja primero.")
     if payload.tipo not in ("ingreso", "egreso"):
         raise HTTPException(status_code=400, detail="Tipo debe ser 'ingreso' o 'egreso'")
     if payload.patient_id and not db.get(Patient, payload.patient_id):
@@ -172,8 +188,10 @@ def create_transaction(
     if float(payload.monto) <= 0:
         raise HTTPException(status_code=400, detail="El monto debe ser mayor a cero")
 
-    plan_ref = payload.plan_item_ref
-    evo_id = payload.evolution_entry_id
+    session = _ensure_open_session(db, user)
+
+    plan_ref = (payload.plan_item_ref or "").strip() or None
+    evo_id = (payload.evolution_entry_id or "").strip() or None
     tx = CashTransaction(
         cash_session_id=session.id,
         patient_id=payload.patient_id,
@@ -197,13 +215,20 @@ def create_transaction(
     ):
         from app.services.payment_allocation import allocate_ingreso
 
-        applied = allocate_ingreso(
-            db,
-            patient_id=payload.patient_id,
-            monto=float(payload.monto),
-            evolution_entry_id=evo_id,
-            plan_item_id=plan_ref,
-        )
+        try:
+            applied = allocate_ingreso(
+                db,
+                patient_id=payload.patient_id,
+                monto=float(payload.monto),
+                evolution_entry_id=evo_id,
+                plan_item_id=plan_ref,
+            )
+        except Exception as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"El pago no pudo aplicarse al plan/evolución: {exc}",
+            ) from exc
         if applied:
             allocated_total = round(sum(a.amount for a in applied), 2)
             allocations_out = [
@@ -231,7 +256,14 @@ def create_transaction(
                             tx.plan_item_ref = entry.plan_item_id
                             break
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"No se pudo guardar el pago: {exc}",
+        ) from exc
     db.refresh(tx)
     return _tx_to_out(
         tx, db, allocated_total=allocated_total, allocations=allocations_out

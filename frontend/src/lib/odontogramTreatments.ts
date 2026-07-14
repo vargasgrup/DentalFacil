@@ -49,6 +49,7 @@ export interface PlanProposalItem {
   item: string;
   cantidad: number;
   costo_unitario: number;
+  a_cuenta?: number;
   estado: string;
   pieza_fdi: string;
   condicion_id: string;

@@ -36,9 +36,13 @@ class ClinicalEvolutionEntry(Base):
     doctor_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"))
     especialidad: Mapped[str | None] = mapped_column(String(80))
     tratamiento_descripcion: Mapped[str] = mapped_column(Text)
+    pieza_fdi: Mapped[str | None] = mapped_column(String(4))
+    cantidad: Mapped[float] = mapped_column(Numeric(10, 2), default=1)
+    costo_unitario: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     costo: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     a_cuenta: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     estado: Mapped[str] = mapped_column(String(20), default="pendiente")
+    plan_item_id: Mapped[str | None] = mapped_column(String(40))
     proxima_cita_fecha: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fecha: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), default=datetime.utcnow

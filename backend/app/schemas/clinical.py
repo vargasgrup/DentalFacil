@@ -52,9 +52,13 @@ class ClinicalEvolutionEntryCreate(BaseModel):
     doctor_id: Optional[str] = None
     especialidad: Optional[str] = None
     tratamiento_descripcion: str
-    costo: float = 0
+    pieza_fdi: Optional[str] = None
+    cantidad: float = 1
+    costo_unitario: float = 0
+    costo: Optional[float] = None
     a_cuenta: float = 0
     estado: str = "pendiente"
+    plan_item_id: Optional[str] = None
     proxima_cita_fecha: Optional[datetime] = None
 
 
@@ -62,9 +66,13 @@ class ClinicalEvolutionEntryUpdate(BaseModel):
     doctor_id: Optional[str] = None
     especialidad: Optional[str] = None
     tratamiento_descripcion: Optional[str] = None
+    pieza_fdi: Optional[str] = None
+    cantidad: Optional[float] = None
+    costo_unitario: Optional[float] = None
     costo: Optional[float] = None
     a_cuenta: Optional[float] = None
     estado: Optional[str] = None
+    plan_item_id: Optional[str] = None
     proxima_cita_fecha: Optional[datetime] = None
 
 
@@ -74,14 +82,28 @@ class ClinicalEvolutionEntryOut(BaseModel):
     doctor_id: Optional[str] = None
     especialidad: Optional[str] = None
     tratamiento_descripcion: str
+    pieza_fdi: Optional[str] = None
+    cantidad: float = 1
+    costo_unitario: float = 0
     costo: float
     a_cuenta: float
     estado: str
+    plan_item_id: Optional[str] = None
     proxima_cita_fecha: Optional[datetime] = None
     fecha: datetime
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("cantidad", mode="before")
+    @classmethod
+    def _cantidad_default(cls, v):
+        return 1.0 if v is None else v
+
+    @field_validator("costo_unitario", mode="before")
+    @classmethod
+    def _unit_default(cls, v):
+        return 0.0 if v is None else v
 
 
 class FinancialSummary(BaseModel):

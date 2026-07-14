@@ -20,7 +20,7 @@ from app.schemas.clinical import (
     FinancialSummary,
 )
 from app.services.audit import log_audit
-from app.odontogram.plans import normalize_plans, active_items
+from app.odontogram.plans import normalize_plans
 
 router = APIRouter(prefix="/api/clinical", tags=["clinical"])
 
@@ -36,6 +36,40 @@ def _get_or_create_record(db: Session, patient_id: str) -> ClinicalRecord:
         db.commit()
         db.refresh(record)
     return record
+
+
+def _sync_plan_item_from_evolution(
+    db: Session, patient_id: str, entry: ClinicalEvolutionEntry
+) -> None:
+    """Mirror evolution economics back onto the linked plan item (presupuesto ↔ atención)."""
+    if not entry.plan_item_id:
+        return
+    record = (
+        db.query(ClinicalRecord).filter(ClinicalRecord.patient_id == patient_id).first()
+    )
+    if not record or not record.plan_tratamiento:
+        return
+    plans = normalize_plans(record.plan_tratamiento)
+    changed = False
+    for alt in plans.get("alternatives") or []:
+        for it in alt.get("items") or []:
+            if str(it.get("id") or "") != str(entry.plan_item_id):
+                continue
+            it["evolution_entry_id"] = entry.id
+            it["a_cuenta"] = float(entry.a_cuenta or 0)
+            it["estado"] = entry.estado or it.get("estado") or "pendiente"
+            it["cantidad"] = float(entry.cantidad or it.get("cantidad") or 1)
+            it["costo_unitario"] = float(
+                entry.costo_unitario
+                or it.get("costo_unitario")
+                or 0
+            )
+            if entry.pieza_fdi:
+                it["pieza_fdi"] = entry.pieza_fdi
+            changed = True
+            break
+    if changed:
+        record.plan_tratamiento = plans
 
 
 @router.get("/{patient_id}/record", response_model=ClinicalRecordOut)
@@ -102,9 +136,6 @@ def update_consentimiento(
     db.commit()
     db.refresh(record)
     return record
-    db.commit()
-    db.refresh(record)
-    return record
 
 
 # --- Evolution entries ---
@@ -135,17 +166,30 @@ def create_evolution(
     user: User = Depends(get_current_user),
 ):
     _get_or_create_record(db, patient_id)  # ensure patient + record exist
+    cantidad = float(payload.cantidad or 1) or 1.0
+    unit = float(payload.costo_unitario or 0)
+    costo = float(payload.costo) if payload.costo is not None else cantidad * unit
+    if unit == 0 and costo and cantidad:
+        unit = costo / cantidad
+    a_cuenta = min(float(payload.a_cuenta or 0), costo)
     entry = ClinicalEvolutionEntry(
         patient_id=patient_id,
         doctor_id=payload.doctor_id or user.id,
         especialidad=payload.especialidad,
         tratamiento_descripcion=payload.tratamiento_descripcion,
-        costo=payload.costo,
-        a_cuenta=payload.a_cuenta,
+        pieza_fdi=payload.pieza_fdi,
+        cantidad=cantidad,
+        costo_unitario=unit,
+        costo=costo,
+        a_cuenta=a_cuenta,
         estado=payload.estado,
+        plan_item_id=payload.plan_item_id,
         proxima_cita_fecha=payload.proxima_cita_fecha,
     )
     db.add(entry)
+    db.flush()
+    if payload.plan_item_id:
+        _sync_plan_item_from_evolution(db, patient_id, entry)
     db.commit()
     db.refresh(entry)
     return entry
@@ -161,8 +205,26 @@ def update_evolution(
     entry = db.get(ClinicalEvolutionEntry, entry_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Entrada no encontrada")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    for field, value in data.items():
         setattr(entry, field, value)
+    # Keep costo coherent with qty × unit when either changes
+    if any(k in data for k in ("cantidad", "costo_unitario", "costo")):
+        cantidad = float(entry.cantidad or 1) or 1.0
+        unit = float(entry.costo_unitario or 0)
+        if "costo" in data and data["costo"] is not None and "cantidad" not in data and "costo_unitario" not in data:
+            entry.costo = float(data["costo"])
+            if cantidad and not unit:
+                entry.costo_unitario = entry.costo / cantidad
+        else:
+            if unit == 0 and float(entry.costo or 0) and cantidad:
+                unit = float(entry.costo) / cantidad
+                entry.costo_unitario = unit
+            entry.costo = cantidad * float(entry.costo_unitario or 0)
+            entry.cantidad = cantidad
+    entry.a_cuenta = min(float(entry.a_cuenta or 0), float(entry.costo or 0))
+    if entry.plan_item_id:
+        _sync_plan_item_from_evolution(db, entry.patient_id, entry)
     db.commit()
     db.refresh(entry)
     return entry

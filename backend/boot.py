@@ -34,13 +34,15 @@ def main() -> None:
 
         from app.migrate import run_migrations_blocking
         from app.ensure_auth_schema import ensure_auth_schema
+        from app.ensure_clinical_schema import ensure_clinical_evolution_schema
         from app.schema_guard import assert_schema_compatible_with_uuid_models
 
         run_migrations_blocking()
         try:
             ensure_auth_schema()
+            ensure_clinical_evolution_schema()
         except Exception as exc:  # noqa: BLE001
-            print(f"[dentalfacil] ensure_auth_schema FAILED: {exc}", flush=True)
+            print(f"[dentalfacil] ensure_* schema FAILED: {exc}", flush=True)
             traceback.print_exc()
             sys.exit(1)
         assert_schema_compatible_with_uuid_models()

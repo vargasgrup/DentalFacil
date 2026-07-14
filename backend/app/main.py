@@ -40,6 +40,13 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         print(f"[dentalfacil] ensure_auth_schema FAILED: {exc}", flush=True)
         raise
+    try:
+        from app.ensure_clinical_schema import ensure_clinical_evolution_schema
+
+        ensure_clinical_evolution_schema()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[dentalfacil] ensure_clinical_schema FAILED: {exc}", flush=True)
+        raise
 
     scheduler = BackgroundScheduler()
     # Delay first run so boot/healthcheck are not competing with DB work

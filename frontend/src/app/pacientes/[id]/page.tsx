@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Calendar, Plus, Trash2 } from "lucide-react";
+import { Calendar, Plus, Trash2, ArrowRight } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatDateTime } from "@/lib/datetime";
@@ -17,7 +17,11 @@ import {
   setActiveItems,
   activeItems,
   newPlanAlt,
-  planEstimate,
+  planMoneyTotals,
+  itemSubtotal,
+  itemSaldo,
+  blankPlanItem,
+  normalizeEstado,
   type PlanItem,
   type TreatmentPlans,
 } from "@/lib/treatmentPlans";
@@ -73,9 +77,13 @@ interface EvolutionEntry {
   doctor_id?: string;
   especialidad?: string;
   tratamiento_descripcion: string;
+  pieza_fdi?: string;
+  cantidad?: number;
+  costo_unitario?: number;
   costo: number;
   a_cuenta: number;
   estado: string;
+  plan_item_id?: string;
   proxima_cita_fecha?: string;
   fecha: string;
   created_at: string;
@@ -165,7 +173,9 @@ export default function FichaClinicaPage() {
   const [newEvo, setNewEvo] = useState({
     tratamiento_descripcion: "",
     especialidad: "",
-    costo: "",
+    pieza_fdi: "",
+    cantidad: "1",
+    costo_unitario: "",
     a_cuenta: "",
     estado: "pendiente",
   });
@@ -354,21 +364,27 @@ export default function FichaClinicaPage() {
   const addEvolution = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const cantidad = Math.max(1, parseFloat(newEvo.cantidad) || 1);
+      const costo_unitario = parseFloat(newEvo.costo_unitario) || 0;
       await apiFetch(`/api/clinical/${patientId}/evolution`, {
         method: "POST",
         body: JSON.stringify({
           tratamiento_descripcion: newEvo.tratamiento_descripcion,
           especialidad: newEvo.especialidad || null,
-          costo: parseFloat(newEvo.costo) || 0,
+          pieza_fdi: newEvo.pieza_fdi || null,
+          cantidad,
+          costo_unitario,
           a_cuenta: parseFloat(newEvo.a_cuenta) || 0,
-          estado: newEvo.estado,
+          estado: normalizeEstado(newEvo.estado),
           doctor_id: user?.id || null,
         }),
       });
       setNewEvo({
         tratamiento_descripcion: "",
         especialidad: "",
-        costo: "",
+        pieza_fdi: "",
+        cantidad: "1",
+        costo_unitario: "",
         a_cuenta: "",
         estado: "pendiente",
       });
@@ -439,7 +455,7 @@ export default function FichaClinicaPage() {
     try {
       await apiFetch(`/api/clinical/evolution/${entryId}`, {
         method: "PATCH",
-        body: JSON.stringify({ estado }),
+        body: JSON.stringify({ estado: normalizeEstado(estado) }),
       });
       await loadData();
     } catch (err: any) {
@@ -447,14 +463,89 @@ export default function FichaClinicaPage() {
     }
   };
 
-  const addItemRow = () =>
-    setPlanItems([
-      ...planItems,
-      { item: "", cantidad: 1, costo_unitario: 0, estado: "pendiente", origen: "manual" },
-    ]);
+  const updateEvolutionField = async (
+    entryId: string,
+    patch: Record<string, string | number | null>
+  ) => {
+    try {
+      await apiFetch(`/api/clinical/evolution/${entryId}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
+      await loadData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const registerPlanItemInEvolution = async (idx: number) => {
+    const it = planItems[idx];
+    if (!it?.item?.trim()) {
+      setError("Completa el tratamiento del ítem antes de registrarlo en evolución.");
+      return;
+    }
+    if (it.evolution_entry_id) {
+      setError("Este ítem ya está vinculado a una entrada de evolución.");
+      return;
+    }
+    setError("");
+    try {
+      await saveRecord();
+      const cantidad = Math.max(1, Number(it.cantidad) || 1);
+      const costo_unitario = Number(it.costo_unitario) || 0;
+      const created = await apiFetch<EvolutionEntry>(
+        `/api/clinical/${patientId}/evolution`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            tratamiento_descripcion: it.pieza_fdi
+              ? `${it.item} (pieza ${it.pieza_fdi})`
+              : it.item,
+            pieza_fdi: it.pieza_fdi || null,
+            cantidad,
+            costo_unitario,
+            a_cuenta: Number(it.a_cuenta) || 0,
+            estado: normalizeEstado(it.estado),
+            plan_item_id: it.id || null,
+            doctor_id: user?.id || null,
+          }),
+        }
+      );
+      const nextItems = planItems.map((row, i) =>
+        i === idx
+          ? {
+              ...row,
+              evolution_entry_id: created.id,
+              estado: normalizeEstado(created.estado),
+              a_cuenta: Number(created.a_cuenta) || 0,
+            }
+          : row
+      );
+      const nextBundle = setActiveItems(planBundle, nextItems);
+      setPlanBundle(nextBundle);
+      await apiFetch(`/api/clinical/${patientId}/record`, {
+        method: "PATCH",
+        body: JSON.stringify({ plan_tratamiento: nextBundle }),
+      });
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || "No se pudo registrar en evolución");
+    }
+  };
+
+  const addItemRow = () => setPlanItems([...planItems, blankPlanItem()]);
 
   const addPlanFromOdontogram = async (item: PlanItem) => {
-    const nextItems = [...planItems, { ...item, origen: item.origen || "odontogram" }];
+    const nextItems = [
+      ...planItems,
+      {
+        ...blankPlanItem(),
+        ...item,
+        a_cuenta: Number(item.a_cuenta) || 0,
+        origen: item.origen || "odontogram",
+        estado: normalizeEstado(item.estado),
+      },
+    ];
     const nextBundle = setActiveItems(planBundle, nextItems);
     setPlanBundle(nextBundle);
     try {
@@ -495,7 +586,12 @@ export default function FichaClinicaPage() {
   };
 
   const edad = calcEdad(patientForm.fecha_nacimiento);
-  const planEstimado = useMemo(() => planEstimate(planItems), [planItems]);
+  const planTotals = useMemo(() => planMoneyTotals(planItems), [planItems]);
+  const evoTotals = useMemo(() => {
+    const subtotal = evolution.reduce((s, e) => s + (Number(e.costo) || 0), 0);
+    const a_cuenta = evolution.reduce((s, e) => s + (Number(e.a_cuenta) || 0), 0);
+    return { subtotal, a_cuenta, saldo: Math.max(0, subtotal - a_cuenta) };
+  }, [evolution]);
 
   const doctorDisplay =
     user?.nombre ||
@@ -808,8 +904,13 @@ export default function FichaClinicaPage() {
         />
       </Section>
 
-      {/* 5. PLAN DE TRATAMIENTO */}
+      {/* 5. PLAN DE TRATAMIENTO — presupuesto propuesto */}
       <Section title="Plan de tratamiento" onSave={saveRecord} saveState={recordSaved}>
+        <p className="mb-3 text-help text-slate-500">
+          Presupuesto clínico propuesto (qué se planea hacer y a qué costo). Al ejecutar una
+          atención, usa <strong className="font-medium text-slate-700">Registrar en evolución</strong>{" "}
+          para sincronizar cantidad, costos, a cuenta y estado con el historial oficial.
+        </p>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {planBundle.alternatives.map((alt) => (
             <button
@@ -853,24 +954,27 @@ export default function FichaClinicaPage() {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[920px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-slate-500">
-                <th className="w-16 py-2 pr-2 font-medium">Pieza</th>
-                <th className="py-2 pr-3 font-medium">Tratamiento / Ítem</th>
-                <th className="w-20 py-2 pr-3 font-medium">Cant.</th>
-                <th className="w-28 py-2 pr-3 font-medium">Costo unit.</th>
-                <th className="w-28 py-2 pr-3 font-medium text-right">Subtotal</th>
-                <th className="w-32 py-2 pr-3 font-medium">Estado</th>
-                <th className="w-10 py-2" />
+                <th className="w-14 py-2 pr-2 font-medium">Pieza</th>
+                <th className="py-2 pr-3 font-medium">Tratamiento</th>
+                <th className="w-16 py-2 pr-2 font-medium">Cant.</th>
+                <th className="w-24 py-2 pr-2 font-medium">Costo unit.</th>
+                <th className="w-24 py-2 pr-2 font-medium">A cuenta</th>
+                <th className="w-24 py-2 pr-2 font-medium text-right">Subtotal</th>
+                <th className="w-24 py-2 pr-2 font-medium text-right">Saldo</th>
+                <th className="w-28 py-2 pr-2 font-medium">Estado</th>
+                <th className="w-28 py-2 font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {planItems.map((it, idx) => {
-                const sub = (it.cantidad || 0) * (Number(it.costo_unitario) || 0);
+                const sub = itemSubtotal(it);
+                const saldo = itemSaldo(it);
                 return (
-                  <tr key={idx} className="border-b border-slate-100">
-                    <td className="py-2 pr-2">
+                  <tr key={it.id || idx} className="border-b border-slate-100">
+                    <td className="py-2 pr-2 align-top">
                       <input
                         value={it.pieza_fdi || ""}
                         onChange={(e) => updateItem(idx, "pieza_fdi", e.target.value)}
@@ -881,7 +985,7 @@ export default function FichaClinicaPage() {
                         <span className="mt-0.5 block text-[9px] text-emerald-700">Odonto</span>
                       )}
                     </td>
-                    <td className="py-2 pr-3">
+                    <td className="py-2 pr-3 align-top">
                       <TreatmentAutocomplete
                         label=""
                         value={it.item}
@@ -907,7 +1011,7 @@ export default function FichaClinicaPage() {
                         inputClassName="border-slate-200"
                       />
                     </td>
-                    <td className="py-2 pr-3">
+                    <td className="py-2 pr-2 align-top">
                       <input
                         type="number"
                         min={1}
@@ -918,7 +1022,7 @@ export default function FichaClinicaPage() {
                         className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-brand-600 focus:outline-none"
                       />
                     </td>
-                    <td className="py-2 pr-3">
+                    <td className="py-2 pr-2 align-top">
                       <input
                         type="number"
                         min={0}
@@ -934,29 +1038,65 @@ export default function FichaClinicaPage() {
                         className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-brand-600 focus:outline-none"
                       />
                     </td>
-                    <td className="py-2 pr-3 text-right font-medium text-slate-700">
+                    <td className="py-2 pr-2 align-top">
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={it.a_cuenta ?? 0}
+                        onChange={(e) => {
+                          const subNow = itemSubtotal(it);
+                          const raw = parseFloat(e.target.value) || 0;
+                          updateItem(idx, "a_cuenta", Math.min(raw, subNow));
+                        }}
+                        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-brand-600 focus:outline-none"
+                      />
+                    </td>
+                    <td className="py-2 pr-2 text-right align-top font-medium tabular-nums text-slate-700">
                       S/ {sub.toFixed(2)}
                     </td>
-                    <td className="py-2 pr-3">
+                    <td
+                      className={`py-2 pr-2 text-right align-top font-medium tabular-nums ${
+                        saldo > 0 ? "text-warning-600" : "text-success-600"
+                      }`}
+                    >
+                      S/ {saldo.toFixed(2)}
+                    </td>
+                    <td className="py-2 pr-2 align-top">
                       <select
-                        value={it.estado || "pendiente"}
+                        value={normalizeEstado(it.estado)}
                         onChange={(e) => updateItem(idx, "estado", e.target.value)}
                         className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:border-brand-600 focus:outline-none"
                       >
                         <option value="pendiente">Pendiente</option>
-                        <option value="en_curso">En curso</option>
-                        <option value="finalizado">Finalizado</option>
+                        <option value="en_proceso">En proceso</option>
+                        <option value="completado">Completado</option>
                       </select>
+                      {it.evolution_entry_id && (
+                        <span className="mt-0.5 block text-[9px] text-brand-700">En evolución</span>
+                      )}
                     </td>
-                    <td className="py-2">
-                      <button
-                        type="button"
-                        onClick={() => removeItemRow(idx)}
-                        className="rounded p-1 text-slate-400 hover:bg-danger-50 hover:text-danger-600"
-                        title="Eliminar fila"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                    <td className="py-2 align-top">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => registerPlanItemInEvolution(idx)}
+                          disabled={Boolean(it.evolution_entry_id)}
+                          className="inline-flex items-center gap-0.5 rounded-lg px-1.5 py-1 text-[10px] font-medium text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          title="Registrar atención en evolución clínica"
+                        >
+                          <ArrowRight className="h-3 w-3" />
+                          Evolución
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeItemRow(idx)}
+                          className="rounded p-1 text-slate-400 hover:bg-danger-50 hover:text-danger-600"
+                          title="Eliminar fila"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -964,19 +1104,39 @@ export default function FichaClinicaPage() {
             </tbody>
           </table>
         </div>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
           <Button variant="secondary" onClick={addItemRow} icon={<Plus className="h-4 w-4" />}>
             Agregar fila
           </Button>
-          <p className="text-sm text-slate-500">
-            Estimado del plan:{" "}
-            <span className="font-semibold text-slate-800">
-              S/ {planEstimado.toFixed(2)}
-            </span>
-          </p>
+          <div className="min-w-[220px] rounded-lg bg-surface-subtle px-4 py-3 text-sm">
+            <div className="flex justify-between gap-6 text-slate-600">
+              <span>Total del plan</span>
+              <span className="font-semibold tabular-nums text-slate-800">
+                S/ {planTotals.subtotal.toFixed(2)}
+              </span>
+            </div>
+            <div className="mt-1 flex justify-between gap-6 text-success-700">
+              <span>A cuenta</span>
+              <span className="font-medium tabular-nums">
+                S/ {planTotals.a_cuenta.toFixed(2)}
+              </span>
+            </div>
+            <div className="mt-1 flex justify-between gap-6 border-t border-slate-200 pt-1 font-semibold text-slate-800">
+              <span>Saldo</span>
+              <span
+                className={`tabular-nums ${
+                  planTotals.saldo > 0 ? "text-warning-600" : "text-success-600"
+                }`}
+              >
+                S/ {planTotals.saldo.toFixed(2)}
+              </span>
+            </div>
+          </div>
         </div>
         <p className="mt-2 text-help text-slate-400">
-          El costo oficial de la ficha se calcula desde la evolución clínica. El estimado del plan es referencial.
+          El saldo oficial de la ficha (resumen financiero) usa costos de evolución y pagos de
+          Caja. El plan es el presupuesto editable; ambos quedan sincronizados al registrar
+          ítems en evolución.
         </p>
       </Section>
 
@@ -1058,7 +1218,7 @@ export default function FichaClinicaPage() {
         </div>
       </Section>
 
-      {/* 9. EVOLUCIÓN */}
+      {/* 9. EVOLUCIÓN — atenciones ejecutadas */}
       <Section
         title="Evolución clínica"
         action={
@@ -1072,6 +1232,10 @@ export default function FichaClinicaPage() {
         }
         noSave
       >
+        <p className="mb-3 text-help text-slate-500">
+          Atenciones realizadas. Fuente del costo oficial de la ficha (con pagos de Caja).
+          Misma economía que el plan: cantidad, costo unitario, a cuenta, saldo y estado.
+        </p>
         {showEvoForm && (
           <form
             onSubmit={addEvolution}
@@ -1088,9 +1252,11 @@ export default function FichaClinicaPage() {
                   ...newEvo,
                   tratamiento_descripcion: t.nombre,
                   especialidad: newEvo.especialidad || t.especialidad,
-                  costo:
-                    newEvo.costo ||
-                    (t.precio_referencial ? String(t.precio_referencial) : newEvo.costo),
+                  costo_unitario:
+                    newEvo.costo_unitario ||
+                    (t.precio_referencial
+                      ? String(t.precio_referencial)
+                      : newEvo.costo_unitario),
                 })
               }
               required
@@ -1106,17 +1272,30 @@ export default function FichaClinicaPage() {
                 </div>
               }
             />
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              <Input
+                label="Pieza"
+                value={newEvo.pieza_fdi}
+                onChange={(e) => setNewEvo({ ...newEvo, pieza_fdi: e.target.value })}
+                placeholder="FDI"
+              />
               <SpecialtySelect
                 value={newEvo.especialidad}
                 onChange={(especialidad) => setNewEvo({ ...newEvo, especialidad })}
               />
               <Input
-                label="Costo (S/)"
+                label="Cantidad"
+                type="number"
+                min={1}
+                value={newEvo.cantidad}
+                onChange={(e) => setNewEvo({ ...newEvo, cantidad: e.target.value })}
+              />
+              <Input
+                label="Costo unit. (S/)"
                 type="number"
                 step="0.01"
-                value={newEvo.costo}
-                onChange={(e) => setNewEvo({ ...newEvo, costo: e.target.value })}
+                value={newEvo.costo_unitario}
+                onChange={(e) => setNewEvo({ ...newEvo, costo_unitario: e.target.value })}
               />
               <Input
                 label="A cuenta (S/)"
@@ -1139,7 +1318,12 @@ export default function FichaClinicaPage() {
               </label>
             </div>
             <p className="text-help text-slate-400">
-              La fecha y hora se registran automáticamente al guardar.
+              Subtotal: S/{" "}
+              {(
+                Math.max(1, parseFloat(newEvo.cantidad) || 1) *
+                (parseFloat(newEvo.costo_unitario) || 0)
+              ).toFixed(2)}
+              . Fecha y hora al guardar.
             </p>
             <Button type="submit">Agregar</Button>
           </form>
@@ -1151,83 +1335,148 @@ export default function FichaClinicaPage() {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[960px] text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-slate-500">
-                  <th className="py-2 pr-4 font-medium">Fecha</th>
-                  <th className="py-2 pr-4 font-medium">Tratamiento</th>
-                  <th className="py-2 pr-4 font-medium">Esp.</th>
-                  <th className="py-2 pr-4 font-medium text-right">Costo</th>
-                  <th className="py-2 pr-4 font-medium text-right">A cuenta</th>
-                  <th className="py-2 pr-4 font-medium text-right">Saldo</th>
-                  <th className="py-2 pr-4 font-medium">Estado</th>
+                  <th className="py-2 pr-3 font-medium">Fecha</th>
+                  <th className="w-14 py-2 pr-2 font-medium">Pieza</th>
+                  <th className="py-2 pr-3 font-medium">Tratamiento</th>
+                  <th className="py-2 pr-2 font-medium">Esp.</th>
+                  <th className="w-14 py-2 pr-2 font-medium">Cant.</th>
+                  <th className="w-24 py-2 pr-2 font-medium text-right">Costo unit.</th>
+                  <th className="w-24 py-2 pr-2 font-medium text-right">Subtotal</th>
+                  <th className="w-24 py-2 pr-2 font-medium text-right">A cuenta</th>
+                  <th className="w-24 py-2 pr-2 font-medium text-right">Saldo</th>
+                  <th className="w-28 py-2 pr-2 font-medium">Estado</th>
                   <th className="py-2 pr-2 font-medium">PDF</th>
                   <th className="py-2" />
                 </tr>
               </thead>
               <tbody>
                 {evolution.map((e) => {
-                  const saldo = (Number(e.costo) || 0) - (Number(e.a_cuenta) || 0);
+                  const cant = Number(e.cantidad) || 1;
+                  const unit =
+                    Number(e.costo_unitario) ||
+                    (cant ? Number(e.costo) / cant : Number(e.costo)) ||
+                    0;
+                  const sub = Number(e.costo) || cant * unit;
+                  const saldo = sub - (Number(e.a_cuenta) || 0);
                   return (
-                  <tr key={e.id} className="border-b border-slate-100">
-                    <td className="py-2 pr-4 text-slate-400">
-                      {formatDateTime(e.fecha)}
-                    </td>
-                    <td className="py-2 pr-4">{e.tratamiento_descripcion}</td>
-                    <td className="py-2 pr-4 text-slate-500" title={e.especialidad || undefined}>
-                      {especialidadShort(e.especialidad)}
-                    </td>
-                    <td className="py-2 pr-4 text-right">S/ {e.costo.toFixed(2)}</td>
-                    <td className="py-2 pr-4 text-right text-success-600">
-                      S/ {e.a_cuenta.toFixed(2)}
-                    </td>
-                    <td
-                      className={`py-2 pr-4 text-right font-medium ${
-                        saldo > 0 ? "text-warning-600" : "text-success-600"
-                      }`}
-                    >
-                      S/ {saldo.toFixed(2)}
-                    </td>
-                    <td className="py-2 pr-4">
-                      <select
-                        value={e.estado}
-                        onChange={(ev) =>
-                          updateEvolutionEstado(e.id, ev.target.value)
-                        }
-                        className={`rounded-lg px-2 py-1 text-xs font-medium ${
-                          estadoColors[e.estado] || ""
+                    <tr key={e.id} className="border-b border-slate-100">
+                      <td className="py-2 pr-3 text-slate-400">
+                        {formatDateTime(e.fecha)}
+                      </td>
+                      <td className="py-2 pr-2 tabular-nums text-slate-600">
+                        {e.pieza_fdi || "—"}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {e.tratamiento_descripcion}
+                        {e.plan_item_id && (
+                          <span className="mt-0.5 block text-[9px] text-brand-700">
+                            Desde plan
+                          </span>
+                        )}
+                      </td>
+                      <td
+                        className="py-2 pr-2 text-slate-500"
+                        title={e.especialidad || undefined}
+                      >
+                        {especialidadShort(e.especialidad)}
+                      </td>
+                      <td className="py-2 pr-2 tabular-nums">{cant}</td>
+                      <td className="py-2 pr-2 text-right tabular-nums">
+                        S/ {unit.toFixed(2)}
+                      </td>
+                      <td className="py-2 pr-2 text-right font-medium tabular-nums">
+                        S/ {sub.toFixed(2)}
+                      </td>
+                      <td className="py-2 pr-2 text-right">
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          defaultValue={Number(e.a_cuenta) || 0}
+                          key={`ac-${e.id}-${e.a_cuenta}`}
+                          onBlur={(ev) => {
+                            const next = Math.min(parseFloat(ev.target.value) || 0, sub);
+                            if (next !== Number(e.a_cuenta)) {
+                              updateEvolutionField(e.id, { a_cuenta: next });
+                            }
+                          }}
+                          className="w-full rounded-lg border border-slate-200 px-1.5 py-1 text-right text-sm text-success-700 focus:border-brand-600 focus:outline-none"
+                        />
+                      </td>
+                      <td
+                        className={`py-2 pr-2 text-right font-medium tabular-nums ${
+                          saldo > 0 ? "text-warning-600" : "text-success-600"
                         }`}
                       >
-                        <option value="pendiente">Pendiente</option>
-                        <option value="en_proceso">En proceso</option>
-                        <option value="completado">Completado</option>
-                      </select>
-                    </td>
-                    <td className="py-2 pr-2">
-                      <DocumentActions
-                        label="Evolución"
-                        downloadUrl={`/api/documents/evolucion/${e.id}`}
-                        telefono={patient.telefono}
-                        mensaje={`Hola ${patient.nombres}, adjuntamos el registro de evolución clínica. Gracias.`}
-                        compact
-                        hidePreview
-                        hideDownload
-                      />
-                    </td>
-                    <td className="py-2">
-                      <button
-                        type="button"
-                        onClick={() => deleteEvolution(e.id)}
-                        className="rounded p-1 text-slate-400 hover:bg-danger-50 hover:text-danger-600"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </td>
-                  </tr>
+                        S/ {saldo.toFixed(2)}
+                      </td>
+                      <td className="py-2 pr-2">
+                        <select
+                          value={normalizeEstado(e.estado)}
+                          onChange={(ev) => updateEvolutionEstado(e.id, ev.target.value)}
+                          className={`rounded-lg px-2 py-1 text-xs font-medium ${
+                            estadoColors[normalizeEstado(e.estado)] || ""
+                          }`}
+                        >
+                          <option value="pendiente">Pendiente</option>
+                          <option value="en_proceso">En proceso</option>
+                          <option value="completado">Completado</option>
+                        </select>
+                      </td>
+                      <td className="py-2 pr-2">
+                        <DocumentActions
+                          label="Evolución"
+                          downloadUrl={`/api/documents/evolucion/${e.id}`}
+                          telefono={patient.telefono}
+                          mensaje={`Hola ${patient.nombres}, adjuntamos el registro de evolución clínica. Gracias.`}
+                          compact
+                          hidePreview
+                          hideDownload
+                        />
+                      </td>
+                      <td className="py-2">
+                        <button
+                          type="button"
+                          onClick={() => deleteEvolution(e.id)}
+                          className="rounded p-1 text-slate-400 hover:bg-danger-50 hover:text-danger-600"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>
             </table>
+            <div className="mt-3 flex justify-end">
+              <div className="min-w-[220px] rounded-lg bg-surface-subtle px-4 py-3 text-sm">
+                <div className="flex justify-between gap-6 text-slate-600">
+                  <span>Total evolución</span>
+                  <span className="font-semibold tabular-nums text-slate-800">
+                    S/ {evoTotals.subtotal.toFixed(2)}
+                  </span>
+                </div>
+                <div className="mt-1 flex justify-between gap-6 text-success-700">
+                  <span>A cuenta</span>
+                  <span className="font-medium tabular-nums">
+                    S/ {evoTotals.a_cuenta.toFixed(2)}
+                  </span>
+                </div>
+                <div className="mt-1 flex justify-between gap-6 border-t border-slate-200 pt-1 font-semibold">
+                  <span>Saldo</span>
+                  <span
+                    className={`tabular-nums ${
+                      evoTotals.saldo > 0 ? "text-warning-600" : "text-success-600"
+                    }`}
+                  >
+                    S/ {evoTotals.saldo.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </Section>

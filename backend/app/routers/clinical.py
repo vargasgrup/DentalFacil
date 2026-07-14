@@ -44,6 +44,8 @@ def _sync_plan_item_from_evolution(
     """Mirror evolution economics back onto the linked plan item (presupuesto ↔ atención)."""
     if not entry.plan_item_id:
         return
+    from sqlalchemy.orm.attributes import flag_modified
+
     record = (
         db.query(ClinicalRecord).filter(ClinicalRecord.patient_id == patient_id).first()
     )
@@ -70,6 +72,7 @@ def _sync_plan_item_from_evolution(
             break
     if changed:
         record.plan_tratamiento = plans
+        flag_modified(record, "plan_tratamiento")
 
 
 @router.get("/{patient_id}/record", response_model=ClinicalRecordOut)
@@ -254,17 +257,21 @@ def financial_summary(
 ):
     """
     Financial summary calculated live.
-    - costo_total comes from evolution entries (estimated treatment cost).
-    - pagado_total comes from actual cash transactions (ingresos) for this patient.
-    - saldo = costo_total - pagado_total.
-    This ensures the summary reflects real payments from Caja, never a stale field.
+    - costo_total: ∑ evolución.costo (atenciones)
+    - pagado_total: ∑ Caja ingresos del paciente (dinero real)
+    - saldo: costo_total - pagado_total
+    - a_cuenta_clinico: ∑ evolución.a_cuenta (asignación clínica de pagos)
+    - plan_*: estimado del plan activo (presupuesto)
     """
+    from app.odontogram.plans import normalize_plans, estimate as plan_estimate
+
     entries = (
         db.query(ClinicalEvolutionEntry)
         .filter(ClinicalEvolutionEntry.patient_id == patient_id)
         .all()
     )
     costo_total = sum(float(e.costo) for e in entries)
+    a_cuenta_clinico = sum(float(e.a_cuenta or 0) for e in entries)
 
     transactions = (
         db.query(CashTransaction)
@@ -276,8 +283,42 @@ def financial_summary(
     )
     pagado_total = sum(float(t.monto) for t in transactions)
 
+    plan_estimado = 0.0
+    plan_a_cuenta = 0.0
+    record = (
+        db.query(ClinicalRecord).filter(ClinicalRecord.patient_id == patient_id).first()
+    )
+    if record and record.plan_tratamiento:
+        plans = normalize_plans(record.plan_tratamiento)
+        active_id = plans.get("active_id")
+        for alt in plans.get("alternatives") or []:
+            if active_id and alt.get("id") != active_id:
+                continue
+            items = alt.get("items") or []
+            plan_estimado = plan_estimate(items)
+            plan_a_cuenta = sum(float(it.get("a_cuenta") or 0) for it in items)
+            break
+
     return FinancialSummary(
         costo_total=costo_total,
         pagado_total=pagado_total,
         saldo=costo_total - pagado_total,
+        a_cuenta_clinico=a_cuenta_clinico,
+        plan_estimado=plan_estimado,
+        plan_a_cuenta=plan_a_cuenta,
+        plan_saldo=max(0.0, plan_estimado - plan_a_cuenta),
     )
+
+
+@router.get("/{patient_id}/payment-targets")
+def payment_targets(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Open plan/evolución lines with saldo — for payment allocation UI."""
+    if not db.get(Patient, patient_id):
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    from app.services.payment_allocation import list_payment_targets
+
+    return {"targets": list_payment_targets(db, patient_id)}

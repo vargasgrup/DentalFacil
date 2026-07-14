@@ -10,14 +10,14 @@ class ClinicalRecordBase(BaseModel):
     antecedentes_medicos: Optional[str] = None
     antecedentes_odontologicos: Optional[str] = None
     diagnostico: Optional[str] = None
-    plan_tratamiento: Optional[Union[list, str]] = None
+    plan_tratamiento: Optional[Union[list, dict, str]] = None
     observaciones: Optional[str] = None
     doctor_responsable_id: Optional[str] = None
 
     @field_validator("plan_tratamiento", mode="before")
     @classmethod
     def normalize_plan(cls, v):
-        """Accept a string (JSON) from the frontend; parse to list."""
+        """Accept string JSON, legacy list, or TreatmentPlans dict."""
         if isinstance(v, str):
             try:
                 return json.loads(v)
@@ -110,3 +110,9 @@ class FinancialSummary(BaseModel):
     costo_total: float
     pagado_total: float
     saldo: float
+    # Mirror of ∑ evolución.a_cuenta (clinical allocation; should track pagos assigned)
+    a_cuenta_clinico: float = 0
+    # Active plan estimate remaining (informational)
+    plan_estimado: float = 0
+    plan_a_cuenta: float = 0
+    plan_saldo: float = 0

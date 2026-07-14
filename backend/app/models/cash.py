@@ -35,6 +35,9 @@ class CashTransaction(Base):
     metodo_pago: Mapped[str] = mapped_column(String(20), default="efectivo")
     plan_item_ref: Mapped[str | None] = mapped_column(String(80), nullable=True)
     pieza_fdi: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    evolution_entry_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("clinical_evolution_entries.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), default=datetime.utcnow
     )

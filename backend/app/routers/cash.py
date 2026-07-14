@@ -17,7 +17,13 @@ from app.schemas.cash import (
 router = APIRouter(prefix="/api/cash", tags=["cash"])
 
 
-def _tx_to_out(tx: CashTransaction, db: Session) -> CashTransactionOut:
+def _tx_to_out(
+    tx: CashTransaction,
+    db: Session,
+    *,
+    allocated_total: float | None = None,
+    allocations: list[dict] | None = None,
+) -> CashTransactionOut:
     patient = db.get(Patient, tx.patient_id) if tx.patient_id else None
     return CashTransactionOut(
         id=tx.id,
@@ -31,7 +37,10 @@ def _tx_to_out(tx: CashTransaction, db: Session) -> CashTransactionOut:
         metodo_pago=tx.metodo_pago,
         plan_item_ref=getattr(tx, "plan_item_ref", None),
         pieza_fdi=getattr(tx, "pieza_fdi", None),
+        evolution_entry_id=getattr(tx, "evolution_entry_id", None),
         created_at=tx.created_at,
+        allocated_total=allocated_total,
+        allocations=allocations,
     )
 
 
@@ -160,7 +169,11 @@ def create_transaction(
         raise HTTPException(status_code=400, detail="Tipo debe ser 'ingreso' o 'egreso'")
     if payload.patient_id and not db.get(Patient, payload.patient_id):
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    if float(payload.monto) <= 0:
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a cero")
 
+    plan_ref = payload.plan_item_ref
+    evo_id = payload.evolution_entry_id
     tx = CashTransaction(
         cash_session_id=session.id,
         patient_id=payload.patient_id,
@@ -168,10 +181,58 @@ def create_transaction(
         concepto=payload.concepto,
         monto=payload.monto,
         metodo_pago=payload.metodo_pago,
-        plan_item_ref=payload.plan_item_ref,
+        plan_item_ref=plan_ref,
         pieza_fdi=payload.pieza_fdi,
+        evolution_entry_id=evo_id,
     )
     db.add(tx)
+    db.flush()
+
+    allocated_total = None
+    allocations_out = None
+    if (
+        payload.allocate
+        and payload.tipo == "ingreso"
+        and payload.patient_id
+    ):
+        from app.services.payment_allocation import allocate_ingreso
+
+        applied = allocate_ingreso(
+            db,
+            patient_id=payload.patient_id,
+            monto=float(payload.monto),
+            evolution_entry_id=evo_id,
+            plan_item_id=plan_ref,
+        )
+        if applied:
+            allocated_total = round(sum(a.amount for a in applied), 2)
+            allocations_out = [
+                {"kind": a.kind, "id": a.id, "amount": a.amount, "label": a.label}
+                for a in applied
+            ]
+            # Persist primary clinical refs on the cash row for audit
+            if not tx.evolution_entry_id:
+                evo_apps = [a for a in applied if a.kind == "evolution"]
+                if evo_apps:
+                    tx.evolution_entry_id = evo_apps[0].id
+            if not tx.plan_item_ref:
+                plan_apps = [a for a in applied if a.kind == "plan"]
+                if plan_apps:
+                    tx.plan_item_ref = plan_apps[0].id
+                else:
+                    # evolution may carry plan_item_id
+                    from app.models import ClinicalEvolutionEntry
+
+                    for a in applied:
+                        if a.kind != "evolution":
+                            continue
+                        entry = db.get(ClinicalEvolutionEntry, a.id)
+                        if entry and entry.plan_item_id:
+                            tx.plan_item_ref = entry.plan_item_id
+                            break
+
     db.commit()
     db.refresh(tx)
-    return _tx_to_out(tx, db)
+    return _tx_to_out(
+        tx, db, allocated_total=allocated_total, allocations=allocations_out
+    )

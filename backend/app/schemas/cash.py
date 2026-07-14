@@ -28,6 +28,9 @@ class CashTransactionCreate(BaseModel):
     metodo_pago: str = "efectivo"  # efectivo/tarjeta/transferencia/yape
     plan_item_ref: Optional[str] = None
     pieza_fdi: Optional[str] = None
+    evolution_entry_id: Optional[str] = None
+    # When True (default), ingreso+patient updates a_cuenta on plan/evolución.
+    allocate: bool = True
 
 
 class CashTransactionOut(BaseModel):
@@ -42,7 +45,10 @@ class CashTransactionOut(BaseModel):
     metodo_pago: str
     plan_item_ref: Optional[str] = None
     pieza_fdi: Optional[str] = None
+    evolution_entry_id: Optional[str] = None
     created_at: datetime
+    allocated_total: Optional[float] = None
+    allocations: Optional[list[dict]] = None
 
     model_config = {"from_attributes": True}
 

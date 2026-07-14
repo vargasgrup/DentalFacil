@@ -14,26 +14,53 @@ _EVOLUTION_EXTRA = [
     ("plan_item_id", "VARCHAR(40)"),
 ]
 
+_CASH_TX_EXTRA = [
+    ("evolution_entry_id", "VARCHAR(36)"),
+]
+
 
 def ensure_clinical_evolution_schema() -> None:
     insp = inspect(engine)
-    if "clinical_evolution_entries" not in insp.get_table_names():
-        return
-    existing = {c["name"] for c in insp.get_columns("clinical_evolution_entries")}
-    dialect = engine.dialect.name
-    with engine.begin() as conn:
-        for col, ddl in _EVOLUTION_EXTRA:
-            if col in existing:
-                continue
-            if dialect == "postgresql":
-                conn.execute(
-                    text(
-                        f"ALTER TABLE clinical_evolution_entries "
-                        f"ADD COLUMN IF NOT EXISTS {col} {ddl}"
+    tables = set(insp.get_table_names())
+
+    if "clinical_evolution_entries" in tables:
+        existing = {c["name"] for c in insp.get_columns("clinical_evolution_entries")}
+        dialect = engine.dialect.name
+        with engine.begin() as conn:
+            for col, ddl in _EVOLUTION_EXTRA:
+                if col in existing:
+                    continue
+                if dialect == "postgresql":
+                    conn.execute(
+                        text(
+                            f"ALTER TABLE clinical_evolution_entries "
+                            f"ADD COLUMN IF NOT EXISTS {col} {ddl}"
+                        )
                     )
-                )
-            else:
-                conn.execute(
-                    text(f"ALTER TABLE clinical_evolution_entries ADD COLUMN {col} {ddl}")
-                )
-            print(f"[dentalfacil] added clinical_evolution_entries.{col}", flush=True)
+                else:
+                    conn.execute(
+                        text(
+                            f"ALTER TABLE clinical_evolution_entries ADD COLUMN {col} {ddl}"
+                        )
+                    )
+                print(f"[dentalfacil] added clinical_evolution_entries.{col}", flush=True)
+
+    if "cash_transactions" in tables:
+        existing = {c["name"] for c in insp.get_columns("cash_transactions")}
+        dialect = engine.dialect.name
+        with engine.begin() as conn:
+            for col, ddl in _CASH_TX_EXTRA:
+                if col in existing:
+                    continue
+                if dialect == "postgresql":
+                    conn.execute(
+                        text(
+                            f"ALTER TABLE cash_transactions "
+                            f"ADD COLUMN IF NOT EXISTS {col} {ddl}"
+                        )
+                    )
+                else:
+                    conn.execute(
+                        text(f"ALTER TABLE cash_transactions ADD COLUMN {col} {ddl}")
+                    )
+                print(f"[dentalfacil] added cash_transactions.{col}", flush=True)

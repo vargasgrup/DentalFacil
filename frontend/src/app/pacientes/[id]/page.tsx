@@ -93,6 +93,21 @@ interface FinancialSummary {
   costo_total: number;
   pagado_total: number;
   saldo: number;
+  a_cuenta_clinico?: number;
+  plan_estimado?: number;
+  plan_a_cuenta?: number;
+  plan_saldo?: number;
+}
+
+interface PaymentTarget {
+  kind: "evolution" | "plan";
+  id: string;
+  plan_item_id?: string;
+  label: string;
+  pieza_fdi?: string;
+  costo: number;
+  a_cuenta: number;
+  saldo: number;
 }
 
 interface PaymentTx {
@@ -185,6 +200,8 @@ export default function FichaClinicaPage() {
   const [payMonto, setPayMonto] = useState("");
   const [payConcepto, setPayConcepto] = useState("");
   const [payMetodo, setPayMetodo] = useState("efectivo");
+  const [payTarget, setPayTarget] = useState("auto"); // auto | evolution:<id> | plan:<id>
+  const [paymentTargets, setPaymentTargets] = useState<PaymentTarget[]>([]);
   const [allergyInput, setAllergyInput] = useState("");
 
   const loadPayments = useCallback(async () => {
@@ -251,12 +268,27 @@ export default function FichaClinicaPage() {
 
   const refreshFinancial = async () => {
     try {
-      const f = await apiFetch<FinancialSummary>(
-        `/api/clinical/${patientId}/financial`
-      );
+      const [f, targets] = await Promise.all([
+        apiFetch<FinancialSummary>(`/api/clinical/${patientId}/financial`),
+        apiFetch<{ targets: PaymentTarget[] }>(
+          `/api/clinical/${patientId}/payment-targets`
+        ),
+      ]);
       setFinancial(f);
+      setPaymentTargets(targets.targets || []);
       await loadPayments();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const openPaymentForm = async () => {
+    const next = !showPayment;
+    setShowPayment(next);
+    if (next) {
+      setPayTarget("auto");
+      await refreshFinancial();
+    }
   };
 
   const savePatient = async () => {
@@ -415,21 +447,52 @@ export default function FichaClinicaPage() {
   const registerPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    const monto = parseFloat(payMonto);
+    if (!monto || monto <= 0) {
+      setError("Ingresa un monto válido mayor a cero.");
+      return;
+    }
     try {
+      let evolution_entry_id: string | null = null;
+      let plan_item_ref: string | null = null;
+      if (payTarget.startsWith("evolution:")) {
+        evolution_entry_id = payTarget.slice("evolution:".length);
+      } else if (payTarget.startsWith("plan:")) {
+        plan_item_ref = payTarget.slice("plan:".length);
+      }
+
+      const targetMeta = paymentTargets.find((t) =>
+        payTarget === "auto"
+          ? false
+          : payTarget === `${t.kind}:${t.id}`
+      );
+      const concepto =
+        payConcepto ||
+        (targetMeta
+          ? `Abono — ${targetMeta.label}${
+              targetMeta.pieza_fdi ? ` (pieza ${targetMeta.pieza_fdi})` : ""
+            }`
+          : "Pago de tratamiento");
+
       await apiFetch("/api/cash/transactions", {
         method: "POST",
         body: JSON.stringify({
           patient_id: patientId,
           tipo: "ingreso",
-          concepto: payConcepto || "Pago de tratamiento",
-          monto: parseFloat(payMonto),
+          concepto,
+          monto,
           metodo_pago: payMetodo,
+          allocate: true,
+          evolution_entry_id,
+          plan_item_ref,
+          pieza_fdi: targetMeta?.pieza_fdi || null,
         }),
       });
       setShowPayment(false);
       setPayMonto("");
       setPayConcepto("");
-      await refreshFinancial();
+      setPayTarget("auto");
+      await loadData();
     } catch (err: any) {
       setError(
         err.message?.includes("caja")
@@ -1485,14 +1548,32 @@ export default function FichaClinicaPage() {
       <div id="resumen-financiero">
         <Section title="Resumen financiero del tratamiento" noSave>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <MoneyCard label="Costo total" value={financial?.costo_total} />
-            <MoneyCard label="Pagado" value={financial?.pagado_total} tone="success" />
+            <MoneyCard label="Costo total (evolución)" value={financial?.costo_total} />
+            <MoneyCard label="Pagado (Caja)" value={financial?.pagado_total} tone="success" />
             <MoneyCard label="Saldo" value={financial?.saldo} tone="warning" />
           </div>
+          <p className="mt-2 text-help text-slate-500">
+            El pago se registra en Caja y se asigna a Evolución / Plan (A cuenta y Saldo) en
+            el mismo acto. Costo oficial = evolución · Pagado oficial = caja.
+            {typeof financial?.a_cuenta_clinico === "number" && (
+              <>
+                {" "}
+                A cuenta clínico: S/ {Number(financial.a_cuenta_clinico).toFixed(2)}
+                {typeof financial.plan_estimado === "number" &&
+                  financial.plan_estimado > 0 && (
+                    <>
+                      {" · "}
+                      Plan activo: S/ {Number(financial.plan_estimado).toFixed(2)} (saldo
+                      plan S/ {Number(financial.plan_saldo || 0).toFixed(2)})
+                    </>
+                  )}
+              </>
+            )}
+          </p>
           <div className="mt-3 flex justify-end">
             <Button
               variant="secondary"
-              onClick={() => setShowPayment(!showPayment)}
+              onClick={openPaymentForm}
               icon={!showPayment ? <Plus className="h-4 w-4" /> : undefined}
             >
               {showPayment ? "Cancelar" : "Registrar pago"}
@@ -1505,17 +1586,55 @@ export default function FichaClinicaPage() {
             >
               <h3 className="font-medium text-slate-700">Registrar pago</h3>
               <p className="text-help text-slate-400">
-                Requiere caja abierta. El pago se sincroniza con el módulo Caja.
+                Requiere caja abierta. El monto entra a Caja y actualiza A cuenta / Saldo del
+                destino clínico (FIFO automático o línea elegida).
               </p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <Input
                   label="Monto (S/)"
                   type="number"
                   step="0.01"
+                  min={0.01}
                   value={payMonto}
                   onChange={(e) => setPayMonto(e.target.value)}
                   required
                 />
+                <label className="block sm:col-span-1 lg:col-span-1">
+                  <span className="mb-1 block text-label text-slate-700">
+                    Aplicar a
+                  </span>
+                  <select
+                    value={payTarget}
+                    onChange={(e) => {
+                      setPayTarget(e.target.value);
+                      const t = paymentTargets.find(
+                        (x) => `${x.kind}:${x.id}` === e.target.value
+                      );
+                      if (t && !payConcepto) {
+                        setPayConcepto(
+                          `Abono — ${t.label}${
+                            t.pieza_fdi ? ` (pieza ${t.pieza_fdi})` : ""
+                          }`
+                        );
+                      }
+                      if (t && !payMonto) {
+                        setPayMonto(String(t.saldo));
+                      }
+                    }}
+                    className={fieldClass}
+                  >
+                    <option value="auto">
+                      Automático (FIFO — saldos abiertos)
+                    </option>
+                    {paymentTargets.map((t) => (
+                      <option key={`${t.kind}:${t.id}`} value={`${t.kind}:${t.id}`}>
+                        {t.kind === "evolution" ? "Evolución" : "Plan"}: {t.label}
+                        {t.pieza_fdi ? ` · pieza ${t.pieza_fdi}` : ""} — saldo S/{" "}
+                        {t.saldo.toFixed(2)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <TreatmentAutocomplete
                   label="Concepto"
                   value={payConcepto}
@@ -1543,6 +1662,12 @@ export default function FichaClinicaPage() {
                   </select>
                 </label>
               </div>
+              {paymentTargets.length === 0 && (
+                <p className="text-help text-warning-700">
+                  No hay líneas con saldo en plan/evolución. El pago quedará en Caja como
+                  abono del paciente (podrás asignarlo cuando existan costos).
+                </p>
+              )}
               <Button type="submit">Registrar</Button>
             </form>
           )}

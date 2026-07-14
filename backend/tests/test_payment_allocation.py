@@ -12,7 +12,7 @@ def test_payment_allocates_to_evolution_and_plan(
     patient: dict,
     open_cash_session: dict,
 ):
-    # Build plan item
+    # Saving the plan auto-creates linked evolution rows
     plan = {
         "active_id": "plan_a",
         "alternatives": [
@@ -39,23 +39,9 @@ def test_payment_allocates_to_evolution_and_plan(
         json={"plan_tratamiento": plan},
     )
     assert rec.status_code == 200, rec.text
-
-    # Register plan item into evolution
-    evo = client.post(
-        f"/api/clinical/{patient['id']}/evolution",
-        headers=admin_headers,
-        json={
-            "tratamiento_descripcion": "Limpieza dental",
-            "cantidad": 1,
-            "costo_unitario": 100,
-            "a_cuenta": 0,
-            "estado": "pendiente",
-            "plan_item_id": "pi_testpay01",
-            "doctor_id": admin_user.id,
-        },
-    )
-    assert evo.status_code == 201, evo.text
-    evo_id = evo.json()["id"]
+    item = rec.json()["plan_tratamiento"]["alternatives"][0]["items"][0]
+    evo_id = item["evolution_entry_id"]
+    assert evo_id
 
     targets = client.get(
         f"/api/clinical/{patient['id']}/payment-targets",
@@ -82,7 +68,6 @@ def test_payment_allocates_to_evolution_and_plan(
     assert body["allocated_total"] == 40.0
     assert body["evolution_entry_id"] == evo_id
 
-    # Evolution a_cuenta updated
     evos = client.get(
         f"/api/clinical/{patient['id']}/evolution",
         headers=admin_headers,
@@ -92,7 +77,6 @@ def test_payment_allocates_to_evolution_and_plan(
     assert float(row["a_cuenta"]) == 40.0
     assert float(row["costo"]) - float(row["a_cuenta"]) == 60.0
 
-    # Plan item mirrored
     record = client.get(
         f"/api/clinical/{patient['id']}/record",
         headers=admin_headers,

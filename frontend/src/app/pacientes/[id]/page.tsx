@@ -325,6 +325,9 @@ export default function FichaClinicaPage() {
     setError("");
     const odontoText = buildOdontoText(habitos, odonNotes);
     try {
+      // Persist ids/economics before PATCH so sync backend ↔ UI is stable
+      const plansToSave = normalizePlans(planBundle);
+      setPlanBundle(plansToSave);
       const updated = await apiFetch<ClinicalRecord>(
         `/api/clinical/${patientId}/record`,
         {
@@ -332,17 +335,29 @@ export default function FichaClinicaPage() {
           body: JSON.stringify({
             ...recordForm,
             antecedentes_odontologicos: odontoText,
-            plan_tratamiento: planBundle,
+            plan_tratamiento: plansToSave,
             doctor_responsable_id:
               record?.doctor_responsable_id || user?.id || null,
           }),
         }
       );
       setRecord(updated);
+      setPlanBundle(normalizePlans(updated.plan_tratamiento));
       setRecordForm({
         ...recordForm,
         antecedentes_odontologicos: odontoText,
       });
+      // Refresh evolução + resumen + payment targets (plan save auto-syncs)
+      const [evo, fin, targets] = await Promise.all([
+        apiFetch<EvolutionEntry[]>(`/api/clinical/${patientId}/evolution`),
+        apiFetch<FinancialSummary>(`/api/clinical/${patientId}/financial`),
+        apiFetch<{ targets: PaymentTarget[] }>(
+          `/api/clinical/${patientId}/payment-targets`
+        ).catch(() => ({ targets: [] as PaymentTarget[] })),
+      ]);
+      setEvolution(evo);
+      setFinancial(fin);
+      setPaymentTargets(targets.targets || []);
       setRecordSaved("saved");
       setTimeout(() => setRecordSaved("idle"), 2000);
     } catch (err: any) {
@@ -970,9 +985,11 @@ export default function FichaClinicaPage() {
       {/* 5. PLAN DE TRATAMIENTO — presupuesto propuesto */}
       <Section title="Plan de tratamiento" onSave={saveRecord} saveState={recordSaved}>
         <p className="mb-3 text-help text-slate-500">
-          Presupuesto clínico propuesto (qué se planea hacer y a qué costo). Al ejecutar una
-          atención, usa <strong className="font-medium text-slate-700">Registrar en evolución</strong>{" "}
-          para sincronizar cantidad, costos, a cuenta y estado con el historial oficial.
+          Presupuesto clínico. Al <strong className="font-medium text-slate-700">Guardar</strong>,
+          cada ítem del plan activo se refleja automáticamente en{" "}
+          <strong className="font-medium text-slate-700">Evolución clínica</strong> (costo oficial)
+          y queda disponible en <strong className="font-medium text-slate-700">Registrar pago</strong>.
+          El botón «Evolución» sirve solo si quieres forzar un ítem puntual antes de guardar.
         </p>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {planBundle.alternatives.map((alt) => (
@@ -1197,9 +1214,8 @@ export default function FichaClinicaPage() {
           </div>
         </div>
         <p className="mt-2 text-help text-slate-400">
-          El saldo oficial de la ficha (resumen financiero) usa costos de evolución y pagos de
-          Caja. El plan es el presupuesto editable; ambos quedan sincronizados al registrar
-          ítems en evolución.
+          Guardar el plan sincroniza Evolución y habilita destinos en Registrar pago. El saldo
+          oficial de la ficha usa costos de evolución y pagos de Caja.
         </p>
       </Section>
 

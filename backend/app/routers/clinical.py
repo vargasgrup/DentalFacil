@@ -94,15 +94,34 @@ def update_record(
     record = _get_or_create_record(db, patient_id)
     data = payload.model_dump(exclude_unset=True)
     if "plan_tratamiento" in data and data["plan_tratamiento"] is not None:
-        data["plan_tratamiento"] = normalize_plans(data["plan_tratamiento"])
+        from app.services.plan_evolution_sync import sync_active_plan_to_evolution
+        from sqlalchemy.orm.attributes import flag_modified
+
+        plans = normalize_plans(data["plan_tratamiento"])
+        data["plan_tratamiento"] = plans
         log_audit(
             db,
             patient_id=patient_id,
             entity_type="plan",
             action="update",
             user_id=user.id,
-            detail={"alternatives": len(data["plan_tratamiento"].get("alternatives", []))},
+            detail={"alternatives": len(plans.get("alternatives", []))},
         )
+        for field, value in data.items():
+            setattr(record, field, value)
+        # Auto-create/update evolución for active plan lines → resume + pagos
+        synced = sync_active_plan_to_evolution(
+            db,
+            patient_id=patient_id,
+            plans=plans,
+            doctor_id=user.id,
+        )
+        record.plan_tratamiento = synced
+        flag_modified(record, "plan_tratamiento")
+        db.commit()
+        db.refresh(record)
+        return record
+
     for field, value in data.items():
         setattr(record, field, value)
     db.commit()

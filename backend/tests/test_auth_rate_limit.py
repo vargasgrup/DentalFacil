@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD, _clear_rate_limiter
+from tests.conftest import ADMIN_EMAIL, _clear_rate_limiter
 
 
 def test_login_rate_limit_returns_429(client: TestClient, admin_user, app, monkeypatch):
-    """Uses a low dynamic limit via settings (login_limit_value reads it each hit)."""
     from app.config import settings
 
     monkeypatch.setattr(settings, "RATE_LIMIT_LOGIN_PER_MINUTE", 2)

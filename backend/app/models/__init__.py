@@ -9,6 +9,7 @@ from app.models.clinical import (
     OdontogramSnapshot,
 )
 from app.models.periodontogram import PeriodontogramEntry, ToothMedia, ClinicalAuditLog
+from app.models.complementary_tests import ComplementaryTestFile
 from app.models.appointment import Appointment, AppointmentReminder
 from app.models.cash import CashSession, CashTransaction
 from app.models.document import DocumentGenerated
@@ -26,6 +27,7 @@ __all__ = [
     "PeriodontogramEntry",
     "ToothMedia",
     "ClinicalAuditLog",
+    "ComplementaryTestFile",
     "Appointment",
     "AppointmentReminder",
     "CashSession",

@@ -13,6 +13,7 @@ from app.routers.clinical import router as clinical_router
 from app.routers.odontogram import router as odontogram_router
 from app.routers.periodontogram import router as periodontogram_router
 from app.routers.tooth_media import router as tooth_media_router
+from app.routers.complementary_tests import router as complementary_tests_router
 from app.routers.appointments import router as appointments_router, config_router, generate_reminders_job
 from app.routers.cash import router as cash_router
 from app.routers.documents import router as documents_router
@@ -46,6 +47,13 @@ async def lifespan(app: FastAPI):
         ensure_clinical_evolution_schema()
     except Exception as exc:  # noqa: BLE001
         print(f"[dentalfacil] ensure_clinical_schema FAILED: {exc}", flush=True)
+        raise
+    try:
+        from app.ensure_complementary_tests_schema import ensure_complementary_tests_schema
+
+        ensure_complementary_tests_schema()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[dentalfacil] ensure_complementary_tests_schema FAILED: {exc}", flush=True)
         raise
 
     scheduler = BackgroundScheduler()
@@ -128,6 +136,7 @@ app.include_router(clinical_router)
 app.include_router(odontogram_router)
 app.include_router(periodontogram_router)
 app.include_router(tooth_media_router)
+app.include_router(complementary_tests_router)
 app.include_router(audit_router)
 app.include_router(appointments_router)
 app.include_router(config_router)

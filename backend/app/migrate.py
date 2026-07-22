@@ -7,7 +7,7 @@ import time
 _migrations_ok = False
 _migrations_error: str | None = None
 
-HEAD_REVISION = "m0sqlite_uuid_baseline"
+HEAD_REVISION = "n1comp_tests_files"
 
 
 def migrations_status() -> dict:

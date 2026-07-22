@@ -25,6 +25,7 @@ import {
   type TreatmentPlans,
 } from "@/lib/treatmentPlans";
 import { DocumentActions } from "@/components/DocumentActions";
+import { PruebasComplementarias } from "@/components/PruebasComplementarias";
 import { SpecialtySelect } from "@/components/SpecialtySelect";
 import { TreatmentAutocomplete } from "@/components/TreatmentAutocomplete";
 import { PageContainer } from "@/components/ui/PageContainer";
@@ -130,7 +131,7 @@ const FICHA_TABS: { id: FichaTab; label: string; description: string }[] = [
   {
     id: "evaluacion",
     label: "Evaluación y plan",
-    description: "Odontograma, diagnóstico y tratamiento",
+    description: "Odontograma, plan y pruebas",
   },
   {
     id: "seguimiento",
@@ -1448,6 +1449,10 @@ export default function FichaClinicaPage() {
             markSentUrl={`/api/documents/whatsapp-sent/${record.id}`}
           />
         </div>
+      </Section>
+
+      <Section title="Pruebas complementarias" noSave>
+        <PruebasComplementarias patientId={patientId} />
       </Section>
         </div>
       )}

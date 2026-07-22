@@ -401,9 +401,13 @@ export function OdontogramaAnatomico({
     </div>
   );
 
+  const LEGEND_COLS = 6;
+  const legendFillers =
+    (LEGEND_COLS - (ODONTOGRAM_CONDITIONS.length % LEGEND_COLS)) % LEGEND_COLS;
+
   const cellClass = (active: boolean) =>
-    `flex min-h-[2rem] sm:min-h-[1.7rem] items-center justify-center border border-black bg-white px-0.5 py-1.5 sm:py-1 text-center text-[11px] sm:text-[10px] leading-tight text-black sm:text-[11px] ${
-      active ? "bg-[#b8e0c8] font-semibold" : "hover:bg-slate-50"
+    `flex min-h-[2rem] w-full items-center justify-start gap-1.5 bg-white px-2.5 py-1.5 text-left text-[11px] leading-tight text-black sm:min-h-[1.7rem] sm:py-1 ${
+      active ? "bg-[#b8e0c8] font-semibold" : "font-normal hover:bg-slate-50"
     }`;
 
   const tabClass = (active: boolean) =>
@@ -481,7 +485,7 @@ export function OdontogramaAnatomico({
               </div>
             </div>
             <div
-              className="hidden min-w-[36rem] grid-cols-6 border border-black sm:grid"
+              className="hidden min-w-[36rem] grid-cols-6 gap-px border border-black bg-black sm:grid"
               role="toolbar"
               aria-label="Condiciones del odontograma"
             >
@@ -494,15 +498,20 @@ export function OdontogramaAnatomico({
                   title={c.label}
                 >
                   <span
-                    className="mr-1 inline-block h-2.5 w-2.5 shrink-0 border border-slate-600"
+                    className="inline-block h-2.5 w-2.5 shrink-0 border border-slate-600"
                     style={{ backgroundColor: c.color }}
                     aria-hidden
                   />
-                  {c.label}
+                  <span className="min-w-0 truncate">{c.label}</span>
                 </button>
               ))}
-              <div className="min-h-[1.7rem] border border-black bg-white" aria-hidden />
-              <div className="min-h-[1.7rem] border border-black bg-white" aria-hidden />
+              {Array.from({ length: legendFillers }, (_, i) => (
+                <div
+                  key={`legend-empty-${i}`}
+                  className="min-h-[1.7rem] bg-white"
+                  aria-hidden
+                />
+              ))}
             </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-2">

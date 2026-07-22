@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/Input";
 import { Odontograma } from "@/components/Odontograma";
-import { Periodontograma } from "@/components/periodontogram/Periodontograma";
 import { VoiceDictation } from "@/components/VoiceDictation";
 import {
   normalizePlans,
@@ -120,6 +119,26 @@ interface PaymentTx {
 
 type SaveState = "idle" | "saving" | "saved";
 
+type FichaTab = "historia" | "evaluacion" | "seguimiento";
+
+const FICHA_TABS: { id: FichaTab; label: string; description: string }[] = [
+  {
+    id: "historia",
+    label: "Historia clínica",
+    description: "Identificación y antecedentes",
+  },
+  {
+    id: "evaluacion",
+    label: "Evaluación y plan",
+    description: "Odontograma, diagnóstico y tratamiento",
+  },
+  {
+    id: "seguimiento",
+    label: "Seguimiento clínico",
+    description: "Evolución, finanzas y documentos",
+  },
+];
+
 const HABITOS = [
   { key: "cepillado", label: "Cepillado regular" },
   { key: "hilo", label: "Uso de hilo dental" },
@@ -207,6 +226,7 @@ export default function FichaClinicaPage() {
   const [payInfo, setPayInfo] = useState("");
   const [cashOpen, setCashOpen] = useState<boolean | null>(null);
   const [allergyInput, setAllergyInput] = useState("");
+  const [fichaTab, setFichaTab] = useState<FichaTab>("historia");
 
   const loadPayments = useCallback(async () => {
     try {
@@ -817,6 +837,52 @@ export default function FichaClinicaPage() {
         </div>
       )}
 
+      <div className="sticky top-0 z-20 -mx-1 border-b border-slate-200 bg-white/95 px-1 py-3 backdrop-blur-sm">
+        <div
+          className="flex flex-wrap gap-2"
+          role="tablist"
+          aria-label="Secciones de la ficha clínica"
+        >
+          {FICHA_TABS.map((tab) => {
+            const active = fichaTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                id={`ficha-tab-${tab.id}`}
+                aria-controls={`ficha-panel-${tab.id}`}
+                onClick={() => setFichaTab(tab.id)}
+                className={`min-w-[10.5rem] flex-1 rounded-lg border px-4 py-2.5 text-left transition-smooth sm:flex-none ${
+                  active
+                    ? "border-brand-600 bg-brand-600 text-white shadow-sm"
+                    : "border-slate-300 bg-white text-slate-700 hover:border-brand-300 hover:bg-brand-50"
+                }`}
+              >
+                <span className="block text-sm font-semibold tracking-normal">
+                  {tab.label}
+                </span>
+                <span
+                  className={`mt-0.5 block text-xs ${
+                    active ? "text-brand-100" : "text-slate-500"
+                  }`}
+                >
+                  {tab.description}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {fichaTab === "historia" && (
+        <div
+          id="ficha-panel-historia"
+          role="tabpanel"
+          aria-labelledby="ficha-tab-historia"
+          className="space-y-5"
+        >
       {/* 1. DATOS DE IDENTIFICACIÓN */}
       <Section title="Datos de identificación" onSave={savePatient} saveState={patientSaved}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-surface-subtle px-4 py-3">
@@ -1041,14 +1107,19 @@ export default function FichaClinicaPage() {
           </div>
         </div>
       </Section>
+        </div>
+      )}
 
+      {fichaTab === "evaluacion" && (
+        <div
+          id="ficha-panel-evaluacion"
+          role="tabpanel"
+          aria-labelledby="ficha-tab-evaluacion"
+          className="space-y-5"
+        >
       {/* 3. ODONTOGRAMA */}
       <Section title="Odontograma" noSave>
         <Odontograma patientId={patientId} onProposeTreatment={addPlanFromOdontogram} />
-      </Section>
-
-      <Section title="Periodontograma" noSave>
-        <Periodontograma patientId={patientId} />
       </Section>
 
       {/* 4. DIAGNÓSTICO */}
@@ -1378,7 +1449,16 @@ export default function FichaClinicaPage() {
           />
         </div>
       </Section>
+        </div>
+      )}
 
+      {fichaTab === "seguimiento" && (
+        <div
+          id="ficha-panel-seguimiento"
+          role="tabpanel"
+          aria-labelledby="ficha-tab-seguimiento"
+          className="space-y-5"
+        >
       {/* 9. EVOLUCIÓN — atenciones ejecutadas */}
       <Section
         title="Evolución clínica"
@@ -1875,6 +1955,8 @@ export default function FichaClinicaPage() {
           </Button>
         </div>
       </Section>
+        </div>
+      )}
     </PageContainer>
   );
 }

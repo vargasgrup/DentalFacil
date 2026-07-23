@@ -7,7 +7,7 @@ import time
 _migrations_ok = False
 _migrations_error: str | None = None
 
-HEAD_REVISION = "n1comp_tests_files"
+HEAD_REVISION = "o2alta_retroactiva"
 
 
 def migrations_status() -> dict:

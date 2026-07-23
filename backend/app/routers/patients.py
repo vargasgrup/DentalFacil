@@ -1,3 +1,5 @@
+from datetime import datetime, time
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import String, and_, func, literal, or_
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
@@ -6,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.migrate import migrations_status
-from app.models import ClinicalRecord, Patient, User
+from app.models import ClinicalEvolutionEntry, ClinicalRecord, Patient, User
 from app.schemas.patient import (
     PatientCreate,
     PatientOut,
@@ -208,12 +210,42 @@ def create_patient(
         contacto_emergencia=payload.contacto_emergencia,
         nombre_responsable=payload.nombre_responsable,
         alergias=payload.alergias,
+        es_migrado=bool(payload.es_migrado),
+        fecha_ingreso_clinica=payload.fecha_ingreso_clinica if payload.es_migrado else None,
+        resumen_historia_previa=(
+            payload.resumen_historia_previa if payload.es_migrado else None
+        ),
     )
     db.add(patient)
     try:
         db.flush()
-        record = ClinicalRecord(patient_id=patient.id, doctor_responsable_id=user.id)
+        record = ClinicalRecord(
+            patient_id=patient.id,
+            doctor_responsable_id=user.id,
+            antecedentes_odontologicos=(
+                payload.resumen_historia_previa if payload.es_migrado else None
+            ),
+        )
         db.add(record)
+
+        saldo = float(payload.saldo_inicial_migracion or 0)
+        if payload.es_migrado and abs(saldo) > 1e-9 and payload.fecha_ingreso_clinica:
+            evento = datetime.combine(payload.fecha_ingreso_clinica, time.min)
+            db.add(
+                ClinicalEvolutionEntry(
+                    patient_id=patient.id,
+                    doctor_id=user.id,
+                    tratamiento_descripcion="Saldo inicial por migración",
+                    cantidad=1,
+                    costo_unitario=saldo,
+                    costo=saldo,
+                    a_cuenta=0,
+                    estado="pendiente",
+                    origen="migracion",
+                    fecha=evento,
+                )
+            )
+
         db.commit()
     except IntegrityError:
         db.rollback()

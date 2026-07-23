@@ -72,6 +72,7 @@ class SnapshotCreate(BaseModel):
     denticion: str = "permanente"
     label: str = "Estado de cita"
     evolution_entry_id: str | None = None
+    origen: str = "tiempo_real"
 
 
 class SnapshotOut(BaseModel):
@@ -83,6 +84,7 @@ class SnapshotOut(BaseModel):
     taken_by: str | None
     taken_by_name: str | None = None
     evolution_entry_id: str | None
+    origen: str = "tiempo_real"
     taken_at: datetime
 
     model_config = {"from_attributes": True}
@@ -245,6 +247,7 @@ def list_snapshots(
                 taken_by=r.taken_by,
                 taken_by_name=_user_display(u),
                 evolution_entry_id=r.evolution_entry_id,
+                origen=getattr(r, "origen", None) or "tiempo_real",
                 taken_at=r.taken_at,
             )
         )
@@ -261,6 +264,10 @@ def create_snapshot(
     if not db.get(Patient, patient_id):
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
     denticion = payload.denticion if payload.denticion in ("permanente", "temporal") else "permanente"
+    origen = payload.origen if payload.origen in ("tiempo_real", "migracion") else "tiempo_real"
+    default_label = (
+        "Estado histórico (migración)" if origen == "migracion" else "Estado de cita"
+    )
     entries = (
         db.query(OdontogramEntry)
         .filter(
@@ -272,10 +279,11 @@ def create_snapshot(
     snap = OdontogramSnapshot(
         patient_id=patient_id,
         denticion=denticion,
-        label=(payload.label or "Estado de cita").strip()[:120],
+        label=(payload.label or default_label).strip()[:120],
         entries=[_entry_payload(e) for e in entries],
         taken_by=user.id,
         evolution_entry_id=payload.evolution_entry_id,
+        origen=origen,
     )
     db.add(snap)
     db.commit()
@@ -289,6 +297,7 @@ def create_snapshot(
         taken_by=snap.taken_by,
         taken_by_name=_user_display(user),
         evolution_entry_id=snap.evolution_entry_id,
+        origen=snap.origen or "tiempo_real",
         taken_at=snap.taken_at,
     )
 

@@ -44,6 +44,8 @@ class ClinicalEvolutionEntry(Base):
     estado: Mapped[str] = mapped_column(String(20), default="pendiente")
     plan_item_id: Mapped[str | None] = mapped_column(String(40))
     proxima_cita_fecha: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # tiempo_real (default) | migracion (alta retroactiva; excluido de reportes de productividad)
+    origen: Mapped[str] = mapped_column(String(20), default="tiempo_real")
     fecha: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), default=datetime.utcnow
     )
@@ -104,6 +106,8 @@ class OdontogramSnapshot(Base):
     evolution_entry_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("clinical_evolution_entries.id"), nullable=True
     )
+    # tiempo_real (default) | migracion (estado histórico al alta retroactiva)
+    origen: Mapped[str] = mapped_column(String(20), default="tiempo_real")
     taken_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), default=datetime.utcnow
     )

@@ -60,6 +60,8 @@ class ClinicalEvolutionEntryCreate(BaseModel):
     estado: str = "pendiente"
     plan_item_id: Optional[str] = None
     proxima_cita_fecha: Optional[datetime] = None
+    origen: str = "tiempo_real"
+    fecha: Optional[datetime] = None
 
 
 class ClinicalEvolutionEntryUpdate(BaseModel):
@@ -74,6 +76,8 @@ class ClinicalEvolutionEntryUpdate(BaseModel):
     estado: Optional[str] = None
     plan_item_id: Optional[str] = None
     proxima_cita_fecha: Optional[datetime] = None
+    origen: Optional[str] = None
+    fecha: Optional[datetime] = None
 
 
 class ClinicalEvolutionEntryOut(BaseModel):
@@ -90,6 +94,7 @@ class ClinicalEvolutionEntryOut(BaseModel):
     estado: str
     plan_item_id: Optional[str] = None
     proxima_cita_fecha: Optional[datetime] = None
+    origen: str = "tiempo_real"
     fecha: datetime
     created_at: datetime
 
@@ -104,6 +109,11 @@ class ClinicalEvolutionEntryOut(BaseModel):
     @classmethod
     def _unit_default(cls, v):
         return 0.0 if v is None else v
+
+    @field_validator("origen", mode="before")
+    @classmethod
+    def _origen_default(cls, v):
+        return v or "tiempo_real"
 
 
 class FinancialSummary(BaseModel):

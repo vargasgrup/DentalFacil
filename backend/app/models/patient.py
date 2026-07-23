@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import String, Date, DateTime, Text, Index, Integer, func
+from sqlalchemy import String, Date, DateTime, Text, Index, Integer, Boolean, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -35,6 +35,10 @@ class Patient(Base):
     ocupacion: Mapped[str | None] = mapped_column(String(120))
     estado_civil: Mapped[str | None] = mapped_column(String(40))
     nombre_responsable: Mapped[str | None] = mapped_column(String(120))
+    # Alta retroactiva (pacientes históricos previos al sistema)
+    es_migrado: Mapped[bool] = mapped_column(Boolean, default=False)
+    fecha_ingreso_clinica: Mapped[date | None] = mapped_column(Date)
+    resumen_historia_previa: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), default=datetime.utcnow
     )

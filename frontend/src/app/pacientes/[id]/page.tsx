@@ -51,6 +51,9 @@ interface Patient {
   ocupacion?: string;
   estado_civil?: string;
   nombre_responsable?: string;
+  es_migrado?: boolean;
+  fecha_ingreso_clinica?: string | null;
+  resumen_historia_previa?: string | null;
   created_at: string;
 }
 
@@ -85,6 +88,7 @@ interface EvolutionEntry {
   estado: string;
   plan_item_id?: string;
   proxima_cita_fecha?: string;
+  origen?: string;
   fecha: string;
   created_at: string;
 }
@@ -228,6 +232,7 @@ export default function FichaClinicaPage() {
   const [cashOpen, setCashOpen] = useState<boolean | null>(null);
   const [allergyInput, setAllergyInput] = useState("");
   const [fichaTab, setFichaTab] = useState<FichaTab>("historia");
+  const [hasOdontogramSnapshot, setHasOdontogramSnapshot] = useState<boolean | null>(null);
 
   const loadPayments = useCallback(async () => {
     try {
@@ -253,6 +258,18 @@ export default function FichaClinicaPage() {
       setRecord(r);
       setEvolution(e);
       setFinancial(f);
+      if (p.es_migrado) {
+        try {
+          const snaps = await apiFetch<{ id: string }[]>(
+            `/api/odontogram/${patientId}/snapshots`
+          );
+          setHasOdontogramSnapshot(snaps.length > 0);
+        } catch {
+          setHasOdontogramSnapshot(false);
+        }
+      } else {
+        setHasOdontogramSnapshot(null);
+      }
       setPatientForm({
         ...p,
         fecha_nacimiento: p.fecha_nacimiento
@@ -830,6 +847,22 @@ export default function FichaClinicaPage() {
         <h1 className="mt-1 text-page-title tracking-normal text-slate-800">
           {patient.nombres} {patient.apellidos}
         </h1>
+        {patient.es_migrado && (
+          <p className="mt-2 inline-flex items-center rounded-lg border border-slate-200 bg-surface-subtle px-3 py-1.5 text-sm text-slate-700">
+            <span aria-hidden className="mr-1.5">
+              🕓
+            </span>
+            Migrado — datos históricos desde{" "}
+            <span className="ml-1 font-medium text-slate-900">
+              {patient.fecha_ingreso_clinica
+                ? new Date(`${patient.fecha_ingreso_clinica}T12:00:00`).toLocaleDateString(
+                    "es-PE",
+                    { day: "2-digit", month: "short", year: "numeric" }
+                  )
+                : "fecha no registrada"}
+            </span>
+          </p>
+        )}
       </div>
 
       {error && (
@@ -1120,6 +1153,18 @@ export default function FichaClinicaPage() {
         >
       {/* 3. ODONTOGRAMA */}
       <Section title="Odontograma" noSave>
+        {patient.es_migrado && hasOdontogramSnapshot === false && (
+          <p className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            Este es el estado inicial registrado al momento de la migración (no se
+            generarán eventos de evolución por pieza). Guarda un estado de cita en el
+            odontograma para fijar el snapshot histórico.
+          </p>
+        )}
+        {patient.es_migrado && hasOdontogramSnapshot === true && (
+          <p className="mb-3 text-help text-slate-500">
+            Paciente migrado: el odontograma incluye el estado histórico de migración.
+          </p>
+        )}
         <Odontograma patientId={patientId} onProposeTreatment={addPlanFromOdontogram} />
       </Section>
 
@@ -1617,6 +1662,11 @@ export default function FichaClinicaPage() {
                       </td>
                       <td className="py-2 pr-3">
                         {e.tratamiento_descripcion}
+                        {e.origen === "migracion" && (
+                          <span className="mt-0.5 block text-[9px] font-medium text-slate-500">
+                            Migración (histórico)
+                          </span>
+                        )}
                         {e.plan_item_id && (
                           <span className="mt-0.5 block text-[9px] text-brand-700">
                             Desde plan

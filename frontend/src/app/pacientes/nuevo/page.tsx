@@ -81,6 +81,10 @@ export default function NuevoPacientePage() {
     contacto_emergencia: "",
     nombre_responsable: "",
     alergias: "",
+    es_migrado: false,
+    fecha_ingreso_clinica: "",
+    resumen_historia_previa: "",
+    saldo_inicial_migracion: "0",
   });
 
   useEffect(() => {
@@ -219,6 +223,18 @@ export default function NuevoPacientePage() {
       errs.numero_documento = "Documento ya registrado";
     }
 
+    if (form.es_migrado) {
+      if (!form.fecha_ingreso_clinica) {
+        errs.fecha_ingreso_clinica = "Obligatoria para alta retroactiva";
+      } else if (form.fecha_ingreso_clinica > new Date().toISOString().slice(0, 10)) {
+        errs.fecha_ingreso_clinica = "No puede ser futura";
+      }
+      const saldo = Number(form.saldo_inicial_migracion);
+      if (Number.isNaN(saldo)) {
+        errs.saldo_inicial_migracion = "Monto inválido";
+      }
+    }
+
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -254,6 +270,16 @@ export default function NuevoPacientePage() {
           ocupacion: form.ocupacion.trim() || null,
           estado_civil: form.estado_civil || null,
           nombre_responsable: form.nombre_responsable.trim() || null,
+          es_migrado: form.es_migrado,
+          fecha_ingreso_clinica: form.es_migrado
+            ? form.fecha_ingreso_clinica || null
+            : null,
+          resumen_historia_previa: form.es_migrado
+            ? form.resumen_historia_previa.trim() || null
+            : null,
+          saldo_inicial_migracion: form.es_migrado
+            ? Number(form.saldo_inicial_migracion) || 0
+            : 0,
         }),
       });
       if (!patient?.id) {
@@ -450,6 +476,84 @@ export default function NuevoPacientePage() {
                 placeholder="Penicilina, látex… o escriba Ninguna"
               />
             </label>
+          </section>
+
+          {/* Alta retroactiva */}
+          <section className="space-y-4 rounded-lg border border-slate-200 bg-surface-subtle p-4">
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={form.es_migrado}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setForm((prev) => ({
+                    ...prev,
+                    es_migrado: on,
+                    ...(on
+                      ? {}
+                      : {
+                          fecha_ingreso_clinica: "",
+                          resumen_historia_previa: "",
+                          saldo_inicial_migracion: "0",
+                        }),
+                  }));
+                  setFieldErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.fecha_ingreso_clinica;
+                    delete next.saldo_inicial_migracion;
+                    return next;
+                  });
+                }}
+                className="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-600"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-slate-800">
+                  Paciente ya existía antes del sistema (alta retroactiva)
+                </span>
+                <span className="mt-0.5 block text-help text-slate-500">
+                  Carga historia previa sin distorsionar reportes de productividad del día.
+                </span>
+              </span>
+            </label>
+
+            {form.es_migrado && (
+              <div className="space-y-4 border-t border-slate-200 pt-4">
+                <Input
+                  label="Fecha de ingreso a la clínica *"
+                  type="date"
+                  value={form.fecha_ingreso_clinica}
+                  onChange={(e) => set("fecha_ingreso_clinica", e.target.value)}
+                  max={new Date().toISOString().slice(0, 10)}
+                  error={fieldErrors.fecha_ingreso_clinica}
+                  required
+                />
+                <label className="block">
+                  <span className="mb-1 block text-label text-slate-700">
+                    Resumen de historia clínica previa{" "}
+                    <span className="font-normal text-slate-500">(opcional)</span>
+                  </span>
+                  <textarea
+                    value={form.resumen_historia_previa}
+                    onChange={(e) => set("resumen_historia_previa", e.target.value)}
+                    rows={3}
+                    maxLength={5000}
+                    className={selectClass}
+                    placeholder="Antecedentes y tratamientos previos al sistema…"
+                  />
+                </label>
+                <div>
+                  <Input
+                    label="Saldo inicial (S/)"
+                    type="number"
+                    step="0.01"
+                    value={form.saldo_inicial_migracion}
+                    onChange={(e) => set("saldo_inicial_migracion", e.target.value)}
+                    error={fieldErrors.saldo_inicial_migracion}
+                    hint="Positivo si el paciente tiene un saldo pendiente. Déjalo en 0 si no aplica."
+                  />
+                </div>
+              </div>
+            )}
           </section>
 
           {/* Opcionales */}

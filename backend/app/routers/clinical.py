@@ -194,6 +194,7 @@ def create_evolution(
     if unit == 0 and costo and cantidad:
         unit = costo / cantidad
     a_cuenta = min(float(payload.a_cuenta or 0), costo)
+    origen = payload.origen if payload.origen in ("tiempo_real", "migracion") else "tiempo_real"
     entry = ClinicalEvolutionEntry(
         patient_id=patient_id,
         doctor_id=payload.doctor_id or user.id,
@@ -207,7 +208,10 @@ def create_evolution(
         estado=payload.estado,
         plan_item_id=payload.plan_item_id,
         proxima_cita_fecha=payload.proxima_cita_fecha,
+        origen=origen,
     )
+    if payload.fecha is not None:
+        entry.fecha = payload.fecha
     db.add(entry)
     db.flush()
     if payload.plan_item_id:

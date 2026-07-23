@@ -190,7 +190,11 @@ def report_tratamientos(
     """Treatments/evolution report: what was treated, charged, pending."""
     entries = (
         db.query(ClinicalEvolutionEntry)
-        .filter(ClinicalEvolutionEntry.fecha >= start, ClinicalEvolutionEntry.fecha <= end)
+        .filter(
+            ClinicalEvolutionEntry.fecha >= start,
+            ClinicalEvolutionEntry.fecha <= end,
+            ClinicalEvolutionEntry.origen != "migracion",
+        )
         .order_by(ClinicalEvolutionEntry.fecha.desc())
         .all()
     )

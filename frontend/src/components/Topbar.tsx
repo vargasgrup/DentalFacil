@@ -268,7 +268,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {canAccessModule(user?.rol, "pacientes") && (
+          {canAccessModule(user, "pacientes") && (
             <Link
               href="/pacientes/nuevo"
               className={`inline-flex ${CTRL} items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 text-sm font-medium leading-none text-white transition-smooth hover:bg-brand-700 sm:px-3`}
@@ -278,7 +278,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
               <span className="md:hidden">Paciente</span>
             </Link>
           )}
-          {canAccessModule(user?.rol, "agenda") && (
+          {canAccessModule(user, "agenda") && (
             <Link
               href="/agenda?nueva=1"
               className={`inline-flex ${CTRL} items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium leading-none text-slate-700 transition-smooth hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 sm:px-3`}

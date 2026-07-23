@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  ArrowUp,
   Calendar,
   CalendarPlus,
   Cake,
@@ -37,6 +36,91 @@ function greetingForHour(h: number): string {
   if (h < 12) return "Buenos días";
   if (h < 19) return "Buenas tardes";
   return "Buenas noches";
+}
+
+type KpiTone = "brand" | "success" | "info" | "danger";
+
+const KPI_TONE: Record<
+  KpiTone,
+  {
+    card: string;
+    iconWrap: string;
+    icon: string;
+    bar: string;
+  }
+> = {
+  brand: {
+    card: "dash-kpi-brand",
+    iconWrap: "bg-brand-50",
+    icon: "text-brand-600",
+    bar: "bg-brand-500",
+  },
+  success: {
+    card: "dash-kpi-success",
+    iconWrap: "bg-success-50",
+    icon: "text-success-600",
+    bar: "bg-success-500",
+  },
+  info: {
+    card: "dash-kpi-info",
+    iconWrap: "bg-info-50",
+    icon: "text-info-600",
+    bar: "bg-info-500",
+  },
+  danger: {
+    card: "dash-kpi-danger",
+    iconWrap: "bg-danger-50",
+    icon: "text-danger-600",
+    bar: "bg-danger-500",
+  },
+};
+
+function KpiCard({
+  href,
+  label,
+  value,
+  meta,
+  icon,
+  tone,
+  progress,
+}: {
+  href: string;
+  label: string;
+  value: string;
+  meta: ReactNode;
+  icon: ReactNode;
+  tone: KpiTone;
+  /** 0–100 fill for the shared bottom progress bar */
+  progress: number;
+}) {
+  const t = KPI_TONE[tone];
+  const pct = Math.max(0, Math.min(100, Math.round(progress)));
+  return (
+    <Link
+      href={href}
+      className={`dash-kpi ${t.card} dash-card-hover flex flex-col rounded-2xl bg-white p-5 shadow-card`}
+    >
+      <div className="relative z-[1] flex flex-1 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{label}</p>
+          <h3 className="mt-1 text-2xl font-bold tabular-nums text-slate-800">{value}</h3>
+          <div className="mt-2 min-h-[1.125rem] text-xs leading-snug text-slate-500">{meta}</div>
+        </div>
+        <div
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${t.iconWrap} ${t.icon}`}
+        >
+          {icon}
+        </div>
+      </div>
+      <div className="relative z-[1] mt-4 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+        <div
+          className={`dash-progress-fill h-full rounded-full ${t.bar}`}
+          style={{ width: `${pct}%` }}
+          aria-hidden
+        />
+      </div>
+    </Link>
+  );
 }
 
 function estadoPill(estado: string): { cls: string; label: string } {
@@ -141,10 +225,10 @@ export default function DashboardPage() {
     month: "long",
     year: "numeric",
   });
-  const canCaja = canAccessModule(user?.rol, "caja");
-  const canAgenda = canAccessModule(user?.rol, "agenda");
-  const canPacientes = canAccessModule(user?.rol, "pacientes");
-  const canReportes = canAccessModule(user?.rol, "reportes");
+  const canCaja = canAccessModule(user, "caja");
+  const canAgenda = canAccessModule(user, "agenda");
+  const canPacientes = canAccessModule(user, "pacientes");
+  const canReportes = canAccessModule(user, "reportes");
 
   if (loading) {
     return (
@@ -174,15 +258,6 @@ export default function DashboardPage() {
   }
 
   const { cash, kpis, citas_hoy, reminders, deudas, tratamientos_activos } = data;
-  const ingresosPct = cash.open
-    ? Math.min(
-        100,
-        Math.round(
-          (cash.ingresos_hoy / Math.max(cash.ingresos_hoy || 1, cash.monto_inicial || 500)) *
-            100
-        )
-      )
-    : 0;
 
   return (
     <PageContainer width="full" className="!space-y-6 pb-8">
@@ -246,139 +321,72 @@ export default function DashboardPage() {
       </div>
 
       <div className="dash-slide-up grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Link
+        <KpiCard
           href={canCaja ? "/caja" : "/dashboard"}
-          className="dash-kpi dash-kpi-brand dash-card-hover rounded-2xl bg-white p-5 shadow-card"
-        >
-          <div className="relative z-[1] flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Ingresos Hoy
-              </p>
-              <h3 className="mt-1 text-2xl font-bold text-slate-800">
-                {moneyPE(kpis.ingresos_hoy)}
-              </h3>
-              <p className="mt-2 text-xs text-slate-400">
-                {cash.open ? `Saldo sesión ${moneyPE(cash.saldo)}` : "Caja sin abrir"}
-              </p>
-            </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50">
-              <Coins className="h-5 w-5 text-brand-600" />
-            </div>
-          </div>
-          <div className="relative z-[1] mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="dash-progress-fill h-full rounded-full bg-brand-500"
-              style={{ width: `${ingresosPct}%` }}
-            />
-          </div>
-        </Link>
-
-        <Link
+          label="Ingresos Hoy"
+          value={moneyPE(kpis.ingresos_hoy)}
+          meta={cash.open ? `Saldo sesión ${moneyPE(cash.saldo)}` : "Caja sin abrir"}
+          icon={<Coins className="h-5 w-5" />}
+          tone="success"
+          progress={
+            cash.open
+              ? Math.min(
+                  100,
+                  Math.round(
+                    (cash.ingresos_hoy /
+                      Math.max(cash.ingresos_hoy || 1, cash.monto_inicial || 100)) *
+                      100
+                  )
+                )
+              : 0
+          }
+        />
+        <KpiCard
           href={canAgenda ? "/agenda" : "/dashboard"}
-          className="dash-kpi dash-kpi-success dash-card-hover rounded-2xl bg-white p-5 shadow-card"
-        >
-          <div className="relative z-[1] flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Citas Hoy
-              </p>
-              <h3 className="mt-1 text-2xl font-bold text-slate-800">{kpis.citas_hoy}</h3>
-              <div className="mt-2 flex items-center gap-1">
-                {kpis.citas_delta_vs_ayer >= 0 ? (
-                  <>
-                    <ArrowUp className="h-3 w-3 text-success-500" />
-                    <span className="text-xs font-medium text-success-600">
-                      +{kpis.citas_delta_vs_ayer} vs ayer
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-xs font-medium text-slate-500">
-                    {kpis.citas_delta_vs_ayer} vs ayer
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-success-50">
-              <Calendar className="h-5 w-5 text-success-600" />
-            </div>
-          </div>
-          <div className="relative z-[1] mt-4 flex gap-1">
-            <div className="h-1.5 flex-1 rounded-full bg-success-500" />
-            <div
-              className={`h-1.5 flex-1 rounded-full ${
-                kpis.citas_pendientes > 0 ? "bg-success-200" : "bg-slate-100"
-              }`}
-            />
-            <div className="h-1.5 flex-1 rounded-full bg-slate-100" />
-          </div>
-        </Link>
-
-        <Link
+          label="Citas Hoy"
+          value={String(kpis.citas_hoy)}
+          meta={
+            kpis.citas_delta_vs_ayer >= 0
+              ? `+${kpis.citas_delta_vs_ayer} vs ayer`
+              : `${kpis.citas_delta_vs_ayer} vs ayer`
+          }
+          icon={<Calendar className="h-5 w-5" />}
+          tone="brand"
+          progress={
+            kpis.citas_hoy <= 0
+              ? 0
+              : Math.min(
+                  100,
+                  Math.round(
+                    ((kpis.citas_completadas || 0) / Math.max(kpis.citas_hoy, 1)) * 100
+                  ) || Math.min(100, kpis.citas_hoy * 25)
+                )
+          }
+        />
+        <KpiCard
           href={canPacientes ? "/pacientes" : "/dashboard"}
-          className="dash-kpi dash-kpi-info dash-card-hover rounded-2xl bg-white p-5 shadow-card"
-        >
-          <div className="relative z-[1] flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Pacientes Nuevos
-              </p>
-              <h3 className="mt-1 text-2xl font-bold text-slate-800">
-                {kpis.pacientes_nuevos_mes}
-              </h3>
-              <div className="mt-2 flex items-center gap-1">
-                {kpis.pacientes_nuevos_delta >= 0 ? (
-                  <>
-                    <ArrowUp className="h-3 w-3 text-success-500" />
-                    <span className="text-xs font-medium text-success-600">
-                      +{kpis.pacientes_nuevos_delta} este mes
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-xs text-slate-400">vs mes anterior</span>
-                )}
-              </div>
-            </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-info-50">
-              <UserPlus className="h-5 w-5 text-info-600" />
-            </div>
-          </div>
-          <div className="relative z-[1] mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="dash-progress-fill h-full rounded-full bg-info-500"
-              style={{ width: `${Math.min(100, kpis.pacientes_nuevos_mes * 8)}%` }}
-            />
-          </div>
-        </Link>
-
-        <Link
+          label="Pacientes Nuevos"
+          value={String(kpis.pacientes_nuevos_mes)}
+          meta={
+            kpis.pacientes_nuevos_delta >= 0
+              ? `+${kpis.pacientes_nuevos_delta} este mes`
+              : "vs mes anterior"
+          }
+          icon={<UserPlus className="h-5 w-5" />}
+          tone="info"
+          progress={Math.min(100, kpis.pacientes_nuevos_mes * 8)}
+        />
+        <KpiCard
           href={canPacientes ? "/pacientes" : "/dashboard"}
-          className="dash-kpi dash-kpi-danger dash-card-hover rounded-2xl bg-white p-5 shadow-card"
-        >
-          <div className="relative z-[1] flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Deuda Pendiente
-              </p>
-              <h3 className="mt-1 text-2xl font-bold text-slate-800">
-                {moneyPE(kpis.deuda_total)}
-              </h3>
-              <p className="mt-2 text-xs text-slate-400">
-                {kpis.deuda_pacientes}{" "}
-                {kpis.deuda_pacientes === 1 ? "paciente" : "pacientes"} con saldo
-              </p>
-            </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-danger-50">
-              <CreditCard className="h-5 w-5 text-danger-600" />
-            </div>
-          </div>
-          <div className="relative z-[1] mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="dash-progress-fill h-full rounded-full bg-danger-500"
-              style={{ width: `${Math.min(100, kpis.deuda_pacientes * 10 || 0)}%` }}
-            />
-          </div>
-        </Link>
+          label="Deuda Pendiente"
+          value={moneyPE(kpis.deuda_total)}
+          meta={`${kpis.deuda_pacientes} ${
+            kpis.deuda_pacientes === 1 ? "paciente" : "pacientes"
+          } con saldo`}
+          icon={<CreditCard className="h-5 w-5" />}
+          tone="danger"
+          progress={Math.min(100, kpis.deuda_pacientes * 12)}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">

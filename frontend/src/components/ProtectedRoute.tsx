@@ -42,7 +42,7 @@ export function ProtectedRoute({
 
   useEffect(() => {
     if (loading || !user || !module) return;
-    if (!canAccessModule(user.rol, module)) {
+    if (!canAccessModule(user, module)) {
       router.replace("/dashboard");
     }
   }, [user, loading, module, router]);
@@ -63,7 +63,7 @@ export function ProtectedRoute({
     );
   }
 
-  if (module && !canAccessModule(user.rol, module)) {
+  if (module && !canAccessModule(user, module)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-muted">
         <Loader2 className="h-6 w-6 animate-spin text-brand-600" aria-label="Redirigiendo" />

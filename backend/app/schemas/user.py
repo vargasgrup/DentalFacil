@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from app.core.modules import ALL_MODULES, normalize_modules
 
 
 class UserCreate(BaseModel):
@@ -9,6 +11,14 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=6)
     rol: str = Field(default="DOCTOR")
+    modulos_acceso: Optional[list[str]] = None
+
+    @field_validator("modulos_acceso")
+    @classmethod
+    def _mods(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        if v is None:
+            return None
+        return normalize_modules(v)
 
 
 class UserOut(BaseModel):
@@ -17,6 +27,7 @@ class UserOut(BaseModel):
     email: str
     rol: str
     activo: bool
+    modulos_acceso: list[str] = Field(default_factory=list)
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -27,6 +38,14 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     rol: Optional[str] = None
     activo: Optional[bool] = None
+    modulos_acceso: Optional[list[str]] = None
+
+    @field_validator("modulos_acceso")
+    @classmethod
+    def _mods(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        if v is None:
+            return None
+        return normalize_modules(v)
 
 
 class PasswordReset(BaseModel):
@@ -66,3 +85,7 @@ class LogoutRequest(BaseModel):
 
 class SetupStatus(BaseModel):
     needs_setup: bool
+
+
+# Re-export for docs / admin UI
+MODULE_CATALOG = list(ALL_MODULES)

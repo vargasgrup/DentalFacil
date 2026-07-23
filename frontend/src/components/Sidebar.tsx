@@ -56,9 +56,8 @@ function NavLink({
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { user } = useAuth();
-  const rol = user?.rol;
-  const principalVisible = principal.filter((item) => canAccessHref(rol, item.href));
-  const sistemaVisible = sistema.filter((item) => canAccessHref(rol, item.href));
+  const principalVisible = principal.filter((item) => canAccessHref(user, item.href));
+  const sistemaVisible = sistema.filter((item) => canAccessHref(user, item.href));
 
   return (
     <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-3">

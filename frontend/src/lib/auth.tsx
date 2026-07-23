@@ -18,6 +18,7 @@ interface User {
   email: string;
   rol: string;
   activo: boolean;
+  modulos_acceso?: string[];
 }
 
 interface AuthContextValue {

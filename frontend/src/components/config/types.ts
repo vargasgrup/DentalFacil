@@ -4,6 +4,7 @@ export interface User {
   email: string;
   rol: string;
   activo: boolean;
+  modulos_acceso?: string[];
   created_at: string;
 }
 

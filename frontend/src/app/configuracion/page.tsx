@@ -12,6 +12,11 @@ import { SpecialtiesConfig } from "@/components/config/SpecialtiesConfig";
 import { ReminderConfigForm } from "@/components/config/ReminderConfigForm";
 import { UsersAdminPanel } from "@/components/config/UsersAdminPanel";
 import { emptyClinic, type ClinicProfile, type User } from "@/components/config/types";
+import {
+  APP_MODULES,
+  defaultModulesForRole,
+  type AppModule,
+} from "@/lib/roles";
 
 export default function ConfiguracionPage() {
   const { user: currentUser } = useAuth();
@@ -23,9 +28,15 @@ export default function ConfiguracionPage() {
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [rol, setRol] = useState("DOCTOR");
+  const [rol, setRolState] = useState("DOCTOR");
+  const [modulos, setModulos] = useState<AppModule[]>(() => defaultModulesForRole("DOCTOR"));
   const [userFormError, setUserFormError] = useState("");
   const [creatingUser, setCreatingUser] = useState(false);
+
+  const setRol = (next: string) => {
+    setRolState(next);
+    setModulos(defaultModulesForRole(next));
+  };
 
   const [oldPwd, setOldPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
@@ -351,6 +362,7 @@ export default function ConfiguracionPage() {
           email: email.trim().toLowerCase(),
           password,
           rol,
+          modulos_acceso: rol === "ADMIN" ? APP_MODULES : modulos,
         }),
       });
       setShowCreate(false);
@@ -377,6 +389,20 @@ export default function ConfiguracionPage() {
       await loadUsers();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error al cambiar rol");
+    }
+  };
+
+  const changeModulos = async (u: User, next: AppModule[]) => {
+    if (u.rol === "ADMIN") return;
+    try {
+      await apiFetch(`/api/users/${u.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ modulos_acceso: next }),
+      });
+      setError("");
+      await loadUsers();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al actualizar módulos");
     }
   };
 
@@ -519,12 +545,15 @@ export default function ConfiguracionPage() {
           setPassword={setPassword}
           rol={rol}
           setRol={setRol}
+          modulos={modulos}
+          setModulos={setModulos}
           formError={userFormError}
           creating={creatingUser}
           onCreate={handleCreate}
           onToggleActivo={toggleActivo}
           onResetPassword={handleResetPassword}
           onChangeRol={changeRol}
+          onChangeModulos={changeModulos}
         />
       )}
     </PageContainer>

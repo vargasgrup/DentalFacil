@@ -6,6 +6,12 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, require_roles
 from app.core.rate_limit import enforce_login_rate_limit, enforce_setup_rate_limit
 from app.core.roles import MAX_ADMINS, VALID_ROLES, Rol
+from app.core.modules import (
+    modules_from_storage,
+    modules_to_json,
+    normalize_modules,
+    default_modules_for_role,
+)
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -34,6 +40,20 @@ from app.schemas.user import (
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
+def _user_out(user: User) -> UserOut:
+    return UserOut(
+        id=user.id,
+        nombre=user.nombre,
+        email=user.email,
+        rol=user.rol,
+        activo=user.activo,
+        modulos_acceso=modules_from_storage(
+            getattr(user, "modulos_acceso", None), user.rol
+        ),
+        created_at=user.created_at,
+    )
+
+
 def _user_tokens(user: User) -> TokenResponse:
     ver = int(getattr(user, "token_version", 0) or 0)
     access = create_access_token(str(user.id), user.rol, ver)
@@ -41,7 +61,7 @@ def _user_tokens(user: User) -> TokenResponse:
     return TokenResponse(
         access_token=access,
         refresh_token=refresh,
-        user=UserOut.model_validate(user),
+        user=_user_out(user),
     )
 
 
@@ -75,6 +95,7 @@ def setup(request: Request, payload: SetupRequest, db: Session = Depends(get_db)
         password_hash=hash_password(payload.password),
         rol=Rol.ADMIN.value,
         activo=True,
+        modulos_acceso=modules_to_json(default_modules_for_role(Rol.ADMIN.value)),
     )
     db.add(user)
     db.commit()
@@ -212,7 +233,7 @@ def list_users(
     admin: User = Depends(require_roles(Rol.ADMIN)),
     db: Session = Depends(get_db),
 ):
-    return db.query(User).order_by(User.created_at.desc()).all()
+    return [_user_out(u) for u in db.query(User).order_by(User.created_at.desc()).all()]
 
 
 @users_router.post("", response_model=UserOut, status_code=201)
@@ -232,17 +253,20 @@ def create_user(
         )
     if payload.rol == Rol.ADMIN.value:
         _assert_admin_slot_available(db)
+
+    mods = normalize_modules(payload.modulos_acceso, rol=payload.rol)
     user = User(
         nombre=nombre,
         email=email,
         password_hash=hash_password(payload.password),
         rol=payload.rol,
         activo=True,
+        modulos_acceso=modules_to_json(mods),
     )
     db.add(user)
     db.commit()
     db.refresh(user)
-    return user
+    return _user_out(user)
 
 
 @users_router.patch("/{user_id}", response_model=UserOut)
@@ -286,6 +310,21 @@ def update_user(
                 detail="Debe quedar al menos un administrador en el centro",
             )
         user.rol = payload.rol
+        # Si cambia a ADMIN, forzar todos los módulos
+        if payload.rol == Rol.ADMIN.value:
+            user.modulos_acceso = modules_to_json(
+                default_modules_for_role(Rol.ADMIN.value)
+            )
+        elif payload.modulos_acceso is None:
+            # Al cambiar de rol sin enviar módulos, aplicar defaults del nuevo rol
+            user.modulos_acceso = modules_to_json(
+                default_modules_for_role(payload.rol)
+            )
+    if payload.modulos_acceso is not None:
+        effective_rol = payload.rol if payload.rol is not None else user.rol
+        user.modulos_acceso = modules_to_json(
+            normalize_modules(payload.modulos_acceso, rol=effective_rol)
+        )
     if payload.activo is not None:
         if (
             user.rol == Rol.ADMIN.value
@@ -300,7 +339,7 @@ def update_user(
         user.activo = payload.activo
     db.commit()
     db.refresh(user)
-    return user
+    return _user_out(user)
 
 
 @users_router.post("/{user_id}/reset-password", status_code=204)
@@ -320,4 +359,4 @@ def reset_password(
 
 @users_router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
-    return user
+    return _user_out(user)

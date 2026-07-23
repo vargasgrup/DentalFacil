@@ -79,17 +79,43 @@ def _render_pdf_bytes(story: list, fmt: str, margin: float) -> bytes:
     """
     Renderiza el PDF. En formato 80mm la página tiene exactamente
     el alto del contenido (+ márgenes), a escala 1:1 para tiquetera.
+    Garantiza una sola página (evita que el pie pase a hoja 2).
     """
     buf = io.BytesIO()
     if fmt == "80mm":
         usable_w = TICKET_WIDTH - 2 * margin
         content_h = _measure_story_height(story, usable_w)
-        # Altura justa: sin sobrante que provoque "fit to page" / miniaturización
-        page_h = max(50 * mm, min(content_h + 2 * margin + 1.5 * mm, 2000 * mm))
+        # wrap() suele subestimar Paragraph/Table/Image → padding generoso
+        page_h = max(60 * mm, content_h + 2 * margin + 15 * mm)
         page_size = (TICKET_WIDTH, page_h)
-    else:
-        page_size = FORMAT_DIMENSIONS[fmt]
 
+        # Reintentos si ReportLab aún parte a 2ª página
+        for _ in range(4):
+            buf = io.BytesIO()
+            page_count = [0]
+
+            def _count_page(canvas, doc):  # noqa: ARG001
+                page_count[0] += 1
+
+            doc = SimpleDocTemplate(
+                buf,
+                pagesize=page_size,
+                leftMargin=margin,
+                rightMargin=margin,
+                topMargin=margin,
+                bottomMargin=margin,
+            )
+            doc.build(story, onFirstPage=_count_page, onLaterPages=_count_page)
+            if page_count[0] <= 1:
+                break
+            page_h = min(page_h * 1.35, 2000 * mm)
+            page_size = (TICKET_WIDTH, page_h)
+
+        pdf_bytes = buf.getvalue()
+        buf.close()
+        return pdf_bytes
+
+    page_size = FORMAT_DIMENSIONS[fmt]
     doc = SimpleDocTemplate(
         buf,
         pagesize=page_size,
@@ -324,7 +350,8 @@ def generate_pdf(
 
     # Margins scale with format
     if fmt == "80mm":
-        margin = 2.5 * mm
+        # Papel 80mm / área útil ~72–76mm en TSP700II: márgenes mínimos
+        margin = 1.5 * mm
     elif fmt == "A5":
         margin = 8 * mm
     else:

@@ -460,26 +460,19 @@ def build_comprobante_story(
     story.append(_dash(content_w))
     story.append(Paragraph(f"Código hash:", styles["left"]))
     story.append(Paragraph(codigo_hash, styles["center_small"]))
-    story.append(Spacer(1, 2 * mm))
+    story.append(Spacer(1, 1.5 * mm))
 
-    qr_size = 22 if fmt == "80mm" else 34
+    # QR compacto: cabe en 1 página térmica sin empujar el pie a hoja 2
+    qr_size = 16 if fmt == "80mm" else 34
     story.append(_qr_image(qr_payload, size_mm=qr_size))
     story.append(Spacer(1, 1 * mm))
 
     story.append(
         Paragraph(
-            "Representación impresa del COMPROBANTE DE PAGO del consultorio. "
-            "Documento interno de caja — no constituye comprobante de pago electrónico SUNAT.",
+            "Documento interno de caja — no es comprobante electrónico SUNAT.",
             styles["tiny"],
         )
     )
-    if settings.PUBLIC_APP_URL:
-        story.append(
-            Paragraph(
-                f"Consulta: {(settings.PUBLIC_APP_URL or '').rstrip('/')}/caja",
-                styles["tiny"],
-            )
-        )
     story.append(Paragraph("¡Gracias por su preferencia!", styles["center_small"]))
 
     return story

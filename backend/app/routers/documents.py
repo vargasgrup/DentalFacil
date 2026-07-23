@@ -109,11 +109,15 @@ def download_comprobante(
             _evo_saldo,
             _plan_item_saldo,
             _plan_item_subtotal,
+            sync_evolution_a_cuenta_from_cash,
+            _sync_plan_from_entry,
         )
 
         if evo_id:
             entry = db.get(ClinicalEvolutionEntry, evo_id)
             if entry:
+                sync_evolution_a_cuenta_from_cash(db, entry)
+                _sync_plan_from_entry(db, entry)
                 data["tratamiento_costo"] = float(entry.costo or 0)
                 data["tratamiento_a_cuenta"] = float(entry.a_cuenta or 0)
                 data["tratamiento_saldo"] = _evo_saldo(entry)

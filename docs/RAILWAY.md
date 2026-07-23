@@ -1,3 +1,5 @@
+> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_DENTALSIMPLE_v1_2026-07-23.md` como fuente única de verdad.
+
 # Despliegue en Railway — DentalFacil (staging remoto SQLite + UUID)
 
 El producto final corre **en local / Tauri** con SQLite + UUID.  

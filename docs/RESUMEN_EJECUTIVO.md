@@ -1,3 +1,5 @@
+> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_DENTALSIMPLE_v1_2026-07-23.md` como fuente única de verdad.
+
 # RESUMEN EJECUTIVO GENERAL — M&D Odontología Especializada
 
 ## Qué se construyó

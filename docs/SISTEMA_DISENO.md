@@ -1,3 +1,5 @@
+> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_DENTALSIMPLE_v1_2026-07-23.md` como fuente única de verdad.
+
 # Guía breve — Sistema de diseño MiniOS
 
 Ver también `DESIGN.md` en la raíz del proyecto (fuente canónica).

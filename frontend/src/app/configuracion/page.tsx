@@ -1,71 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { KeyRound, UserX, UserCheck, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { apiFetch, apiUpload, getToken } from "@/lib/api";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
 import { PageContainer } from "@/components/ui/PageContainer";
-import { Input } from "@/components/Input";
 import { ESPECIALIDADES_ODONTOLOGICAS } from "@/lib/especialidades";
-import { UbigeoSelect } from "@/components/UbigeoSelect";
-
-interface User {
-  id: string;
-  nombre: string;
-  email: string;
-  rol: string;
-  activo: boolean;
-  created_at: string;
-}
-
-interface ClinicProfile {
-  razon_social: string;
-  nombre_comercial: string;
-  ruc: string;
-  direccion: string;
-  distrito: string;
-  provincia: string;
-  departamento: string;
-  telefono: string;
-  email: string;
-  ticket_serie: string;
-  eslogan: string;
-  director_nombre: string;
-  cop_registro: string;
-  logo_url: string | null;
-  has_custom_logo: boolean;
-  nombre_publico: string;
-  direccion_completa: string;
-}
-
-const emptyClinic: ClinicProfile = {
-  razon_social: "",
-  nombre_comercial: "",
-  ruc: "",
-  direccion: "",
-  distrito: "",
-  provincia: "",
-  departamento: "",
-  telefono: "",
-  email: "",
-  ticket_serie: "T001",
-  eslogan: "",
-  director_nombre: "",
-  cop_registro: "",
-  logo_url: null,
-  has_custom_logo: false,
-  nombre_publico: "",
-  direccion_completa: "",
-};
-
-const rolVariant: Record<string, "brand" | "info" | "neutral"> = {
-  ADMIN: "brand",
-  DOCTOR: "info",
-  ASISTENTE: "neutral",
-};
+import { ClinicProfileForm } from "@/components/config/ClinicProfileForm";
+import { PasswordChangeForm } from "@/components/config/PasswordChangeForm";
+import { HoursConfigForm } from "@/components/config/HoursConfigForm";
+import { SpecialtiesConfig } from "@/components/config/SpecialtiesConfig";
+import { ReminderConfigForm } from "@/components/config/ReminderConfigForm";
+import { UsersAdminPanel } from "@/components/config/UsersAdminPanel";
+import { emptyClinic, type ClinicProfile, type User } from "@/components/config/types";
 
 export default function ConfiguracionPage() {
   const { user: currentUser } = useAuth();
@@ -113,7 +59,6 @@ export default function ConfiguracionPage() {
       setEspSelected(data.items[0] || "");
       setEspIsDefault(!!data.is_default);
     } catch {
-      /* keep defaults */
       setEspSelected(ESPECIALIDADES_ODONTOLOGICAS[0] || "");
     }
   };
@@ -161,8 +106,8 @@ export default function ConfiguracionPage() {
       setEspSelected(data.items[0] || "");
       setEspIsDefault(!!data.is_default);
       setEspMsg("Especialidades guardadas. Se usan en evolución y agenda.");
-    } catch (err: any) {
-      setEspMsg(err.message);
+    } catch (err: unknown) {
+      setEspMsg(err instanceof Error ? err.message : "Error al guardar");
     } finally {
       setEspSaving(false);
     }
@@ -180,8 +125,8 @@ export default function ConfiguracionPage() {
       setEspSelected(data.items[0] || "");
       setEspIsDefault(!!data.is_default);
       setEspMsg("Catálogo restablecido al valor por defecto.");
-    } catch (err: any) {
-      setEspMsg(err.message);
+    } catch (err: unknown) {
+      setEspMsg(err instanceof Error ? err.message : "Error al restablecer");
     } finally {
       setEspSaving(false);
     }
@@ -239,8 +184,8 @@ export default function ConfiguracionPage() {
       });
       setClinic(updated);
       setClinicMsg("Datos del centro guardados. Se usan en tickets, PDFs y recordatorios.");
-    } catch (err: any) {
-      setClinicMsg(err.message);
+    } catch (err: unknown) {
+      setClinicMsg(err instanceof Error ? err.message : "Error al guardar");
     } finally {
       setClinicSaving(false);
     }
@@ -267,8 +212,8 @@ export default function ConfiguracionPage() {
         });
       }
       setClinicMsg("Logo actualizado. Aparecerá en los documentos impresos.");
-    } catch (err: any) {
-      setClinicMsg(err.message);
+    } catch (err: unknown) {
+      setClinicMsg(err instanceof Error ? err.message : "Error al subir logo");
     } finally {
       setLogoBusy(false);
     }
@@ -287,11 +232,10 @@ export default function ConfiguracionPage() {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
-      // Recarga logo por defecto si existe
       await loadClinicConfig();
       setClinicMsg("Logo restablecido al predeterminado del sistema.");
-    } catch (err: any) {
-      setClinicMsg(err.message);
+    } catch (err: unknown) {
+      setClinicMsg(err instanceof Error ? err.message : "Error al restablecer logo");
     } finally {
       setLogoBusy(false);
     }
@@ -304,7 +248,9 @@ export default function ConfiguracionPage() {
       );
       setReminderHours(String(cfg.reminder_hours_before));
       setReminderTemplate(cfg.reminder_template);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   const loadHoursConfig = async () => {
@@ -314,7 +260,9 @@ export default function ConfiguracionPage() {
       );
       setHoraApertura(cfg.hora_apertura);
       setHoraCierre(cfg.hora_cierre);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   const saveReminderConfig = async (e: React.FormEvent) => {
@@ -329,8 +277,8 @@ export default function ConfiguracionPage() {
         }),
       });
       setReminderMsg("Configuración guardada");
-    } catch (err: any) {
-      setReminderMsg(err.message);
+    } catch (err: unknown) {
+      setReminderMsg(err instanceof Error ? err.message : "Error al guardar");
     }
   };
 
@@ -346,8 +294,8 @@ export default function ConfiguracionPage() {
         }),
       });
       setHoursMsg("Horario guardado");
-    } catch (err: any) {
-      setHoursMsg(err.message);
+    } catch (err: unknown) {
+      setHoursMsg(err instanceof Error ? err.message : "Error al guardar");
     }
   };
 
@@ -355,8 +303,8 @@ export default function ConfiguracionPage() {
     try {
       const data = await apiFetch<User[]>("/api/users");
       setUsers(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al cargar usuarios");
     } finally {
       setLoading(false);
     }
@@ -379,10 +327,13 @@ export default function ConfiguracionPage() {
         body: JSON.stringify({ nombre, email, password, rol }),
       });
       setShowCreate(false);
-      setNombre(""); setEmail(""); setPassword(""); setRol("DOCTOR");
+      setNombre("");
+      setEmail("");
+      setPassword("");
+      setRol("DOCTOR");
       loadUsers();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al crear usuario");
     }
   };
 
@@ -393,8 +344,8 @@ export default function ConfiguracionPage() {
         body: JSON.stringify({ activo: !u.activo }),
       });
       loadUsers();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al actualizar usuario");
     }
   };
 
@@ -407,8 +358,8 @@ export default function ConfiguracionPage() {
         body: JSON.stringify({ new_password: pwd }),
       });
       alert("Contraseña restablecida");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error al restablecer contraseña");
     }
   };
 
@@ -421,9 +372,10 @@ export default function ConfiguracionPage() {
         body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }),
       });
       setPwdMsg("Contraseña cambiada correctamente");
-      setOldPwd(""); setNewPwd("");
-    } catch (err: any) {
-      setPwdMsg(err.message);
+      setOldPwd("");
+      setNewPwd("");
+    } catch (err: unknown) {
+      setPwdMsg(err instanceof Error ? err.message : "Error al cambiar contraseña");
     }
   };
 
@@ -454,441 +406,79 @@ export default function ConfiguracionPage() {
       )}
 
       {isAdmin && (
-        <Card>
-          <h2 className="mb-1 text-section-title text-slate-700">Datos del centro</h2>
-          <p className="mb-4 text-sm text-slate-500">
-            Información oficial del centro odontológico (Perú). Se usa en tickets, fichas,
-            consentimiento, presupuestos y recordatorios WhatsApp.
-          </p>
-          <form onSubmit={saveClinicConfig} className="space-y-4">
-            <div className="flex flex-wrap items-start gap-4">
-              <div className="flex h-20 w-44 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                {logoPreview ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={logoPreview} alt="Logo del centro" className="max-h-full max-w-full object-contain" />
-                ) : (
-                  <span className="px-2 text-center text-xs text-slate-400">Sin logo</span>
-                )}
-              </div>
-              <div className="min-w-[200px] flex-1 space-y-2">
-                <label className="block text-label text-slate-700">Logo del centro</label>
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  disabled={logoBusy}
-                  onChange={(e) => onLogoSelected(e.target.files?.[0] || null)}
-                  className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700"
-                />
-                <p className="text-help text-slate-400">PNG, JPG o WebP · máx. 3 MB</p>
-                {clinic.has_custom_logo && (
-                  <button
-                    type="button"
-                    onClick={() => void clearLogo()}
-                    disabled={logoBusy}
-                    className="text-xs text-slate-500 underline hover:text-slate-700"
-                  >
-                    Restablecer logo predeterminado
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Input
-                label="Razón social"
-                value={clinic.razon_social}
-                onChange={(e) => setClinic({ ...clinic, razon_social: e.target.value })}
-                placeholder="M&D Odontología Especializada S.A.C."
-                required
-              />
-              <Input
-                label="Nombre comercial"
-                value={clinic.nombre_comercial}
-                onChange={(e) => setClinic({ ...clinic, nombre_comercial: e.target.value })}
-                placeholder="M&D Odontología"
-                hint="Aparece en documentos y recordatorios"
-              />
-              <Input
-                label="RUC"
-                value={clinic.ruc}
-                onChange={(e) =>
-                  setClinic({
-                    ...clinic,
-                    ruc: e.target.value.replace(/\D/g, "").slice(0, 11),
-                  })
-                }
-                placeholder="20123456789"
-                inputMode="numeric"
-                maxLength={11}
-              />
-              <Input
-                label="Serie de tickets"
-                value={clinic.ticket_serie}
-                onChange={(e) =>
-                  setClinic({
-                    ...clinic,
-                    ticket_serie: e.target.value.toUpperCase().slice(0, 10),
-                  })
-                }
-                placeholder="T001"
-              />
-            </div>
-
-            <Input
-              label="Dirección"
-              value={clinic.direccion}
-              onChange={(e) => setClinic({ ...clinic, direccion: e.target.value })}
-              placeholder="Av. Ejemplo 123"
-            />
-            <UbigeoSelect
-              value={{
-                departamento: clinic.departamento,
-                provincia: clinic.provincia,
-                distrito: clinic.distrito,
-              }}
-              onChange={(ubigeo) =>
-                setClinic({
-                  ...clinic,
-                  departamento: ubigeo.departamento,
-                  provincia: ubigeo.provincia,
-                  distrito: ubigeo.distrito,
-                })
-              }
-            />
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Input
-                label="Teléfono"
-                value={clinic.telefono}
-                onChange={(e) => setClinic({ ...clinic, telefono: e.target.value })}
-                placeholder="01 1234567 / 999888777"
-              />
-              <Input
-                label="Correo"
-                type="email"
-                value={clinic.email}
-                onChange={(e) => setClinic({ ...clinic, email: e.target.value })}
-                placeholder="contacto@clinica.pe"
-              />
-              <Input
-                label="Director / responsable odontológico"
-                value={clinic.director_nombre}
-                onChange={(e) => setClinic({ ...clinic, director_nombre: e.target.value })}
-                placeholder="Dr. Nombre Apellido"
-              />
-              <Input
-                label="Registro COP"
-                value={clinic.cop_registro}
-                onChange={(e) => setClinic({ ...clinic, cop_registro: e.target.value })}
-                placeholder="COP 12345"
-              />
-            </div>
-            <Input
-              label="Eslogan / subtítulo (opcional)"
-              value={clinic.eslogan}
-              onChange={(e) => setClinic({ ...clinic, eslogan: e.target.value })}
-              placeholder="Odontología especializada"
-            />
-
-            <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit" loading={clinicSaving}>
-                Guardar datos del centro
-              </Button>
-              {clinicMsg && (
-                <span
-                  className={`text-sm ${
-                    clinicMsg.includes("guardados") || clinicMsg.includes("actualizado") || clinicMsg.includes("restablecido")
-                      ? "text-success-600"
-                      : "text-danger-600"
-                  }`}
-                >
-                  {clinicMsg}
-                </span>
-              )}
-            </div>
-          </form>
-        </Card>
+        <ClinicProfileForm
+          clinic={clinic}
+          setClinic={setClinic}
+          logoPreview={logoPreview}
+          logoBusy={logoBusy}
+          clinicSaving={clinicSaving}
+          clinicMsg={clinicMsg}
+          onSubmit={saveClinicConfig}
+          onLogoSelected={onLogoSelected}
+          onClearLogo={() => void clearLogo()}
+        />
       )}
 
-      <Card>
-        <h2 className="mb-4 text-section-title text-slate-700">Mi contraseña</h2>
-        <form onSubmit={handleChangePassword} className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-          <Input
-            label="Actual"
-            type="password"
-            value={oldPwd}
-            onChange={(e) => setOldPwd(e.target.value)}
-            required
-          />
-          <Input
-            label="Nueva"
-            type="password"
-            value={newPwd}
-            onChange={(e) => setNewPwd(e.target.value)}
-            required
-          />
-          <Button type="submit" className="w-full sm:w-auto">
-            Cambiar
-          </Button>
-        </form>
-        {pwdMsg && <p className="mt-2 text-sm text-slate-500">{pwdMsg}</p>}
-      </Card>
+      <PasswordChangeForm
+        oldPwd={oldPwd}
+        setOldPwd={setOldPwd}
+        newPwd={newPwd}
+        setNewPwd={setNewPwd}
+        pwdMsg={pwdMsg}
+        onSubmit={handleChangePassword}
+      />
 
-      <Card>
-        <h2 className="mb-2 text-section-title text-slate-700">Horario de atención</h2>
-        <p className="mb-4 text-sm text-slate-500">
-          Define el rango visible en la grilla de Agenda. Las citas deben crearse dentro de este horario.
-        </p>
-        <form onSubmit={saveHoursConfig} className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-          <Input
-            label="Apertura"
-            type="time"
-            value={horaApertura}
-            onChange={(e) => setHoraApertura(e.target.value)}
-            required
-          />
-          <Input
-            label="Cierre"
-            type="time"
-            value={horaCierre}
-            onChange={(e) => setHoraCierre(e.target.value)}
-            required
-          />
-          <Button type="submit" className="w-full sm:w-auto">
-            Guardar horario
-          </Button>
-        </form>
-        {hoursMsg && <p className="mt-2 text-sm text-slate-500">{hoursMsg}</p>}
-      </Card>
+      <HoursConfigForm
+        horaApertura={horaApertura}
+        setHoraApertura={setHoraApertura}
+        horaCierre={horaCierre}
+        setHoraCierre={setHoraCierre}
+        hoursMsg={hoursMsg}
+        onSubmit={saveHoursConfig}
+      />
 
-      <Card>
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-section-title text-slate-700">Especialidades odontológicas</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Catálogo del centro. Se usa al registrar evolución clínica y al crear citas.
-              {espIsDefault ? " (valores por defecto del sistema)" : ""}
-            </p>
-          </div>
-          {isAdmin && (
-            <Button
-              type="button"
-              variant="secondary"
-              className="text-xs"
-              onClick={() => void resetEspecialidades()}
-              disabled={espSaving || espIsDefault}
-            >
-              Restablecer
-            </Button>
-          )}
-        </div>
+      <SpecialtiesConfig
+        isAdmin={isAdmin}
+        espItems={espItems}
+        espSelected={espSelected}
+        setEspSelected={setEspSelected}
+        espDraft={espDraft}
+        setEspDraft={setEspDraft}
+        espMsg={espMsg}
+        espSaving={espSaving}
+        espIsDefault={espIsDefault}
+        onAdd={addEspecialidad}
+        onRemove={removeEspecialidadByName}
+        onSave={() => void saveEspecialidades()}
+        onReset={() => void resetEspecialidades()}
+      />
 
-        <div className="space-y-3">
-          <label className="block">
-            <span className="mb-1 block text-label text-slate-700">
-              Catálogo ({espItems.length} especialidad{espItems.length === 1 ? "" : "es"})
-            </span>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <select
-                value={espSelected}
-                onChange={(e) => setEspSelected(e.target.value)}
-                className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-smooth focus:border-brand-600 focus:ring-1 focus:ring-brand-600"
-                aria-label="Lista de especialidades odontológicas"
-              >
-                {espItems.length === 0 ? (
-                  <option value="">Sin especialidades</option>
-                ) : (
-                  espItems.map((esp, idx) => (
-                    <option key={`${esp}-${idx}`} value={esp}>
-                      {esp}
-                    </option>
-                  ))
-                )}
-              </select>
-              {isAdmin && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="shrink-0 text-danger-600 hover:border-danger-200 hover:bg-danger-50"
-                  icon={<Trash2 className="h-4 w-4" />}
-                  onClick={() => removeEspecialidadByName(espSelected)}
-                  disabled={!espSelected || espItems.length <= 1}
-                  title="Eliminar especialidad seleccionada"
-                >
-                  Eliminar
-                </Button>
-              )}
-            </div>
-          </label>
-
-          {isAdmin && (
-            <>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                <div className="min-w-0 flex-1">
-                  <Input
-                    label="Nueva especialidad"
-                    value={espDraft}
-                    onChange={(e) => setEspDraft(e.target.value)}
-                    placeholder="Ej: Periodoncia"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addEspecialidad();
-                      }
-                    }}
-                  />
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  icon={<Plus className="h-4 w-4" />}
-                  onClick={addEspecialidad}
-                >
-                  Agregar
-                </Button>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <Button type="button" loading={espSaving} onClick={() => void saveEspecialidades()}>
-                  Guardar especialidades
-                </Button>
-                {espMsg && (
-                  <span
-                    className={`text-sm ${
-                      espMsg.includes("guardadas") || espMsg.includes("restablecido")
-                        ? "text-success-600"
-                        : "text-danger-600"
-                    }`}
-                  >
-                    {espMsg}
-                  </span>
-                )}
-              </div>
-            </>
-          )}
-
-          {!isAdmin && espMsg && (
-            <p className="text-sm text-slate-500">{espMsg}</p>
-          )}
-        </div>
-      </Card>
-
-      <Card>
-        <h2 className="mb-2 text-section-title text-slate-700">Recordatorios de citas</h2>
-        <p className="mb-4 text-sm text-slate-500">
-          El sistema detecta citas próximas y prepara el mensaje de WhatsApp. El envío es manual (un clic).
-        </p>
-        <form onSubmit={saveReminderConfig} className="space-y-4">
-          <Input
-            label="Anticipación del recordatorio (horas antes de la cita)"
-            type="number"
-            value={reminderHours}
-            onChange={(e) => setReminderHours(e.target.value)}
-          />
-          <label className="block">
-            <span className="mb-1 block text-label text-slate-700">Plantilla de mensaje</span>
-            <textarea
-              value={reminderTemplate}
-              onChange={(e) => setReminderTemplate(e.target.value)}
-              rows={3}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
-            />
-            <span className="mt-1 block text-help text-slate-400">
-              Variables: {"{nombre_paciente}"}, {"{nombre_centro}"}, {"{fecha_cita}"}, {"{hora_cita}"}.
-              {" "}
-              <strong className="font-medium text-slate-500">
-                {"{nombre_centro}"}
-              </strong>{" "}
-              se toma de Datos del centro (nunca del nombre del sistema).
-            </span>
-          </label>
-          <Button type="submit">Guardar</Button>
-          {reminderMsg && <p className="text-sm text-slate-500">{reminderMsg}</p>}
-        </form>
-      </Card>
+      <ReminderConfigForm
+        reminderHours={reminderHours}
+        setReminderHours={setReminderHours}
+        reminderTemplate={reminderTemplate}
+        setReminderTemplate={setReminderTemplate}
+        reminderMsg={reminderMsg}
+        onSubmit={saveReminderConfig}
+      />
 
       {isAdmin && (
-        <Card>
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-section-title text-slate-700">Usuarios del centro</h2>
-            <Button
-              variant={showCreate ? "ghost" : "primary"}
-              onClick={() => setShowCreate(!showCreate)}
-              icon={!showCreate ? <Plus className="h-4 w-4" /> : undefined}
-            >
-              {showCreate ? "Cancelar" : "Nuevo"}
-            </Button>
-          </div>
-
-          {showCreate && (
-            <form onSubmit={handleCreate} className="mb-4 space-y-3 rounded-lg bg-surface-subtle p-4">
-              <Input label="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} required />
-              <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-              <Input label="Contraseña" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-              <label className="block">
-                <span className="mb-1 block text-label text-slate-700">Rol</span>
-                <select
-                  value={rol}
-                  onChange={(e) => setRol(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
-                >
-                  <option value="ADMIN">ADMIN</option>
-                  <option value="DOCTOR">DOCTOR</option>
-                  <option value="ASISTENTE">ASISTENTE</option>
-                </select>
-              </label>
-              <Button type="submit">Crear</Button>
-            </form>
-          )}
-
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-surface-subtle text-left text-slate-500">
-                  <th className="px-3 py-2.5 font-medium">Nombre</th>
-                  <th className="px-3 py-2.5 font-medium">Email</th>
-                  <th className="px-3 py-2.5 font-medium">Rol</th>
-                  <th className="px-3 py-2.5 font-medium">Estado</th>
-                  <th className="px-3 py-2.5 font-medium">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id} className="border-b border-slate-100 transition-smooth hover:bg-brand-50/30">
-                    <td className="px-3 py-3 font-medium text-slate-700">{u.nombre}</td>
-                    <td className="px-3 py-3 text-slate-500">{u.email}</td>
-                    <td className="px-3 py-3">
-                      <Badge variant={rolVariant[u.rol] || "neutral"}>{u.rol}</Badge>
-                    </td>
-                    <td className="px-3 py-3">
-                      <Badge variant={u.activo ? "success" : "danger"}>
-                        {u.activo ? "Activo" : "Inactivo"}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          className="text-xs"
-                          icon={u.activo ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
-                          onClick={() => toggleActivo(u)}
-                        >
-                          {u.activo ? "Desactivar" : "Activar"}
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          className="text-xs"
-                          icon={<KeyRound className="h-3.5 w-3.5" />}
-                          onClick={() => handleResetPassword(u)}
-                        >
-                          Resetear clave
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <UsersAdminPanel
+          users={users}
+          showCreate={showCreate}
+          setShowCreate={setShowCreate}
+          nombre={nombre}
+          setNombre={setNombre}
+          email={email}
+          setEmail={setEmail}
+          password={password}
+          setPassword={setPassword}
+          rol={rol}
+          setRol={setRol}
+          onCreate={handleCreate}
+          onToggleActivo={toggleActivo}
+          onResetPassword={handleResetPassword}
+        />
       )}
     </PageContainer>
   );

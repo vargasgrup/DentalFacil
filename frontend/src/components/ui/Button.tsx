@@ -1,7 +1,7 @@
 import { ButtonHTMLAttributes, forwardRef, ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "success";
 
 const variants: Record<Variant, string> = {
   primary:
@@ -11,6 +11,8 @@ const variants: Record<Variant, string> = {
   ghost: "bg-transparent text-slate-600 hover:bg-slate-100 focus:ring-brand-600",
   danger:
     "bg-danger-600 text-white hover:bg-danger-700 focus:ring-danger-600 shadow-sm active:bg-danger-800",
+  success:
+    "bg-success-600 text-white hover:bg-success-700 focus:ring-success-600 shadow-md active:bg-success-800",
 };
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

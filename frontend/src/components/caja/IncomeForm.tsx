@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Check, Eye, MessageCircle, Printer, X } from "lucide-react";
+import { Banknote, Check, Eye, MessageCircle, Printer, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/Input";
@@ -345,47 +345,81 @@ export function IncomeForm({
           </div>
         )}
 
-        <div className="space-y-3 border-t border-slate-100 pt-4">
-          <p className="text-label text-slate-700">Comprobante (Ticket 80mm)</p>
-          <div className="flex flex-wrap gap-2">
+        <div className="space-y-4 border-t border-slate-100 pt-4">
+          {/* 1. Acción principal: cobrar */}
+          <div className="space-y-2">
             <Button
-              type="button"
-              variant="secondary"
-              loading={actionBusy === "preview"}
-              disabled={!!actionBusy || saving}
-              onClick={() => onSaveAndRun("preview")}
-              icon={<Eye className="h-3.5 w-3.5" />}
+              type="submit"
+              variant="success"
+              loading={saving && !actionBusy && !receiptAction}
+              disabled={!!actionBusy}
+              icon={<Banknote className="h-5 w-5" />}
+              className="w-full min-h-[3rem] px-6 text-base font-semibold tracking-wide shadow-md sm:text-[15px]"
             >
-              Previsualizar
+              {incomeTotal > 0
+                ? `Cobrar S/ ${incomeTotal.toFixed(2)}`
+                : "Cobrar"}
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              loading={actionBusy === "print"}
-              disabled={!!actionBusy || saving}
-              onClick={() => onSaveAndRun("print")}
-              icon={<Printer className="h-3.5 w-3.5" />}
-            >
-              Imprimir
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              loading={actionBusy === "wa"}
-              disabled={!!actionBusy || saving}
-              onClick={() => onSaveAndRun("wa")}
-              icon={<MessageCircle className="h-3.5 w-3.5" />}
-            >
-              WhatsApp
-            </Button>
+            <p className="text-help text-slate-500">
+              Registra el ingreso en caja y aplica el abono al plan/evolución si corresponde.
+            </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" variant="secondary" loading={saving && !receiptAction}>
+
+          {/* 2. Comprobante: registrar (si hace falta) + ticket */}
+          <div className="space-y-2">
+            <p className="text-label text-slate-700">Comprobante (Ticket 80mm)</p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                loading={actionBusy === "preview"}
+                disabled={!!actionBusy || saving}
+                onClick={() => onSaveAndRun("preview")}
+                icon={<Eye className="h-3.5 w-3.5" />}
+              >
+                Previsualizar
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                loading={actionBusy === "print"}
+                disabled={!!actionBusy || saving}
+                onClick={() => onSaveAndRun("print")}
+                icon={<Printer className="h-3.5 w-3.5" />}
+              >
+                Imprimir
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                loading={actionBusy === "wa"}
+                disabled={!!actionBusy || saving}
+                onClick={() => onSaveAndRun("wa")}
+                icon={<MessageCircle className="h-3.5 w-3.5" />}
+              >
+                WhatsApp
+              </Button>
+            </div>
+            <p className="text-help text-slate-500">
+              Previsualizar, Imprimir o WhatsApp registran el cobro (si hace falta) y abren el
+              ticket de una vez.
+            </p>
+          </div>
+
+          {/* 3. Acciones secundarias */}
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+            <Button
+              type="submit"
+              variant="secondary"
+              loading={saving && !actionBusy && !receiptAction}
+              disabled={!!actionBusy}
+            >
               Solo registrar
             </Button>
             <Button
               type="button"
               variant="ghost"
+              disabled={!!actionBusy || saving}
               onClick={() => {
                 onClose();
                 onClearReceipt();
@@ -395,10 +429,6 @@ export function IncomeForm({
               Cancelar
             </Button>
           </div>
-          <p className="text-help text-slate-500">
-            Previsualizar, Imprimir o WhatsApp registran el cobro (si hace falta) y abren el
-            ticket de una vez.
-          </p>
 
           {lastReceipt && (
             <div className="rounded-lg border border-success-200 bg-success-50/60 p-3">

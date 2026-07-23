@@ -155,10 +155,11 @@ export default function ReportesPage() {
             <span className="text-sm font-medium text-slate-600">Exportar:</span>
             <DocumentActions
               label="Reporte PDF"
+              documentType="reporte"
               downloadUrl={`/api/reports/${type}?start=${new Date(start + "T00:00:00").toISOString()}&end=${new Date(end + "T23:59:59").toISOString()}`}
               telefono={null}
-              mensaje=""
-              hideWhatsApp
+              mensaje={`Reporte ${type} generado desde M&D Odontología.`}
+              allowShareWithoutPhone
             />
             <Button
               variant="secondary"

@@ -11,8 +11,9 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "./ui/Button";
-import { downloadAndOpenWhatsApp, isValidPhone } from "@/lib/whatsapp";
+import { isValidPhone } from "@/lib/whatsapp";
 import { apiFetch, getToken } from "@/lib/api";
+import { documentSender } from "@/lib/documentSender";
 import {
   getSavedPrintFormat,
   printPdfBlob,
@@ -50,6 +51,20 @@ interface DocumentActionsProps {
   defaultFormat?: PrintFormat;
   /** Lock to a single format (official Caja ticket = 80mm) */
   forceFormat?: PrintFormat;
+  /** Document type for universal sender metrics */
+  documentType?:
+    | "comprobante"
+    | "reporte"
+    | "formato"
+    | "receta"
+    | "presupuesto"
+    | "ficha"
+    | "evolucion"
+    | "consentimiento"
+    | "cierre_caja"
+    | "documento";
+  /** Permite WhatsApp/compartir aunque no haya teléfono (Web Share / descarga). */
+  allowShareWithoutPhone?: boolean;
   /** Open preview modal automatically on mount */
   autoOpenPreview?: boolean;
   /** Trigger print automatically on mount */
@@ -109,6 +124,8 @@ export function DocumentActions({
   onBeforeFetch,
   defaultFormat = "A5",
   forceFormat,
+  documentType = "documento",
+  allowShareWithoutPhone = false,
   autoOpenPreview = false,
   autoPrint = false,
   autoWhatsApp = false,
@@ -116,7 +133,7 @@ export function DocumentActions({
   const [format, setFormat] = useState<PrintFormat>(forceFormat || defaultFormat);
   const [busy, setBusy] = useState<"preview" | "print" | "download" | "wa" | null>(null);
   const [sent, setSent] = useState(false);
-  const [showHint, setShowHint] = useState(false);
+  const [sendHint, setSendHint] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -147,6 +164,7 @@ export function DocumentActions({
 
   const fullUrl = withFormat(downloadUrl, format);
   const hasPhone = isValidPhone(telefono);
+  const canWhatsApp = !hideWhatsApp && (hasPhone || allowShareWithoutPhone);
 
   const closePreview = useCallback(() => {
     setPreviewUrl((prev) => {
@@ -228,29 +246,40 @@ export function DocumentActions({
 
   const handleWhatsApp = async () => {
     setBusy("wa");
-    setShowHint(true);
+    setSendHint(null);
     try {
       await prepareFetch();
-    } catch {
+      const result = await documentSender.sendDocument({
+        downloadUrl: fullUrl,
+        documentType,
+        message: mensaje,
+        phoneNumber: telefono,
+        metadata: { label },
+        onMarkedSent: markSentUrl
+          ? async () => {
+              await apiFetch(markSentUrl, { method: "POST" });
+            }
+          : undefined,
+      });
+      if (result.success) {
+        setSent(true);
+        if (result.requiresManualAttach) {
+          setSendHint(
+            "PDF descargado. Adjúntalo en el chat de WhatsApp que se abrió y envíalo."
+          );
+        } else if (result.strategy === "cloud_api" || result.strategy === "cloud_api_retry") {
+          setSendHint("Enviado directamente al WhatsApp del paciente.");
+        } else if (result.strategy === "web_share") {
+          setSendHint("Documento compartido con la app seleccionada.");
+        }
+      } else {
+        alert(result.error || "Error al enviar");
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error al enviar");
+    } finally {
       setBusy(null);
-      return;
     }
-    const result = await downloadAndOpenWhatsApp(
-      fullUrl,
-      telefono,
-      mensaje,
-      markSentUrl
-        ? async () => {
-            await apiFetch(markSentUrl, { method: "POST" });
-          }
-        : undefined
-    );
-    if (result.success) {
-      setSent(true);
-    } else {
-      alert(result.error || "Error al enviar");
-    }
-    setBusy(null);
   };
 
   useEffect(() => {
@@ -357,7 +386,7 @@ export function DocumentActions({
         )}
 
         {!hideWhatsApp &&
-          (hasPhone ? (
+          (canWhatsApp ? (
             <Button
               variant="primary"
               onClick={() => void handleWhatsApp()}
@@ -388,10 +417,8 @@ export function DocumentActions({
             </span>
           ) : null)}
 
-        {showHint && sent && !compact && (
-          <span className="text-xs text-success-600">
-            PDF descargado. Adjúntalo en el chat de WhatsApp que se abrió y envíalo.
-          </span>
+        {sendHint && sent && !compact && (
+          <span className="text-xs text-success-600">{sendHint}</span>
         )}
         {!hasPhone && !compact && !hideWhatsApp && telefono !== undefined && (
           <span className="text-xs text-warning-600">

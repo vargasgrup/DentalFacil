@@ -369,9 +369,14 @@ export default function CajaPage() {
 
     let concepto = incomeConcepto.trim();
     if (targetMeta && isAbonoConcepto(concepto)) {
-      concepto = `Abono — ${targetMeta.label}${
-        targetMeta.pieza_fdi ? ` (pieza ${targetMeta.pieza_fdi})` : ""
-      }`;
+      const piezaAlreadyInLabel =
+        targetMeta.pieza_fdi &&
+        String(targetMeta.label).includes(String(targetMeta.pieza_fdi));
+      const piezaSuffix =
+        targetMeta.pieza_fdi && !piezaAlreadyInLabel
+          ? ` (pieza ${targetMeta.pieza_fdi})`
+          : "";
+      concepto = `Abono — ${targetMeta.label}${piezaSuffix}`;
     }
 
     setSaving(true);
@@ -799,11 +804,13 @@ export default function CajaPage() {
                         );
                         if (t) {
                           if (!incomeConcepto || isAbonoConcepto(incomeConcepto)) {
-                            setIncomeConcepto(
-                              `Abono — ${t.label}${
-                                t.pieza_fdi ? ` (pieza ${t.pieza_fdi})` : ""
-                              }`
-                            );
+                            const piezaAlready =
+                              t.pieza_fdi && String(t.label).includes(String(t.pieza_fdi));
+                            const piezaSuffix =
+                              t.pieza_fdi && !piezaAlready
+                                ? ` (pieza ${t.pieza_fdi})`
+                                : "";
+                            setIncomeConcepto(`Abono — ${t.label}${piezaSuffix}`);
                           }
                           if (!incomeMonto) {
                             setIncomeMonto(String(t.saldo));
@@ -1060,6 +1067,7 @@ export default function CajaPage() {
                       <DocumentActions
                         key={`receipt-${lastReceipt.id}-${receiptAction || "idle"}`}
                         label="Comprobante de pago"
+                        documentType="comprobante"
                         downloadUrl={`/api/documents/comprobante/${lastReceipt.id}`}
                         telefono={lastReceipt.patient_telefono}
                         mensaje={waReceiptMessage(lastReceipt)}
@@ -1280,6 +1288,7 @@ export default function CajaPage() {
                         <td className="px-4 py-2.5">
                           <DocumentActions
                             label="Comprobante"
+                            documentType="comprobante"
                             downloadUrl={`/api/documents/comprobante/${t.id}`}
                             telefono={t.tipo === "ingreso" ? t.patient_telefono : null}
                             mensaje={t.tipo === "ingreso" ? waReceiptMessage(t) : ""}

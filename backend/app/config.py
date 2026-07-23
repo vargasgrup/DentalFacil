@@ -70,6 +70,14 @@ class Settings(BaseSettings):
     # Reminder scheduler
     REMINDER_HOURS_BEFORE: int = 24
 
+    # WhatsApp Cloud API (Meta) — opcional; sin credenciales el frontend usa Web Share / descarga
+    WHATSAPP_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_ACCESS_TOKEN: str = ""
+    WHATSAPP_API_VERSION: str = "v17.0"
+    WHATSAPP_REQUEST_TIMEOUT_SECONDS: int = 30
+    PDF_CACHE_MAX_SIZE: int = 50
+    MAX_RETRY_ATTEMPTS: int = 3
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("DATABASE_URL", mode="before")

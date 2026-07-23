@@ -1237,6 +1237,7 @@ export default function FichaClinicaPage() {
           <div className="ml-auto">
             <DocumentActions
               label="Presupuesto"
+              documentType="presupuesto"
               downloadUrl={`/api/documents/presupuesto/${patientId}?plan_id=${planBundle.active_id}`}
               telefono={patient.telefono}
               mensaje={`Hola ${patient.nombres}, adjuntamos el presupuesto de tu plan de tratamiento. Cualquier consulta estamos a disposición. Gracias.`}
@@ -1502,6 +1503,7 @@ export default function FichaClinicaPage() {
 
           <DocumentActions
             label="Consentimiento"
+            documentType="consentimiento"
             downloadUrl={`/api/documents/consentimiento/${patientId}`}
             telefono={patient.telefono}
             mensaje={`Hola ${patient.nombres}, adjuntamos el consentimiento informado para tu tratamiento. Gracias.`}
@@ -1739,6 +1741,7 @@ export default function FichaClinicaPage() {
                       <td className="py-2 pr-2">
                         <DocumentActions
                           label="Evolución"
+                          documentType="evolucion"
                           downloadUrl={`/api/documents/evolucion/${e.id}`}
                           telefono={patient.telefono}
                           mensaje={`Hola ${patient.nombres}, adjuntamos el registro de evolución clínica. Gracias.`}
@@ -1984,6 +1987,7 @@ export default function FichaClinicaPage() {
             <p className="mb-2 text-sm font-medium text-slate-700">Ficha clínica completa</p>
             <DocumentActions
               label="Ficha clínica"
+              documentType="ficha"
               downloadUrl={`/api/documents/ficha/${patientId}`}
               telefono={patient.telefono}
               mensaje={`Hola ${patient.nombres}, adjuntamos tu ficha clínica. Cualquier consulta estamos a disposición. Gracias.`}
@@ -1993,6 +1997,7 @@ export default function FichaClinicaPage() {
             <p className="mb-2 text-sm font-medium text-slate-700">Presupuesto (plan activo)</p>
             <DocumentActions
               label="Presupuesto"
+              documentType="presupuesto"
               downloadUrl={`/api/documents/presupuesto/${patientId}?plan_id=${planBundle.active_id}`}
               telefono={patient.telefono}
               mensaje={`Hola ${patient.nombres}, adjuntamos el presupuesto de tu plan de tratamiento. Gracias.`}
@@ -2005,6 +2010,7 @@ export default function FichaClinicaPage() {
             <p className="mb-2 text-sm font-medium text-slate-700">Consentimiento informado</p>
             <DocumentActions
               label="Consentimiento"
+              documentType="consentimiento"
               downloadUrl={`/api/documents/consentimiento/${patientId}`}
               telefono={patient.telefono}
               mensaje={`Hola ${patient.nombres}, adjuntamos el consentimiento informado. Gracias.`}

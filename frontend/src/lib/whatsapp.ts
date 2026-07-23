@@ -1,14 +1,11 @@
 /**
- * WhatsApp helper utilities.
+ * WhatsApp helpers (texto / links).
  *
- * IMPORTANT DESIGN DECISION:
- * This system does NOT use the official WhatsApp Business API.
- * All sending is done via wa.me links that open the user's own WhatsApp
- * (Web or app). WhatsApp does not allow automatic file attachment via link,
- * so the flow compensates with minimal friction:
- *  1. Download the PDF automatically (browser native download)
- *  2. Open wa.me link with pre-written message
- *  3. User manually attaches the downloaded file in the chat (cannot be automated)
+ * El envío de documentos PDF usa el Sistema Universal:
+ * `@/lib/documentSender` → Cloud API (backend) → Web Share → descarga + wa.me.
+ *
+ * Estas utilidades solo construyen URLs wa.me y validan teléfonos.
+ * WhatsApp no permite adjuntar archivos automáticamente vía link.
  */
 
 import { getToken } from "@/lib/api";
@@ -31,11 +28,8 @@ export function isValidPhone(telefono: string | undefined | null): boolean {
 }
 
 /**
- * Downloads a PDF from the backend API and opens WhatsApp chat in one action.
- * @param url The backend document download URL
- * @param telefono Patient's phone
- * @param mensaje Pre-written WhatsApp message
- * @param onSent Callback to mark the document as sent via API
+ * @deprecated Prefer `documentSender.sendDocument` / ShareDocumentButton.
+ * Kept for text-only flows and legacy callers.
  */
 export async function downloadAndOpenWhatsApp(
   url: string,
@@ -44,7 +38,6 @@ export async function downloadAndOpenWhatsApp(
   onSent?: () => Promise<void>,
   filenameHint?: string
 ): Promise<{ success: boolean; error?: string }> {
-  // Step A: Download the PDF
   try {
     const token = getToken();
     const resp = await fetch(url, {
@@ -53,7 +46,6 @@ export async function downloadAndOpenWhatsApp(
     if (!resp.ok) throw new Error("No se pudo descargar el documento");
     const blob = await resp.blob();
 
-    // Trigger browser download
     const blobUrl = URL.createObjectURL(blob);
     const a = window.document.createElement("a");
     a.href = blobUrl;
@@ -62,22 +54,23 @@ export async function downloadAndOpenWhatsApp(
     a.click();
     window.document.body.removeChild(a);
     URL.revokeObjectURL(blobUrl);
-  } catch (err: any) {
-    return { success: false, error: "Error al descargar: " + err.message };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: "Error al descargar: " + msg };
   }
 
-  // Step B: Open WhatsApp chat
   const waUrl = buildWhatsAppUrl(telefono, mensaje);
   if (!waUrl) {
     return { success: false, error: "El paciente no tiene teléfono válido" };
   }
   window.open(waUrl, "_blank");
 
-  // Step C: Mark as sent in the backend (user clicked the button)
   if (onSent) {
     try {
       await onSent();
-    } catch { /* ignore tracking errors */ }
+    } catch {
+      /* ignore tracking errors */
+    }
   }
 
   return { success: true };
@@ -99,7 +92,9 @@ export async function openWhatsAppText(
   if (onSent) {
     try {
       await onSent();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
   return { success: true };
 }

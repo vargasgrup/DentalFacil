@@ -1,20 +1,14 @@
 /**
- * Impresión fiel de PDF: no usa el visor embebido del navegador
- * (Chrome/Edge escalan mal tickets 80mm y páginas A5).
+ * Impresión fiel de PDF.
  *
- * Flujo: lee el PDF → renderiza cada página a imagen en tamaño real →
- * imprime vía iframe oculto (sin popup; evita bloqueo de ventanas emergentes).
- *
- * Ticket 80mm: una sola franja continua (sin hoja 2), ancho completo,
- * @page margin 0 y título vacío para reducir cabeceras/pies del navegador.
+ * - A4/A5: raster (pdf.js → imagen) para control de tamaño de página.
+ * - 80mm (tiquetera): imprime el PDF nativo. Evita el pipeline HTML que
+ *   Chrome etiqueta con la URL de /caja, fecha y 2ª hoja en blanco
+ *   (Star TSP700II / encabezados del navegador).
  */
 
 const PT_TO_MM = 25.4 / 72;
-/** Escala de render para calidad de impresión (~150–200 dpi) */
 const RENDER_SCALE = 2.5;
-/** Ancho útil típico en rollo 80mm (Star TSP700II ≈ 72 mm imprimibles) */
-const THERMAL_WIDTH_MM = 80;
-const THERMAL_PRINTABLE_MM = 72;
 
 export type PrintFormatHint = "80mm" | "A5" | "A4";
 
@@ -36,7 +30,6 @@ interface RenderedPage {
   dataUrl: string;
   widthMm: number;
   heightMm: number;
-  canvas?: HTMLCanvasElement;
 }
 
 async function renderAllPages(pdf: {
@@ -68,41 +61,9 @@ async function renderAllPages(pdf: {
       dataUrl: canvas.toDataURL("image/png"),
       widthMm,
       heightMm,
-      canvas,
     });
   }
   return pages;
-}
-
-/** Une todas las páginas del PDF en una sola imagen vertical (rollo térmico). */
-function stitchPagesVertically(pages: RenderedPage[]): RenderedPage {
-  if (pages.length === 1 && pages[0].canvas) {
-    return pages[0];
-  }
-  const width = Math.max(...pages.map((p) => p.canvas?.width || 0));
-  const height = pages.reduce((sum, p) => sum + (p.canvas?.height || 0), 0);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("No se pudo unir el ticket para impresión");
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, width, height);
-  let y = 0;
-  for (const p of pages) {
-    if (!p.canvas) continue;
-    const x = Math.floor((width - p.canvas.width) / 2);
-    ctx.drawImage(p.canvas, x, y);
-    y += p.canvas.height;
-  }
-  const widthMm = pages[0]?.widthMm || THERMAL_WIDTH_MM;
-  const heightMm = pages.reduce((s, p) => s + p.heightMm, 0);
-  return {
-    dataUrl: canvas.toDataURL("image/png"),
-    widthMm,
-    heightMm,
-    canvas,
-  };
 }
 
 function escapeHtml(s: string): string {
@@ -113,74 +74,10 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/**
- * HTML de impresión para tiquetera 80mm:
- * - Una sola franja (sin page-break → no hoja 2)
- * - Márgenes 0; ancho al rollo
- * - Título vacío (Chrome pone fecha + título en cabecera si "Headers and footers" está activo)
- */
-function buildThermalPrintHtml(page: RenderedPage): string {
-  const w = THERMAL_PRINTABLE_MM;
-  const h = Math.max(page.heightMm * (w / Math.max(page.widthMm, 1)), 40);
-
-  return `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <title>&nbsp;</title>
-  <style>
-    @page {
-      size: ${THERMAL_WIDTH_MM}mm ${h.toFixed(1)}mm;
-      margin: 0;
-    }
-    @page {
-      margin: 0;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body {
-      width: ${THERMAL_WIDTH_MM}mm;
-      margin: 0;
-      padding: 0;
-      background: #fff;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    .ticket {
-      width: ${w}mm;
-      max-width: 100%;
-      margin: 0 auto;
-      padding: 0;
-      page-break-after: avoid;
-      page-break-inside: avoid;
-      break-after: avoid;
-      break-inside: avoid;
-    }
-    .ticket img {
-      display: block;
-      width: 100%;
-      height: auto;
-      max-width: ${w}mm;
-    }
-    @media print {
-      html, body { width: ${THERMAL_WIDTH_MM}mm; margin: 0; }
-      .ticket { page-break-inside: avoid; break-inside: avoid; }
-    }
-  </style>
-</head>
-<body>
-  <div class="ticket"><img src="${page.dataUrl}" alt="" /></div>
-</body>
-</html>`;
-}
-
 function buildPrintHtml(
   pages: RenderedPage[],
   options?: { title?: string; formatHint?: PrintFormatHint }
 ): string {
-  if (options?.formatHint === "80mm") {
-    return buildThermalPrintHtml(stitchPagesVertically(pages));
-  }
-
   const sizeKey = (p: RenderedPage) =>
     `${p.widthMm.toFixed(2)}x${p.heightMm.toFixed(2)}`;
   const uniqueSizes = Array.from(
@@ -256,10 +153,6 @@ function buildPrintHtml(
 </html>`;
 }
 
-/**
- * Imprime HTML en un iframe oculto.
- * Usa blob: URL para que el pie del navegador no muestre /caja de la app.
- */
 function printHtmlInHiddenIframe(html: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const iframe = document.createElement("iframe");
@@ -343,13 +236,85 @@ function printHtmlInHiddenIframe(html: string): Promise<void> {
 }
 
 /**
- * Imprime un PDF (Blob) respetando el tamaño de página del archivo.
- * Sin ventanas emergentes (iframe en la misma pestaña).
+ * Imprime el PDF tal cual (MediaBox 80mm × alto del ticket).
+ * No pasa por HTML → no aparece la URL de /caja ni se inventa una 2ª hoja vacía.
+ */
+function printPdfNative(blob: Blob): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const pdfBlob =
+      blob.type === "application/pdf"
+        ? blob
+        : new Blob([blob], { type: "application/pdf" });
+    const url = URL.createObjectURL(pdfBlob);
+
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("title", "Ticket");
+    iframe.setAttribute("aria-hidden", "true");
+    // Tamaño real off-screen: el visor PDF de Chrome necesita área no nula
+    iframe.style.cssText =
+      "position:fixed;left:-10000px;top:0;width:80mm;height:297mm;border:0;opacity:0;pointer-events:none;";
+    document.body.appendChild(iframe);
+
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      try {
+        URL.revokeObjectURL(url);
+        iframe.remove();
+      } catch {
+        /* ignore */
+      }
+      resolve();
+    };
+
+    const triggerPrint = () => {
+      const win = iframe.contentWindow;
+      if (!win) {
+        cleanup();
+        reject(new Error("No se pudo abrir el ticket para imprimir"));
+        return;
+      }
+      try {
+        win.focus();
+        const onAfter = () => cleanup();
+        win.addEventListener("afterprint", onAfter);
+        setTimeout(() => {
+          win.removeEventListener("afterprint", onAfter);
+          cleanup();
+        }, 90_000);
+        win.print();
+      } catch (err) {
+        cleanup();
+        reject(err instanceof Error ? err : new Error("Error al imprimir"));
+      }
+    };
+
+    iframe.addEventListener(
+      "load",
+      () => {
+        // El plugin PDF interno tarda un poco más que un HTML
+        setTimeout(triggerPrint, 600);
+      },
+      { once: true }
+    );
+
+    iframe.src = url;
+  });
+}
+
+/**
+ * Imprime un PDF (Blob). Ticket 80mm = PDF nativo; A4/A5 = raster.
  */
 export async function printPdfBlob(
   blob: Blob,
   options?: { title?: string; formatHint?: PrintFormatHint }
 ): Promise<void> {
+  if (options?.formatHint === "80mm") {
+    await printPdfNative(blob);
+    return;
+  }
+
   const pdfjs = await loadPdfJs();
   const data = new Uint8Array(await blob.arrayBuffer());
   const pdf = await pdfjs.getDocument({ data }).promise;
@@ -360,10 +325,9 @@ export async function printPdfBlob(
   await printHtmlInHiddenIframe(html);
 }
 
-/** Preferencias de formato: migra/limpia claves antiguas corruptas una sola vez. */
 export function resetPrintFormatPrefsIfNeeded(): void {
   if (typeof window === "undefined") return;
-  const FLAG = "ds_print_pipeline_v4";
+  const FLAG = "ds_print_pipeline_v5";
   if (localStorage.getItem(FLAG) === "1") return;
   localStorage.removeItem("pdf_format_pref");
   localStorage.setItem(FLAG, "1");

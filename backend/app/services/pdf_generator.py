@@ -85,8 +85,8 @@ def _render_pdf_bytes(story: list, fmt: str, margin: float) -> bytes:
     if fmt == "80mm":
         usable_w = TICKET_WIDTH - 2 * margin
         content_h = _measure_story_height(story, usable_w)
-        # wrap() suele subestimar Paragraph/Table/Image → padding generoso
-        page_h = max(60 * mm, content_h + 2 * margin + 15 * mm)
+        # wrap() suele subestimar Paragraph/Table/Image → padding moderado
+        page_h = max(60 * mm, content_h + 2 * margin + 8 * mm)
         page_size = (TICKET_WIDTH, page_h)
 
         # Reintentos si ReportLab aún parte a 2ª página

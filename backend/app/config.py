@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import os
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+JWT_SECRET_INSECURE_DEFAULT = "change-me-in-production-please-use-a-long-random-string"
+JWT_SECRET_MIN_LENGTH = 32
 
 
 def normalize_database_url(url: str) -> str:
@@ -45,8 +51,11 @@ class Settings(BaseSettings):
     # Local default: SQLite file (no Docker / no Postgres daemon required)
     DATABASE_URL: str = "sqlite:///./data/clinica.db"
 
-    # JWT
-    JWT_SECRET: str = "change-me-in-production-please-use-a-long-random-string"
+    # development | production | test — en production JWT_SECRET débil aborta el arranque
+    APP_ENV: str = "development"
+
+    # JWT — generar único por entorno: openssl rand -hex 32
+    JWT_SECRET: str = JWT_SECRET_INSECURE_DEFAULT
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 720  # 12 h — jornada clínica de escritorio
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # multi-PC / reinicios sin re-login diario
@@ -88,6 +97,37 @@ class Settings(BaseSettings):
         return v
 
     @property
+    def is_production(self) -> bool:
+        env = (self.APP_ENV or "").strip().lower()
+        if env in ("production", "prod"):
+            return True
+        # Railway / hosts comunes
+        railway = (os.environ.get("RAILWAY_ENVIRONMENT") or "").strip().lower()
+        if railway in ("production", "prod"):
+            return True
+        return False
+
+    @property
+    def jwt_secret_is_secure(self) -> bool:
+        secret = (self.JWT_SECRET or "").strip()
+        if not secret or secret == JWT_SECRET_INSECURE_DEFAULT:
+            return False
+        return len(secret) >= JWT_SECRET_MIN_LENGTH
+
+    def require_secure_jwt_in_production(self) -> None:
+        """Abortar arranque en producción si el secreto es el default o demasiado corto."""
+        if not self.is_production:
+            return
+        if self.jwt_secret_is_secure:
+            return
+        raise RuntimeError(
+            "JWT_SECRET inseguro en producción: genera un valor único "
+            f"(mín. {JWT_SECRET_MIN_LENGTH} caracteres), p.ej. `openssl rand -hex 32`, "
+            "y define APP_ENV=production + JWT_SECRET en las variables de entorno. "
+            "No uses el valor por defecto del código."
+        )
+
+    @property
     def cors_origins(self) -> list[str]:
         return parse_cors_origins(self.CORS_ORIGINS)
 
@@ -97,3 +137,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+settings.require_secure_jwt_in_production()

@@ -130,9 +130,13 @@ def health():
         except Exception:  # noqa: BLE001
             user_count = None
     ready = url_ok and db_connected and mig["ok"] and tables_ok
+    jwt_ok = settings.jwt_secret_is_secure
+    if settings.is_production and not jwt_ok:
+        ready = False
     return {
         "status": "ok" if ready else "degraded",
         "app": settings.APP_NAME,
+        "app_env": settings.APP_ENV,
         "engine": engine_kind,
         "user_count": user_count,
         "database_url_configured": url_ok,
@@ -141,6 +145,7 @@ def health():
         "migrations_error": mig["error"],
         "schema_ready": tables_ok,
         "schema_error": tables_err,
+        "jwt_secret_configured": jwt_ok,
     }
 
 

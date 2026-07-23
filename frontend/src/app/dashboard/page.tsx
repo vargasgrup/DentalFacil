@@ -299,7 +299,7 @@ export default function DashboardPage() {
             </div>
             <Link
               href="/caja"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-brand-200 transition-colors hover:bg-brand-700"
+              className="btn-float-brand inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
             >
               <LockOpen className="h-3.5 w-3.5" />
               {cash.open ? "Ir a Caja" : "Abrir Caja"}

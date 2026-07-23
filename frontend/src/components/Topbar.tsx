@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Search,
@@ -48,7 +48,9 @@ const CTRL = "h-9";
 
 export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, logout } = useAuth();
+  const isDashboard = pathname === "/dashboard";
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -271,7 +273,11 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           {canAccessModule(user, "pacientes") && (
             <Link
               href="/pacientes/nuevo"
-              className={`btn-float-brand inline-flex ${CTRL} items-center gap-1.5 rounded-full bg-brand-600 px-3 text-sm font-semibold leading-none text-white hover:bg-brand-700 sm:px-4`}
+              className={
+                isDashboard
+                  ? `btn-float-brand inline-flex ${CTRL} items-center gap-1.5 rounded-full bg-brand-600 px-3 text-sm font-semibold leading-none text-white hover:bg-brand-700 sm:px-4`
+                  : `inline-flex ${CTRL} items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 text-sm font-medium leading-none text-white transition-smooth hover:bg-brand-700 sm:px-3`
+              }
             >
               <Users className="h-4 w-4 shrink-0" aria-hidden />
               <span className="hidden md:inline">Nuevo paciente</span>

@@ -3,6 +3,7 @@
 import { Calendar } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/Input";
+import { SpecialtySelect } from "@/components/SpecialtySelect";
 import { Section } from "@/components/clinical/Section";
 import { formatFichaCode } from "@/lib/ficha";
 import { FIELD_CLASS, HABITOS } from "../constants";
@@ -136,6 +137,12 @@ export function HistoriaTab({
             onChange={(e) =>
               setPatientForm({ ...patientForm, ocupacion: e.target.value })
             }
+          />
+          <SpecialtySelect
+            label="Especialidad de atención"
+            value={patientForm.especialidad || ""}
+            onChange={(v) => setPatientForm({ ...patientForm, especialidad: v })}
+            allowEmpty
           />
           <label className="block">
             <span className="mb-1 block text-label tracking-wide text-slate-700">Estado civil</span>

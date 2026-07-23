@@ -35,6 +35,8 @@ class Patient(Base):
     ocupacion: Mapped[str | None] = mapped_column(String(120))
     estado_civil: Mapped[str | None] = mapped_column(String(40))
     nombre_responsable: Mapped[str | None] = mapped_column(String(120))
+    # Especialidad en la que se atenderá / se atiende al paciente
+    especialidad: Mapped[str | None] = mapped_column(String(80), index=True)
     # Alta retroactiva (pacientes históricos previos al sistema)
     es_migrado: Mapped[bool] = mapped_column(Boolean, default=False)
     fecha_ingreso_clinica: Mapped[date | None] = mapped_column(Date)

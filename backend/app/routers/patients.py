@@ -114,6 +114,7 @@ def search_patients(
         func.lower(Patient.nombres).like(raw_like),
         func.lower(Patient.apellidos).like(raw_like),
         func.lower(func.coalesce(Patient.numero_documento, "")).like(raw_like),
+        func.lower(func.coalesce(Patient.especialidad, "")).like(raw_like),
         func.cast(Patient.numero_ficha, String).like(raw_like),
     ]
     ficha_n = parse_ficha_query(raw)
@@ -149,11 +150,15 @@ def search_patients(
 @router.get("", response_model=list[PatientOut])
 def list_patients(
     skip: int = 0,
-    limit: int = 50,
+    limit: int = 200,
+    especialidad: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return db.query(Patient).order_by(Patient.created_at.desc()).offset(skip).limit(limit).all()
+    q = db.query(Patient)
+    if especialidad and especialidad.strip():
+        q = q.filter(Patient.especialidad == especialidad.strip())
+    return q.order_by(Patient.created_at.desc()).offset(skip).limit(limit).all()
 
 
 @router.get("/{patient_id}", response_model=PatientOut)
@@ -206,6 +211,7 @@ def create_patient(
         lugar_nacimiento=payload.lugar_nacimiento,
         ocupacion=payload.ocupacion,
         estado_civil=payload.estado_civil,
+        especialidad=(payload.especialidad or "").strip() or None,
         telefono=payload.telefono,
         email=payload.email,
         direccion=payload.direccion,
@@ -294,6 +300,9 @@ def update_patient(
         data["nombres"] = data["nombres"].strip()
     if "apellidos" in data and data["apellidos"] is not None:
         data["apellidos"] = data["apellidos"].strip()
+    if "especialidad" in data:
+        esp = data["especialidad"]
+        data["especialidad"] = (esp or "").strip() or None
 
     next_tipo = data.get("tipo_documento", p.tipo_documento)
     next_doc = data["numero_documento"] if "numero_documento" in data else p.numero_documento

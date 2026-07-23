@@ -11,7 +11,7 @@ logger = get_logger('migrate')
 _migrations_ok = False
 _migrations_error: str | None = None
 
-HEAD_REVISION = "o2alta_retroactiva"
+HEAD_REVISION = "p4patient_especialidad"
 
 
 def migrations_status() -> dict:

@@ -19,6 +19,7 @@ import {
   normalizePeruvianMobile,
 } from "@/lib/validators";
 import { formatFichaLabel } from "@/lib/ficha";
+import { SpecialtySelect } from "@/components/SpecialtySelect";
 
 interface Patient {
   id: string;
@@ -75,6 +76,7 @@ export default function NuevoPacientePage() {
     lugar_nacimiento: "",
     ocupacion: "",
     estado_civil: "",
+    especialidad: "",
     telefono: "",
     email: "",
     direccion: "",
@@ -272,6 +274,7 @@ export default function NuevoPacientePage() {
           lugar_nacimiento: form.lugar_nacimiento.trim() || null,
           ocupacion: form.ocupacion.trim() || null,
           estado_civil: form.estado_civil || null,
+          especialidad: form.especialidad.trim() || null,
           nombre_responsable: form.nombre_responsable.trim() || null,
           es_migrado: form.es_migrado,
           fecha_ingreso_clinica: form.es_migrado
@@ -479,6 +482,22 @@ export default function NuevoPacientePage() {
                 placeholder="Penicilina, látex… o escriba Ninguna"
               />
             </label>
+          </section>
+
+          {/* Especialidad de atención */}
+          <section className="space-y-4">
+            <h2 className="text-section-title text-slate-800">Especialidad de atención</h2>
+            <p className="text-sm text-slate-500">
+              Indica en qué especialidad odontológica se atenderá al paciente. Sirve para
+              filtrar y organizar el listado de pacientes.
+            </p>
+            <SpecialtySelect
+              label="Especialidad"
+              value={form.especialidad}
+              onChange={(v) => set("especialidad", v)}
+              allowEmpty
+              required={false}
+            />
           </section>
 
           {/* Alta retroactiva */}

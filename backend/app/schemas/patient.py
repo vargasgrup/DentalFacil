@@ -19,6 +19,7 @@ class PatientBase(BaseModel):
     ocupacion: Optional[str] = None
     estado_civil: Optional[str] = None
     nombre_responsable: Optional[str] = None
+    especialidad: Optional[str] = Field(default=None, max_length=80)
     es_migrado: bool = False
     fecha_ingreso_clinica: Optional[date] = None
     resumen_historia_previa: Optional[str] = Field(default=None, max_length=5000)
@@ -71,6 +72,7 @@ class PatientUpdate(BaseModel):
     ocupacion: Optional[str] = None
     estado_civil: Optional[str] = None
     nombre_responsable: Optional[str] = None
+    especialidad: Optional[str] = Field(default=None, max_length=80)
     es_migrado: Optional[bool] = None
     fecha_ingreso_clinica: Optional[date] = None
     resumen_historia_previa: Optional[str] = Field(default=None, max_length=5000)
@@ -91,5 +93,6 @@ class PatientSearchResult(BaseModel):
     apellidos: str
     telefono: Optional[str] = None
     numero_documento: Optional[str] = None
+    especialidad: Optional[str] = None
 
     model_config = {"from_attributes": True}

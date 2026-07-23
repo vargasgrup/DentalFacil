@@ -429,7 +429,6 @@ export default function CajaPage() {
           setShowIncome(true);
           setShowExpense(false);
           setLastReceipt(null);
-          setReceiptAction(null);
         }}
         onEgreso={() => {
           setShowExpense(true);

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Text, Boolean, ForeignKey, Numeric, JSON, func
+from sqlalchemy import String, DateTime, Text, Boolean, ForeignKey, Numeric, JSON, Index, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -56,6 +56,15 @@ class ClinicalEvolutionEntry(Base):
 
 class OdontogramEntry(Base):
     __tablename__ = "odontogram_entries"
+    __table_args__ = (
+        Index(
+            "ix_odontogram_patient_pieza_denticion",
+            "patient_id",
+            "pieza_fdi",
+            "denticion",
+            unique=True,
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     patient_id: Mapped[str] = mapped_column(String(36), ForeignKey("patients.id"), index=True)

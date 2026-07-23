@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, ForeignKey, Numeric, Boolean, Text, Integer, JSON, func
+from sqlalchemy import String, DateTime, ForeignKey, Numeric, Boolean, Text, Integer, JSON, Index, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -11,6 +11,15 @@ from app.models.ids import new_uuid
 
 class PeriodontogramEntry(Base):
     __tablename__ = "periodontogram_entries"
+    __table_args__ = (
+        Index(
+            "ix_periodontogram_pieza",
+            "patient_id",
+            "pieza_fdi",
+            "denticion",
+            unique=True,
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     patient_id: Mapped[str] = mapped_column(String(36), ForeignKey("patients.id"), index=True)

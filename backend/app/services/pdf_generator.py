@@ -14,7 +14,7 @@ from typing import Any
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, A5
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -28,10 +28,19 @@ from reportlab.platypus import (
 from app.utils.ficha import format_ficha_label
 from app.services.ticket_comprobante import build_comprobante_story
 from app.services.clinic_profile import get_clinic_profile
+from app.services.pdf_helpers import (
+    MAX_LOGO_PT,
+    as_float,
+    cell_paragraph,
+    clean_treatment_label,
+    format_date_for_document,
+    format_price_plain,
+    logo_image,
+    strip_markdown_noise,
+)
 
 # Fallback logo path (perfil puede apuntar a uploads/clinic-logo.*)
 _DEFAULT_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "logo-md.png"
-_DEFAULT_LOGO_ASPECT = 1951 / 583
 
 # Ticket térmico: ancho fijo 80mm. La altura se calcula al contenido
 # (evita página de 400mm que Chrome escala al imprimir en 80×200 y achica todo).
@@ -98,20 +107,121 @@ def _render_pdf_bytes(story: list, fmt: str, margin: float) -> bytes:
 def _build_styles(fmt: str) -> dict:
     """Build paragraph styles scaled to the format size."""
     if fmt == "80mm":
-        title_sz, body_sz, small_sz = 12, 8, 6
+        title_sz, body_sz, small_sz, cell_sz = 11, 8, 6.5, 7
     elif fmt == "A5":
-        title_sz, body_sz, small_sz = 16, 10, 8
+        title_sz, body_sz, small_sz, cell_sz = 14, 10, 8, 8
     else:
-        title_sz, body_sz, small_sz = 18, 11, 9
+        title_sz, body_sz, small_sz, cell_sz = 16, 11, 9, 9
 
-    base = getSampleStyleSheet()
     return {
-        "title": ParagraphStyle("title", parent=base["Title"], fontSize=title_sz, spaceAfter=4, alignment=1),
-        "subtitle": ParagraphStyle("subtitle", parent=base["Normal"], fontSize=small_sz, textColor=colors.grey, alignment=1, spaceAfter=8),
-        "body": ParagraphStyle("body", parent=base["Normal"], fontSize=body_sz, spaceAfter=4),
-        "small": ParagraphStyle("small", parent=base["Normal"], fontSize=small_sz, textColor=colors.grey, spaceAfter=2),
-        "section": ParagraphStyle("section", parent=base["Heading2"], fontSize=body_sz + 1, spaceAfter=4, spaceBefore=8, textColor=colors.HexColor("#1c66e8")),
-        "label": ParagraphStyle("label", parent=base["Normal"], fontSize=small_sz, textColor=colors.grey),
+        "title": ParagraphStyle(
+            "DocTitle",
+            fontName="Helvetica-Bold",
+            fontSize=title_sz,
+            leading=title_sz + 3,
+            alignment=1,
+            spaceAfter=6,
+            textColor=colors.HexColor("#0f172a"),
+        ),
+        "clinic_name": ParagraphStyle(
+            "ClinicName",
+            fontName="Helvetica-Bold",
+            fontSize=body_sz + 1,
+            leading=body_sz + 3,
+            alignment=0,
+            textColor=colors.HexColor("#0f172a"),
+            spaceAfter=1,
+        ),
+        "clinic_meta": ParagraphStyle(
+            "ClinicMeta",
+            fontName="Helvetica",
+            fontSize=small_sz,
+            leading=small_sz + 2,
+            alignment=0,
+            textColor=colors.HexColor("#475569"),
+            spaceAfter=1,
+        ),
+        "subtitle": ParagraphStyle(
+            "DocSubtitle",
+            fontName="Helvetica",
+            fontSize=small_sz,
+            leading=small_sz + 2,
+            textColor=colors.HexColor("#64748b"),
+            alignment=1,
+            spaceAfter=4,
+        ),
+        "body": ParagraphStyle(
+            "DocBody",
+            fontName="Helvetica",
+            fontSize=body_sz,
+            leading=body_sz + 3,
+            spaceAfter=4,
+            textColor=colors.HexColor("#1e293b"),
+        ),
+        "body_right": ParagraphStyle(
+            "DocBodyRight",
+            fontName="Helvetica-Bold",
+            fontSize=body_sz,
+            leading=body_sz + 3,
+            alignment=2,
+            spaceAfter=4,
+            textColor=colors.HexColor("#0f172a"),
+        ),
+        "small": ParagraphStyle(
+            "DocSmall",
+            fontName="Helvetica",
+            fontSize=small_sz,
+            leading=small_sz + 2,
+            textColor=colors.HexColor("#64748b"),
+            spaceAfter=2,
+        ),
+        "section": ParagraphStyle(
+            "DocSection",
+            fontName="Helvetica-Bold",
+            fontSize=body_sz + 1,
+            leading=body_sz + 4,
+            spaceAfter=6,
+            spaceBefore=4,
+            textColor=colors.HexColor("#1c66e8"),
+        ),
+        "cell": ParagraphStyle(
+            "DocCell",
+            fontName="Helvetica",
+            fontSize=cell_sz,
+            leading=cell_sz + 3,
+            textColor=colors.HexColor("#1e293b"),
+        ),
+        "cell_center": ParagraphStyle(
+            "DocCellCenter",
+            fontName="Helvetica",
+            fontSize=cell_sz,
+            leading=cell_sz + 3,
+            alignment=1,
+            textColor=colors.HexColor("#1e293b"),
+        ),
+        "cell_right": ParagraphStyle(
+            "DocCellRight",
+            fontName="Helvetica",
+            fontSize=cell_sz,
+            leading=cell_sz + 3,
+            alignment=2,
+            textColor=colors.HexColor("#1e293b"),
+        ),
+        "th": ParagraphStyle(
+            "DocTh",
+            fontName="Helvetica-Bold",
+            fontSize=cell_sz,
+            leading=cell_sz + 3,
+            textColor=colors.white,
+            alignment=1,
+        ),
+        "label": ParagraphStyle(
+            "DocLabel",
+            fontName="Helvetica",
+            fontSize=small_sz,
+            leading=small_sz + 2,
+            textColor=colors.HexColor("#64748b"),
+        ),
     }
 
 
@@ -123,59 +233,77 @@ def _safe_filename(text: str) -> str:
 
 
 def _clinic_logo(fmt: str) -> RLImage | None:
-    """Centered clinic logo scaled to the page format."""
+    """Logo acotado (máx. 80×80 pt), alineado a la izquierda."""
     profile = get_clinic_profile()
-    path = profile.logo_abs_path
-    if not path or not path.is_file():
-        return None
-    if fmt == "80mm":
-        width = 54 * mm
-    elif fmt == "A5":
-        width = 75 * mm
-    else:
-        width = 95 * mm
-    try:
-        from reportlab.lib.utils import ImageReader
-
-        ir = ImageReader(str(path))
-        iw, ih = ir.getSize()
-        aspect = (iw / ih) if ih else _DEFAULT_LOGO_ASPECT
-    except Exception:
-        aspect = _DEFAULT_LOGO_ASPECT
-    height = width / aspect
-    img = RLImage(str(path), width=width, height=height)
-    img.hAlign = "CENTER"
-    return img
+    max_pt = 52.0 if fmt == "80mm" else (64.0 if fmt == "A5" else MAX_LOGO_PT)
+    return logo_image(profile.logo_abs_path, max_pt=max_pt, h_align="LEFT")
 
 
 def _append_document_header(story: list, styles: dict, fmt: str) -> None:
-    """Brand header shared by all printable documents."""
+    """Cabecera profesional: logo izquierda + datos clínica (sin solapes)."""
     profile = get_clinic_profile()
     logo = _clinic_logo(fmt)
-    if logo is not None:
-        story.append(logo)
-        story.append(Spacer(1, 4 if fmt == "80mm" else 6))
-    else:
-        story.append(Paragraph(profile.nombre_publico, styles["title"]))
-
+    name = strip_markdown_noise(profile.nombre_publico)
+    contact = profile.linea_documento()
+    meta_bits: list[str] = []
     if profile.eslogan:
-        story.append(Paragraph(profile.eslogan, styles["subtitle"]))
-
-    contact = profile.linea_contacto or "Dirección no configurada"
-    story.append(Paragraph(contact, styles["subtitle"]))
-
-    meta_bits = []
-    if profile.ruc:
-        meta_bits.append(f"RUC {profile.ruc}")
-    if profile.email:
-        meta_bits.append(profile.email)
+        meta_bits.append(profile.eslogan)
     if profile.director_nombre:
         dir_line = profile.director_nombre
         if profile.cop_registro:
             dir_line += f" · COP {profile.cop_registro}"
         meta_bits.append(dir_line)
-    if meta_bits:
-        story.append(Paragraph(" · ".join(meta_bits), styles["small"]))
+
+    info_flowables: list = [
+        Paragraph(name, styles["clinic_name"]),
+    ]
+    if contact:
+        info_flowables.append(Paragraph(contact, styles["clinic_meta"]))
+    for bit in meta_bits:
+        info_flowables.append(Paragraph(strip_markdown_noise(bit), styles["clinic_meta"]))
+
+    if logo is not None:
+        # Tabla 2 columnas: logo | datos (evita logo gigante centrado)
+        page_w = TICKET_WIDTH if fmt == "80mm" else FORMAT_DIMENSIONS[fmt][0]
+        margin = 2.5 * mm if fmt == "80mm" else (8 * mm if fmt == "A5" else 15 * mm)
+        content_w = page_w - 2 * margin
+        logo_col = min(MAX_LOGO_PT + 8, content_w * 0.28)
+        info_col = content_w - logo_col
+        header = Table(
+            [[logo, info_flowables]],
+            colWidths=[logo_col, info_col],
+        )
+        header.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (0, 0), 8),
+                    ("RIGHTPADDING", (1, 0), (1, 0), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ]
+            )
+        )
+        story.append(header)
+    else:
+        story.append(Paragraph(name, styles["clinic_name"]))
+        for f in info_flowables[1:]:
+            story.append(f)
+
+    story.append(Spacer(1, 4 if fmt == "80mm" else 8))
+    # Separador
+    from reportlab.platypus import HRFlowable
+
+    story.append(
+        HRFlowable(
+            width="100%",
+            thickness=0.8,
+            color=colors.HexColor("#1c66e8"),
+            spaceBefore=0,
+            spaceAfter=6,
+        )
+    )
 
 
 def generate_pdf(
@@ -231,7 +359,12 @@ def generate_pdf(
     _append_document_header(story, styles, fmt)
 
     story.append(Paragraph(type_labels.get(doc_type, doc_type.upper()), styles["section"]))
-    story.append(Paragraph(f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles["small"]))
+    story.append(
+        Paragraph(
+            f"Fecha: {format_date_for_document(data.get('fecha') or datetime.now())}",
+            styles["small"],
+        )
+    )
     story.append(Spacer(1, 6))
 
     # Dispatch to specific document builder
@@ -267,19 +400,49 @@ def generate_pdf(
     return pdf_bytes, filename
 
 
-def _build_table(rows: list[list[str]], col_widths: list[float], styles: dict) -> Table:
-    """Helper to build a styled table."""
-    t = Table(rows, colWidths=col_widths)
-    t.setStyle(TableStyle([
-        ("FONTSIZE", (0, 0), (-1, -1), styles["body"].fontSize),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1c66e8")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f1f5f9")]),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-    ]))
+def _build_table(rows: list[list], col_widths: list[float], styles: dict) -> Table:
+    """Tabla profesional: celdas como Paragraph (evita texto fantasma / solapes)."""
+    cell = styles["cell"]
+    cell_c = styles["cell_center"]
+    cell_r = styles["cell_right"]
+    th = styles["th"]
+
+    formatted: list[list] = []
+    for r_idx, row in enumerate(rows):
+        out_row = []
+        for c_idx, value in enumerate(row):
+            if r_idx == 0:
+                style = th
+            elif c_idx == 0:
+                style = cell_c
+            elif c_idx >= len(row) - 3 and len(row) >= 4:
+                # Cantidad / montos / estado: centro o derecha
+                style = cell_r if c_idx < len(row) - 1 else cell_c
+            else:
+                style = cell
+            if isinstance(value, (Paragraph,)):
+                out_row.append(value)
+            else:
+                out_row.append(cell_paragraph(value, style))
+        formatted.append(out_row)
+
+    t = Table(formatted, colWidths=col_widths, repeatRows=1)
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1c66e8")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+            ]
+        )
+    )
     return t
 
 
@@ -490,13 +653,14 @@ def _build_consentimiento(story: list, data: dict, styles: dict, fmt: str):
         content_w = page_w - 2 * margin
         rows = [["Pieza", "Tratamiento", "Estado", "Subtotal"]]
         for it in plan_items:
-            cant = float(it.get("cantidad") or 1)
-            unit = float(it.get("costo_unitario") or 0)
+            cant = as_float(it.get("cantidad"), 1.0) or 1.0
+            unit = as_float(it.get("costo_unitario"), 0.0)
+            pieza = str(it.get("pieza_fdi") or "—")
             rows.append([
-                str(it.get("pieza_fdi") or "—"),
-                str(it.get("item") or "—"),
-                str(it.get("estado") or "pendiente"),
-                f"S/ {cant * unit:.2f}",
+                pieza,
+                clean_treatment_label(it.get("item"), pieza_fdi=pieza if pieza != "—" else None),
+                strip_markdown_noise(str(it.get("estado") or "pendiente")),
+                format_price_plain(cant * unit),
             ])
         story.append(
             _build_table(rows, [content_w * 0.15, content_w * 0.45, content_w * 0.2, content_w * 0.2], styles)
@@ -537,43 +701,59 @@ def _build_presupuesto(story: list, data: dict, styles: dict, fmt: str):
             styles["body"],
         )
     )
-    story.append(Paragraph(f"Plan: {data.get('plan_nombre', 'Plan A')}", styles["body"]))
+    story.append(
+        Paragraph(
+            f"Plan: {strip_markdown_noise(str(data.get('plan_nombre', 'Plan A')))}",
+            styles["body"],
+        )
+    )
     story.append(Spacer(1, 6))
     items = data.get("items") or []
     page_w = FORMAT_DIMENSIONS[fmt][0]
-    margin = 3 * mm if fmt == "80mm" else 15 * mm
+    margin = 3 * mm if fmt == "80mm" else (8 * mm if fmt == "A5" else 15 * mm)
     content_w = page_w - 2 * margin
-    rows = [["Pieza", "Tratamiento", "Cant.", "Costo unit.", "Subtotal", "Estado"]]
+
+    # Anchos que evitan colisión Subtotal|Estado
+    widths = [
+        content_w * 0.09,
+        content_w * 0.34,
+        content_w * 0.09,
+        content_w * 0.16,
+        content_w * 0.16,
+        content_w * 0.16,
+    ]
+    rows: list[list] = [
+        ["Pieza", "Tratamiento", "Cant.", "Costo unit.", "Subtotal", "Estado"]
+    ]
     total = 0.0
     for it in items:
-        cant = float(it.get("cantidad") or 1)
-        unit = float(it.get("costo_unitario") or 0)
+        cant = as_float(it.get("cantidad"), 1.0) or 1.0
+        unit = as_float(it.get("costo_unitario"), 0.0)
         sub = cant * unit
         total += sub
-        rows.append([
-            str(it.get("pieza_fdi") or "—"),
-            str(it.get("item") or "—"),
-            str(int(cant)),
-            f"S/ {unit:.2f}",
-            f"S/ {sub:.2f}",
-            str(it.get("estado") or "pendiente"),
-        ])
-    story.append(
-        _build_table(
-            rows,
+        pieza = str(it.get("pieza_fdi") or "—")
+        label = clean_treatment_label(it.get("item"), pieza_fdi=pieza if pieza != "—" else None)
+        estado = strip_markdown_noise(str(it.get("estado") or "pendiente"))
+        rows.append(
             [
-                content_w * 0.1,
-                content_w * 0.32,
-                content_w * 0.1,
-                content_w * 0.16,
-                content_w * 0.16,
-                content_w * 0.16,
-            ],
-            styles,
+                pieza,
+                label,
+                str(int(cant) if cant == int(cant) else cant),
+                format_price_plain(unit),
+                format_price_plain(sub),
+                estado,
+            ]
+        )
+
+    story.append(_build_table(rows, widths, styles))
+    story.append(Spacer(1, 10))
+    story.append(
+        Paragraph(
+            f"Total presupuesto: {format_price_plain(total)}",
+            styles["body_right"],
         )
     )
-    story.append(Spacer(1, 8))
-    story.append(Paragraph(f"<b>Total presupuesto: S/ {total:.2f}</b>", styles["body"]))
+    story.append(Spacer(1, 4))
     story.append(
         Paragraph(
             "Este presupuesto es referencial. Al firmar el consentimiento informado "

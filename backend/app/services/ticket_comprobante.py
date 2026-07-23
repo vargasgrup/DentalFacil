@@ -31,9 +31,15 @@ from reportlab.platypus import (
 
 from app.config import settings
 from app.services.clinic_profile import get_clinic_profile
+from app.services.pdf_helpers import (
+    MAX_LOGO_PT,
+    format_price_plain,
+    logo_image,
+    logo_size_mm_for_ticket,
+    strip_markdown_noise,
+)
 
 _DEFAULT_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "logo-md.png"
-_DEFAULT_LOGO_ASPECT = 1951 / 583
 
 _ONES = (
     "",
@@ -210,23 +216,11 @@ def _qr_image(payload: str, size_mm: float = 28) -> RLImage:
     return rl
 
 
-def _logo(width_mm: float = 48) -> RLImage | None:
+def _logo(width_mm: float = 22) -> RLImage | None:
+    """Logo compacto para ticket (máx. ~80 pt), centrado en boleta térmica."""
     profile = get_clinic_profile()
-    path = profile.logo_abs_path
-    if not path or not path.is_file():
-        return None
-    w = width_mm * mm
-    try:
-        from reportlab.lib.utils import ImageReader
-
-        ir = ImageReader(str(path))
-        iw, ih = ir.getSize()
-        aspect = (iw / ih) if ih else _DEFAULT_LOGO_ASPECT
-    except Exception:
-        aspect = _DEFAULT_LOGO_ASPECT
-    h = w / aspect
-    img = RLImage(str(path), width=w, height=h)
-    img.hAlign = "CENTER"
+    max_pt = min(MAX_LOGO_PT, width_mm * mm)
+    img = logo_image(profile.logo_abs_path, max_pt=max_pt, h_align="CENTER")
     return img
 
 
@@ -335,7 +329,7 @@ def build_comprobante_story(
     tx_id = data.get("transaction_id") or "0"
     serie = data.get("serie") or format_serie(tx_id)
     monto = float(data.get("monto") or 0)
-    concepto = str(data.get("concepto") or "Servicio odontológico")
+    concepto = strip_markdown_noise(str(data.get("concepto") or "Servicio odontológico"))
     metodo = str(data.get("metodo_pago") or "efectivo").capitalize()
     patient = str(data.get("patient_nombre") or "Clientes - Varios")
     doc_num = str(data.get("patient_documento") or "—")
@@ -358,17 +352,17 @@ def build_comprobante_story(
 
     # --- Cabecera clínica ---
     profile = get_clinic_profile()
-    logo = _logo(48 if fmt == "80mm" else 70)
+    logo = _logo(logo_size_mm_for_ticket(fmt))
     if logo:
         story.append(logo)
         story.append(Spacer(1, 1.5 * mm))
     story.append(Paragraph(profile.nombre_publico.upper(), styles["center_bold"]))
     if profile.ruc:
         story.append(Paragraph(f"RUC {profile.ruc}", styles["center"]))
-    addr_bits = [b for b in [profile.direccion_completa or None, profile.telefono or None] if b]
-    if addr_bits:
-        story.append(Paragraph(" · ".join(addr_bits), styles["center_small"]))
-    if profile.email:
+    contact = profile.linea_documento()
+    if contact:
+        story.append(Paragraph(contact, styles["center_small"]))
+    if profile.email and profile.email not in contact:
         story.append(Paragraph(f"Email: {profile.email}", styles["center_small"]))
     if profile.director_nombre:
         dir_txt = profile.director_nombre
@@ -409,9 +403,9 @@ def build_comprobante_story(
         ],
         [
             Paragraph("1", ParagraphStyle("b", fontSize=body_fs)),
-            Paragraph(concepto[:80], ParagraphStyle("b2", fontSize=body_fs, leading=body_fs + 1)),
-            Paragraph(f"{monto:.2f}", ParagraphStyle("b3", fontSize=body_fs, alignment=2)),
-            Paragraph(f"{monto:.2f}", ParagraphStyle("b4", fontSize=body_fs, alignment=2)),
+            Paragraph(concepto[:120], ParagraphStyle("b2", fontSize=body_fs, leading=body_fs + 2)),
+            Paragraph(format_price_plain(monto), ParagraphStyle("b3", fontSize=body_fs, alignment=2, leading=body_fs + 2)),
+            Paragraph(format_price_plain(monto), ParagraphStyle("b4", fontSize=body_fs, alignment=2, leading=body_fs + 2)),
         ],
     ]
     items_table = Table(item_rows, colWidths=[col_cant, col_desc, col_pu, col_tot])
@@ -431,12 +425,12 @@ def build_comprobante_story(
     story.append(_dash(content_w))
 
     # --- Totales (sin IGV fiscal: documento interno de caja) ---
-    story.append(Paragraph(f"<b>Total a pagar: S/ {monto:.2f}</b>", styles["total"]))
+    story.append(Paragraph(f"<b>Total a pagar: {format_price_plain(monto)}</b>", styles["total"]))
     story.append(Paragraph(f"Son: {monto_en_letras(monto)}", styles["left"]))
     story.append(Spacer(1, 1 * mm))
     story.append(Paragraph(f"<b>Condición de pago:</b> Contado", styles["left"]))
     story.append(Paragraph(f"<b>Pagos:</b>", styles["left"]))
-    story.append(Paragraph(f"• {metodo} — S/ {monto:.2f}", styles["left"]))
+    story.append(Paragraph(f"• {metodo} — {format_price_plain(monto)}", styles["left"]))
     story.append(Paragraph(f"<b>Atendido por:</b> {vendedor}", styles["left"]))
 
     story.append(_dash(content_w))

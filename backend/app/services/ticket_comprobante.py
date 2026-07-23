@@ -224,6 +224,25 @@ def _logo(width_mm: float = 22) -> RLImage | None:
     return img
 
 
+def _esc(text: object) -> str:
+    """Escape XML para ReportLab Paragraph (&, <, >)."""
+    return (
+        str(text if text is not None else "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def _p(text: object, style: ParagraphStyle) -> Paragraph:
+    return Paragraph(_esc(text), style)
+
+
+def _p_html(text: str, style: ParagraphStyle) -> Paragraph:
+    """Paragraph con marcado <b> ya controlado; escapa el resto."""
+    return Paragraph(text, style)
+
+
 def _styles(fmt: str) -> dict[str, ParagraphStyle]:
     if fmt == "80mm":
         title_sz, body_sz, small_sz, tiny_sz = 9, 7.5, 6.5, 5.5
@@ -240,6 +259,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             alignment=1,
             leading=title_sz + 2,
             spaceAfter=1,
+            wordWrap="CJK",
         ),
         "center": ParagraphStyle(
             "c_norm",
@@ -248,6 +268,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             alignment=1,
             leading=small_sz + 2,
             spaceAfter=1,
+            wordWrap="CJK",
         ),
         "center_small": ParagraphStyle(
             "c_small",
@@ -257,6 +278,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             leading=tiny_sz + 1.5,
             textColor=colors.HexColor("#334155"),
             spaceAfter=1,
+            wordWrap="CJK",
         ),
         "left": ParagraphStyle(
             "l_norm",
@@ -265,6 +287,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             alignment=0,
             leading=body_sz + 2,
             spaceAfter=1,
+            wordWrap="CJK",
         ),
         "left_bold": ParagraphStyle(
             "l_bold",
@@ -273,6 +296,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             alignment=0,
             leading=body_sz + 2,
             spaceAfter=1,
+            wordWrap="CJK",
         ),
         "tiny": ParagraphStyle(
             "tiny",
@@ -282,6 +306,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             leading=tiny_sz + 1.5,
             textColor=colors.HexColor("#64748b"),
             spaceAfter=1,
+            wordWrap="CJK",
         ),
         "total": ParagraphStyle(
             "total",
@@ -290,28 +315,31 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             alignment=0,
             leading=body_sz + 3,
             spaceAfter=2,
+            wordWrap="CJK",
         ),
     }
 
 
 def _line(content_w: float) -> HRFlowable:
     return HRFlowable(
-        width="100%",
+        width=content_w,
         thickness=0.6,
         color=colors.black,
         spaceBefore=3,
         spaceAfter=3,
+        hAlign="CENTER",
     )
 
 
 def _dash(content_w: float) -> HRFlowable:
     return HRFlowable(
-        width="100%",
+        width=content_w,
         thickness=0.4,
         color=colors.HexColor("#94a3b8"),
         spaceBefore=2,
         spaceAfter=2,
         dash=(1, 1.5),
+        hAlign="CENTER",
     )
 
 
@@ -356,67 +384,116 @@ def build_comprobante_story(
     if logo:
         story.append(logo)
         story.append(Spacer(1, 1.5 * mm))
-    story.append(Paragraph(profile.nombre_publico.upper(), styles["center_bold"]))
+    story.append(_p(profile.nombre_publico.upper(), styles["center_bold"]))
     if profile.ruc:
-        story.append(Paragraph(f"RUC {profile.ruc}", styles["center"]))
+        story.append(_p(f"RUC {profile.ruc}", styles["center"]))
     contact = profile.linea_documento()
     if contact:
-        story.append(Paragraph(contact, styles["center_small"]))
+        story.append(_p(contact, styles["center_small"]))
     if profile.email and profile.email not in contact:
-        story.append(Paragraph(f"Email: {profile.email}", styles["center_small"]))
+        story.append(_p(f"Email: {profile.email}", styles["center_small"]))
     if profile.director_nombre:
         dir_txt = profile.director_nombre
         if profile.cop_registro:
             dir_txt += f" · COP {profile.cop_registro}"
-        story.append(Paragraph(dir_txt, styles["center_small"]))
+        story.append(_p(dir_txt, styles["center_small"]))
 
     story.append(_line(content_w))
-    story.append(Paragraph("COMPROBANTE DE PAGO", styles["center_bold"]))
-    story.append(Paragraph(serie, styles["center_bold"]))
+    story.append(_p("COMPROBANTE DE PAGO", styles["center_bold"]))
+    story.append(_p(serie, styles["center_bold"]))
     story.append(_dash(content_w))
 
-    story.append(Paragraph(f"<b>F. Emisión:</b> {f_emision}", styles["left"]))
-    story.append(Paragraph(f"<b>H. Emisión:</b> {h_emision}", styles["left"]))
-    story.append(Paragraph(f"<b>Cliente:</b> {patient}", styles["left"]))
-    story.append(Paragraph(f"<b>Documento:</b> {doc_num}", styles["left"]))
+    story.append(
+        _p_html(f"<b>F. Emisión:</b> {_esc(f_emision)}", styles["left"])
+    )
+    story.append(
+        _p_html(f"<b>H. Emisión:</b> {_esc(h_emision)}", styles["left"])
+    )
+    story.append(_p_html(f"<b>Cliente:</b> {_esc(patient)}", styles["left"]))
+    story.append(_p_html(f"<b>Documento:</b> {_esc(doc_num)}", styles["left"]))
     if telefono:
-        story.append(Paragraph(f"<b>Teléfono:</b> {telefono}", styles["left"]))
+        story.append(
+            _p_html(f"<b>Teléfono:</b> {_esc(telefono)}", styles["left"])
+        )
     if direccion and direccion != "—":
-        story.append(Paragraph(f"<b>Dirección:</b> {direccion}", styles["left"]))
+        story.append(
+            _p_html(f"<b>Dirección:</b> {_esc(direccion)}", styles["left"])
+        )
 
     story.append(_dash(content_w))
 
-    # --- Ítems ---
+    # --- Ítems (columnas con padding interno; no pegar al borde del rollo) ---
     header_fs = 6.5 if fmt == "80mm" else 8
     body_fs = 7 if fmt == "80mm" else 9
-    col_cant = content_w * 0.12
-    col_desc = content_w * 0.48
-    col_pu = content_w * 0.20
-    col_tot = content_w * 0.20
+    pad = 2.0 if fmt == "80mm" else 3.0
+    # Ancho útil dentro del padding de celda
+    col_cant = content_w * 0.11
+    col_desc = content_w * 0.45
+    col_pu = content_w * 0.22
+    col_tot = content_w * 0.22
 
     item_rows = [
         [
-            Paragraph("<b>Cant.</b>", ParagraphStyle("h", fontSize=header_fs, fontName="Helvetica-Bold")),
-            Paragraph("<b>Descripción</b>", ParagraphStyle("h2", fontSize=header_fs, fontName="Helvetica-Bold")),
-            Paragraph("<b>P.Unit</b>", ParagraphStyle("h3", fontSize=header_fs, fontName="Helvetica-Bold", alignment=2)),
-            Paragraph("<b>Total</b>", ParagraphStyle("h4", fontSize=header_fs, fontName="Helvetica-Bold", alignment=2)),
+            Paragraph(
+                "<b>Cant.</b>",
+                ParagraphStyle("h", fontSize=header_fs, fontName="Helvetica-Bold"),
+            ),
+            Paragraph(
+                "<b>Descripción</b>",
+                ParagraphStyle("h2", fontSize=header_fs, fontName="Helvetica-Bold"),
+            ),
+            Paragraph(
+                "<b>P.Unit</b>",
+                ParagraphStyle(
+                    "h3", fontSize=header_fs, fontName="Helvetica-Bold", alignment=2
+                ),
+            ),
+            Paragraph(
+                "<b>Total</b>",
+                ParagraphStyle(
+                    "h4", fontSize=header_fs, fontName="Helvetica-Bold", alignment=2
+                ),
+            ),
         ],
         [
             Paragraph("1", ParagraphStyle("b", fontSize=body_fs)),
-            Paragraph(concepto[:120], ParagraphStyle("b2", fontSize=body_fs, leading=body_fs + 2)),
-            Paragraph(format_price_plain(monto), ParagraphStyle("b3", fontSize=body_fs, alignment=2, leading=body_fs + 2)),
-            Paragraph(format_price_plain(monto), ParagraphStyle("b4", fontSize=body_fs, alignment=2, leading=body_fs + 2)),
+            Paragraph(
+                _esc(concepto[:120]),
+                ParagraphStyle(
+                    "b2", fontSize=body_fs, leading=body_fs + 2, wordWrap="CJK"
+                ),
+            ),
+            Paragraph(
+                _esc(format_price_plain(monto)),
+                ParagraphStyle(
+                    "b3",
+                    fontSize=body_fs,
+                    alignment=2,
+                    leading=body_fs + 2,
+                ),
+            ),
+            Paragraph(
+                _esc(format_price_plain(monto)),
+                ParagraphStyle(
+                    "b4",
+                    fontSize=body_fs,
+                    alignment=2,
+                    leading=body_fs + 2,
+                ),
+            ),
         ],
     ]
-    items_table = Table(item_rows, colWidths=[col_cant, col_desc, col_pu, col_tot])
+    items_table = Table(
+        item_rows, colWidths=[col_cant, col_desc, col_pu, col_tot]
+    )
     items_table.setStyle(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 1),
-                ("TOPPADDING", (0, 0), (-1, -1), 1),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ("LEFTPADDING", (0, 0), (-1, -1), pad),
+                ("RIGHTPADDING", (0, 0), (-1, -1), pad),
+                ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
                 ("LINEBELOW", (0, 0), (-1, 0), 0.4, colors.black),
             ]
         )
@@ -424,24 +501,32 @@ def build_comprobante_story(
     story.append(items_table)
     story.append(_dash(content_w))
 
-    # --- Totales (sin IGV fiscal: documento interno de caja) ---
-    story.append(Paragraph(f"<b>Total a pagar: {format_price_plain(monto)}</b>", styles["total"]))
-    story.append(Paragraph(f"Son: {monto_en_letras(monto)}", styles["left"]))
+    # --- Totales ---
+    story.append(
+        _p_html(
+            f"<b>Total a pagar: {_esc(format_price_plain(monto))}</b>",
+            styles["total"],
+        )
+    )
+    story.append(_p(f"Son: {monto_en_letras(monto)}", styles["left"]))
     story.append(Spacer(1, 1 * mm))
-    story.append(Paragraph(f"<b>Condición de pago:</b> Contado", styles["left"]))
-    story.append(Paragraph(f"<b>Pagos:</b>", styles["left"]))
-    story.append(Paragraph(f"• {metodo} — {format_price_plain(monto)}", styles["left"]))
+    story.append(_p_html("<b>Condición de pago:</b> Contado", styles["left"]))
+    story.append(_p_html("<b>Pagos:</b>", styles["left"]))
+    story.append(
+        _p(f"• {metodo} — {format_price_plain(monto)}", styles["left"])
+    )
 
-    # Abono parcial / saldo del tratamiento vinculado
     t_costo = data.get("tratamiento_costo")
     t_ac = data.get("tratamiento_a_cuenta")
     t_saldo = data.get("tratamiento_saldo")
     if t_costo is not None and t_ac is not None and t_saldo is not None:
         story.append(Spacer(1, 1 * mm))
-        story.append(Paragraph("<b>Estado del tratamiento:</b>", styles["left"]))
+        story.append(_p_html("<b>Estado del tratamiento:</b>", styles["left"]))
         story.append(
-            Paragraph(
-                f"Costo: {format_price_plain(float(t_costo))} · "
+            _p(f"Costo: {format_price_plain(float(t_costo))}", styles["left"])
+        )
+        story.append(
+            _p(
                 f"A cuenta: {format_price_plain(float(t_ac))} · "
                 f"Saldo: {format_price_plain(float(t_saldo))}",
                 styles["left"],
@@ -449,30 +534,29 @@ def build_comprobante_story(
         )
         if float(t_saldo) > 0.009:
             story.append(
-                Paragraph(
+                _p(
                     f"Pendiente por cobrar: {format_price_plain(float(t_saldo))}",
                     styles["left"],
                 )
             )
 
-    story.append(Paragraph(f"<b>Atendido por:</b> {vendedor}", styles["left"]))
+    story.append(_p_html(f"<b>Atendido por:</b> {_esc(vendedor)}", styles["left"]))
 
     story.append(_dash(content_w))
-    story.append(Paragraph(f"Código hash:", styles["left"]))
-    story.append(Paragraph(codigo_hash, styles["center_small"]))
+    story.append(_p("Código hash:", styles["left"]))
+    story.append(_p(codigo_hash, styles["center_small"]))
     story.append(Spacer(1, 1.5 * mm))
 
-    # QR compacto: cabe en 1 página térmica sin empujar el pie a hoja 2
     qr_size = 16 if fmt == "80mm" else 34
     story.append(_qr_image(qr_payload, size_mm=qr_size))
     story.append(Spacer(1, 1 * mm))
 
     story.append(
-        Paragraph(
+        _p(
             "Documento interno de caja — no es comprobante electrónico SUNAT.",
             styles["tiny"],
         )
     )
-    story.append(Paragraph("¡Gracias por su preferencia!", styles["center_small"]))
+    story.append(_p("¡Gracias por su preferencia!", styles["center_small"]))
 
     return story

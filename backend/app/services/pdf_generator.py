@@ -350,8 +350,8 @@ def generate_pdf(
 
     # Margins scale with format
     if fmt == "80mm":
-        # Papel 80mm / área útil ~72–76mm en TSP700II: márgenes mínimos
-        margin = 1.5 * mm
+        # Rollo 80mm / TSP700II: zona segura ~3–4 mm por lado (evita borde cortado)
+        margin = 4 * mm
     elif fmt == "A5":
         margin = 8 * mm
     else:

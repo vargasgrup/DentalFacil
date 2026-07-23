@@ -1,7 +1,11 @@
 from datetime import datetime
 from typing import Optional
+import re
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+
+_HHMM = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 
 class AppointmentCreate(BaseModel):
@@ -68,13 +72,23 @@ class ReminderConfigUpdate(BaseModel):
 
 
 class ClinicHoursOut(BaseModel):
-    hora_apertura: str  # HH:MM
+    hora_apertura: str  # HH:MM (almacenamiento); UI en 12h
     hora_cierre: str
 
 
 class ClinicHoursUpdate(BaseModel):
     hora_apertura: Optional[str] = None
     hora_cierre: Optional[str] = None
+
+    @field_validator("hora_apertura", "hora_cierre")
+    @classmethod
+    def _hhmm(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        cleaned = v.strip()
+        if not _HHMM.match(cleaned):
+            raise ValueError("hora debe ser HH:MM (00:00–23:59)")
+        return cleaned
 
 
 class EspecialidadesOut(BaseModel):

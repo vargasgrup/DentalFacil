@@ -5,7 +5,7 @@ import { AppShell } from "@/components/AppShell";
 
 export default function PacientesLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute module="pacientes">
       <AppShell>{children}</AppShell>
     </ProtectedRoute>
   );

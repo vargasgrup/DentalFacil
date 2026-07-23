@@ -2,7 +2,8 @@
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/Input";
+import { Time12hSelect } from "@/components/config/Time12hSelect";
+import { formatMinutes12h, localTimeToMinutes } from "@/lib/datetime";
 
 interface HoursConfigFormProps {
   horaApertura: string;
@@ -11,6 +12,7 @@ interface HoursConfigFormProps {
   setHoraCierre: (v: string) => void;
   hoursMsg: string;
   onSubmit: (e: React.FormEvent) => void;
+  readOnly?: boolean;
 }
 
 export function HoursConfigForm({
@@ -20,34 +22,42 @@ export function HoursConfigForm({
   setHoraCierre,
   hoursMsg,
   onSubmit,
+  readOnly = false,
 }: HoursConfigFormProps) {
+  const openLabel = formatMinutes12h(localTimeToMinutes(horaApertura));
+  const closeLabel = formatMinutes12h(localTimeToMinutes(horaCierre));
+
   return (
     <Card>
       <h2 className="mb-2 text-section-title text-slate-700">Horario de atención</h2>
       <p className="mb-4 text-sm text-slate-500">
-        Define el rango visible en la grilla de Agenda. Las citas deben crearse dentro de este horario.
+        Define el rango visible en la grilla de Agenda. El sistema usa siempre formato de{" "}
+        <strong className="font-medium text-slate-700">12 horas</strong> (a. m. / p. m.),
+        como se maneja en el Perú. Actual: {openLabel} – {closeLabel}.
       </p>
       <form
         onSubmit={onSubmit}
-        className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+        className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
       >
-        <Input
+        <Time12hSelect
           label="Apertura"
-          type="time"
           value={horaApertura}
-          onChange={(e) => setHoraApertura(e.target.value)}
+          onChange={setHoraApertura}
           required
+          disabled={readOnly}
         />
-        <Input
+        <Time12hSelect
           label="Cierre"
-          type="time"
           value={horaCierre}
-          onChange={(e) => setHoraCierre(e.target.value)}
+          onChange={setHoraCierre}
           required
+          disabled={readOnly}
         />
-        <Button type="submit" className="w-full sm:w-auto">
-          Guardar horario
-        </Button>
+        {!readOnly && (
+          <Button type="submit" className="w-full sm:w-auto">
+            Guardar horario
+          </Button>
+        )}
       </form>
       {hoursMsg && <p className="mt-2 text-sm text-slate-500">{hoursMsg}</p>}
     </Card>

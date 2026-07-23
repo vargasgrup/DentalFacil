@@ -24,6 +24,8 @@ export default function ConfiguracionPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rol, setRol] = useState("DOCTOR");
+  const [userFormError, setUserFormError] = useState("");
+  const [creatingUser, setCreatingUser] = useState(false);
 
   const [oldPwd, setOldPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
@@ -193,6 +195,11 @@ export default function ConfiguracionPage() {
 
   const onLogoSelected = async (file: File | null) => {
     if (!file) return;
+    const maxBytes = 10 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setClinicMsg("El logo no debe superar 10 MB");
+      return;
+    }
     setLogoBusy(true);
     setClinicMsg("");
     try {
@@ -303,37 +310,73 @@ export default function ConfiguracionPage() {
     try {
       const data = await apiFetch<User[]>("/api/users");
       setUsers(data);
+      setError("");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al cargar usuarios");
+      // Solo admins gestionan usuarios; no mostrar error a otros roles
+      if (currentUser?.rol === "ADMIN") {
+        setError(err instanceof Error ? err.message : "Error al cargar usuarios");
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadUsers();
     loadReminderConfig();
     loadHoursConfig();
     loadClinicConfig();
     loadEspecialidades();
-  }, []);
+    if (currentUser?.rol === "ADMIN") {
+      void loadUsers();
+    } else {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.rol]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setUserFormError("");
+    if (password.trim().length < 6) {
+      setUserFormError("La contraseña debe tener al menos 6 caracteres");
+      return;
+    }
+    setCreatingUser(true);
     try {
       await apiFetch("/api/users", {
         method: "POST",
-        body: JSON.stringify({ nombre, email, password, rol }),
+        body: JSON.stringify({
+          nombre: nombre.trim(),
+          email: email.trim().toLowerCase(),
+          password,
+          rol,
+        }),
       });
       setShowCreate(false);
       setNombre("");
       setEmail("");
       setPassword("");
       setRol("DOCTOR");
-      loadUsers();
+      await loadUsers();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al crear usuario");
+      setUserFormError(err instanceof Error ? err.message : "Error al crear usuario");
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
+  const changeRol = async (u: User, nextRol: string) => {
+    if (nextRol === u.rol) return;
+    try {
+      await apiFetch(`/api/users/${u.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ rol: nextRol }),
+      });
+      setError("");
+      await loadUsers();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al cambiar rol");
     }
   };
 
@@ -435,6 +478,7 @@ export default function ConfiguracionPage() {
         setHoraCierre={setHoraCierre}
         hoursMsg={hoursMsg}
         onSubmit={saveHoursConfig}
+        readOnly={!isAdmin}
       />
 
       <SpecialtiesConfig
@@ -475,9 +519,12 @@ export default function ConfiguracionPage() {
           setPassword={setPassword}
           rol={rol}
           setRol={setRol}
+          formError={userFormError}
+          creating={creatingUser}
           onCreate={handleCreate}
           onToggleActivo={toggleActivo}
           onResetPassword={handleResetPassword}
+          onChangeRol={changeRol}
         />
       )}
     </PageContainer>

@@ -5,7 +5,7 @@ import { AppShell } from "@/components/AppShell";
 
 export default function AgendaLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute module="agenda">
       <AppShell>{children}</AppShell>
     </ProtectedRoute>
   );

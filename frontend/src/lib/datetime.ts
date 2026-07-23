@@ -56,3 +56,36 @@ export function localTimeToMinutes(timeStr: string): number {
   const [hh, mm] = timeStr.split(":").map(Number);
   return (hh || 0) * 60 + (mm || 0);
 }
+
+export type DayPeriod = "am" | "pm";
+
+export interface Time12hParts {
+  hour12: number; // 1–12
+  minute: number; // 0–59
+  period: DayPeriod;
+}
+
+/** Parse "HH:MM" (24h) into 12h parts for Perú UI. */
+export function parseHHmmTo12h(hhmm: string): Time12hParts {
+  const [hRaw, mRaw] = (hhmm || "08:00").split(":");
+  let h = Number(hRaw);
+  let m = Number(mRaw);
+  if (!Number.isFinite(h) || h < 0 || h > 23) h = 8;
+  if (!Number.isFinite(m) || m < 0 || m > 59) m = 0;
+  const period: DayPeriod = h >= 12 ? "pm" : "am";
+  let hour12 = h % 12;
+  if (hour12 === 0) hour12 = 12;
+  return { hour12, minute: m, period };
+}
+
+/** Build "HH:MM" (24h) from 12h parts. */
+export function format12hToHHmm(hour12: number, minute: number, period: DayPeriod): string {
+  let h = Math.min(12, Math.max(1, Math.floor(hour12) || 12));
+  const m = Math.min(59, Math.max(0, Math.floor(minute) || 0));
+  if (period === "am") {
+    h = h === 12 ? 0 : h;
+  } else {
+    h = h === 12 ? 12 : h + 12;
+  }
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}

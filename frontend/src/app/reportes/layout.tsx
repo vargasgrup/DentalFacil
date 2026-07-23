@@ -5,7 +5,7 @@ import { AppShell } from "@/components/AppShell";
 
 export default function ReportesLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute module="reportes">
       <AppShell>{children}</AppShell>
     </ProtectedRoute>
   );

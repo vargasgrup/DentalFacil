@@ -47,8 +47,9 @@ export const emptyClinic: ClinicProfile = {
   direccion_completa: "",
 };
 
-export const rolVariant: Record<string, "brand" | "info" | "neutral"> = {
+export const rolVariant: Record<string, "brand" | "info" | "neutral" | "warning"> = {
   ADMIN: "brand",
   DOCTOR: "info",
   ASISTENTE: "neutral",
+  CAJERO: "warning",
 };

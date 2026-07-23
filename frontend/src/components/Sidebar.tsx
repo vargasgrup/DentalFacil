@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, Users, Calendar, Wallet, BarChart3, Settings } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { canAccessHref } from "@/lib/roles";
 
 const principal = [
   { href: "/dashboard", label: "Inicio", icon: Home },
@@ -53,28 +55,37 @@ function NavLink({
 }
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+  const { user } = useAuth();
+  const rol = user?.rol;
+  const principalVisible = principal.filter((item) => canAccessHref(rol, item.href));
+  const sistemaVisible = sistema.filter((item) => canAccessHref(rol, item.href));
+
   return (
     <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-3">
-      <div>
-        <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-          Principal
-        </p>
-        <div className="space-y-0.5">
-          {principal.map((item) => (
-            <NavLink key={item.href} {...item} onNavigate={onNavigate} />
-          ))}
+      {principalVisible.length > 0 && (
+        <div>
+          <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Principal
+          </p>
+          <div className="space-y-0.5">
+            {principalVisible.map((item) => (
+              <NavLink key={item.href} {...item} onNavigate={onNavigate} />
+            ))}
+          </div>
         </div>
-      </div>
-      <div>
-        <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-          Sistema
-        </p>
-        <div className="space-y-0.5">
-          {sistema.map((item) => (
-            <NavLink key={item.href} {...item} onNavigate={onNavigate} />
-          ))}
+      )}
+      {sistemaVisible.length > 0 && (
+        <div>
+          <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Sistema
+          </p>
+          <div className="space-y-0.5">
+            {sistemaVisible.map((item) => (
+              <NavLink key={item.href} {...item} onNavigate={onNavigate} />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </nav>
   );
 }

@@ -55,7 +55,7 @@ export function ClinicProfileForm({
               onChange={(e) => onLogoSelected(e.target.files?.[0] || null)}
               className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700"
             />
-            <p className="text-help text-slate-400">PNG, JPG o WebP · máx. 3 MB</p>
+            <p className="text-help text-slate-400">PNG, JPG o WebP · máx. 10 MB</p>
             {clinic.has_custom_logo && (
               <button
                 type="button"

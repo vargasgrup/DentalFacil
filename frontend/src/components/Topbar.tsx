@@ -17,6 +17,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { canAccessModule } from "@/lib/roles";
 import { Button } from "./ui/Button";
 import { openWhatsAppText, isValidPhone } from "@/lib/whatsapp";
 import { formatFichaCode } from "@/lib/ficha";
@@ -267,22 +268,26 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <Link
-            href="/pacientes/nuevo"
-            className={`inline-flex ${CTRL} items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 text-sm font-medium leading-none text-white transition-smooth hover:bg-brand-700 sm:px-3`}
-          >
-            <Users className="h-4 w-4 shrink-0" aria-hidden />
-            <span className="hidden md:inline">Nuevo paciente</span>
-            <span className="md:hidden">Paciente</span>
-          </Link>
-          <Link
-            href="/agenda?nueva=1"
-            className={`inline-flex ${CTRL} items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium leading-none text-slate-700 transition-smooth hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 sm:px-3`}
-          >
-            <Calendar className="h-4 w-4 shrink-0" aria-hidden />
-            <span className="hidden md:inline">Nueva cita</span>
-            <span className="md:hidden">Cita</span>
-          </Link>
+          {canAccessModule(user?.rol, "pacientes") && (
+            <Link
+              href="/pacientes/nuevo"
+              className={`inline-flex ${CTRL} items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 text-sm font-medium leading-none text-white transition-smooth hover:bg-brand-700 sm:px-3`}
+            >
+              <Users className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="hidden md:inline">Nuevo paciente</span>
+              <span className="md:hidden">Paciente</span>
+            </Link>
+          )}
+          {canAccessModule(user?.rol, "agenda") && (
+            <Link
+              href="/agenda?nueva=1"
+              className={`inline-flex ${CTRL} items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium leading-none text-slate-700 transition-smooth hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 sm:px-3`}
+            >
+              <Calendar className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="hidden md:inline">Nueva cita</span>
+              <span className="md:hidden">Cita</span>
+            </Link>
+          )}
           <button
             type="button"
             onClick={handleLogout}

@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_roles
 from app.core.rate_limit import enforce_login_rate_limit, enforce_setup_rate_limit
-from app.core.roles import Rol
+from app.core.roles import MAX_ADMINS, VALID_ROLES, Rol
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -158,6 +159,28 @@ def change_password(
     db.commit()
 
 
+def _count_admins(db: Session, *, exclude_id: str | None = None) -> int:
+    q = db.query(User).filter(User.rol == Rol.ADMIN.value)
+    if exclude_id is not None:
+        q = q.filter(User.id != exclude_id)
+    return q.count()
+
+
+def _count_active_admins(db: Session, *, exclude_id: str | None = None) -> int:
+    q = db.query(User).filter(User.rol == Rol.ADMIN.value, User.activo == True)  # noqa: E712
+    if exclude_id is not None:
+        q = q.filter(User.id != exclude_id)
+    return q.count()
+
+
+def _assert_admin_slot_available(db: Session, *, exclude_id: str | None = None) -> None:
+    if _count_admins(db, exclude_id=exclude_id) >= MAX_ADMINS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El centro permite como máximo {MAX_ADMINS} administradores",
+        )
+
+
 # --- User management (ADMIN only) ---
 
 users_router = APIRouter(prefix="/api/users", tags=["users"])
@@ -198,13 +221,20 @@ def create_user(
     admin: User = Depends(require_roles(Rol.ADMIN)),
     db: Session = Depends(get_db),
 ):
-    if db.query(User).filter(User.email == payload.email).first():
+    email = payload.email.strip().lower()
+    nombre = payload.nombre.strip()
+    if db.query(User).filter(func.lower(User.email) == email).first():
         raise HTTPException(status_code=400, detail="Email ya registrado")
-    if payload.rol not in [r.value for r in Rol]:
-        raise HTTPException(status_code=400, detail="Rol inválido")
+    if payload.rol not in VALID_ROLES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Rol inválido. Use: {', '.join(sorted(VALID_ROLES))}",
+        )
+    if payload.rol == Rol.ADMIN.value:
+        _assert_admin_slot_available(db)
     user = User(
-        nombre=payload.nombre,
-        email=payload.email,
+        nombre=nombre,
+        email=email,
         password_hash=hash_password(payload.password),
         rol=payload.rol,
         activo=True,
@@ -226,17 +256,47 @@ def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     if payload.nombre is not None:
-        user.nombre = payload.nombre
+        user.nombre = payload.nombre.strip()
     if payload.email is not None:
-        existing = db.query(User).filter(User.email == payload.email, User.id != user_id).first()
+        email = payload.email.strip().lower()
+        existing = (
+            db.query(User)
+            .filter(func.lower(User.email) == email, User.id != user_id)
+            .first()
+        )
         if existing:
             raise HTTPException(status_code=400, detail="Email ya registrado")
-        user.email = payload.email
+        user.email = email
     if payload.rol is not None:
-        if payload.rol not in [r.value for r in Rol]:
-            raise HTTPException(status_code=400, detail="Rol inválido")
+        if payload.rol not in VALID_ROLES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Rol inválido. Use: {', '.join(sorted(VALID_ROLES))}",
+            )
+        if payload.rol == Rol.ADMIN.value and user.rol != Rol.ADMIN.value:
+            _assert_admin_slot_available(db)
+        # No dejar el centro sin al menos un ADMIN
+        if (
+            user.rol == Rol.ADMIN.value
+            and payload.rol != Rol.ADMIN.value
+            and _count_admins(db, exclude_id=user.id) < 1
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Debe quedar al menos un administrador en el centro",
+            )
         user.rol = payload.rol
     if payload.activo is not None:
+        if (
+            user.rol == Rol.ADMIN.value
+            and user.activo
+            and payload.activo is False
+            and _count_active_admins(db, exclude_id=user.id) < 1
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede desactivar el último administrador activo",
+            )
         user.activo = payload.activo
     db.commit()
     db.refresh(user)

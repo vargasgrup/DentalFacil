@@ -440,13 +440,18 @@ def reset_especialidades(
 def update_clinic_hours(
     payload: ClinicHoursUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles(Rol.ADMIN)),
 ):
     row = _get_or_create_clinic_settings(db)
     if payload.hora_apertura is not None:
         row.hora_apertura = payload.hora_apertura
     if payload.hora_cierre is not None:
         row.hora_cierre = payload.hora_cierre
+    if row.hora_apertura >= row.hora_cierre:
+        raise HTTPException(
+            status_code=400,
+            detail="La hora de apertura debe ser anterior a la de cierre",
+        )
     db.commit()
     db.refresh(row)
     return ClinicHoursOut(hora_apertura=row.hora_apertura, hora_cierre=row.hora_cierre)
@@ -538,8 +543,8 @@ async def upload_clinic_logo(
         raise HTTPException(status_code=400, detail="Formato no permitido. Usa PNG, JPG o WebP.")
 
     raw = await file.read()
-    if len(raw) > 3 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="El logo no debe superar 3 MB")
+    if len(raw) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="El logo no debe superar 10 MB")
 
     uploads = ensure_uploads_dir()
     ext = allowed[content_type]

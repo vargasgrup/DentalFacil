@@ -22,6 +22,7 @@ from app.routers.documents import router as documents_router
 from app.routers.reports import router as reports_router
 from app.routers.audit import router as audit_router
 from app.routers.whatsapp_integration import router as whatsapp_integration_router
+from app.routers.dashboard import router as dashboard_router
 
 configure_logging()
 logger = get_logger("main")
@@ -196,4 +197,5 @@ app.include_router(config_router)
 app.include_router(cash_router)
 app.include_router(documents_router)
 app.include_router(reports_router)
+app.include_router(dashboard_router)
 app.include_router(whatsapp_integration_router)

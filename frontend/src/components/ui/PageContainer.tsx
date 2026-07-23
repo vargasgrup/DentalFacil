@@ -4,7 +4,7 @@ type PageWidth = "full" | "wide" | "default" | "narrow";
 
 const widths: Record<PageWidth, string> = {
   /** Lista / dashboard / agenda / caja */
-  full: "max-w-5xl xl:max-w-6xl",
+  full: "max-w-5xl xl:max-w-7xl",
   wide: "max-w-6xl",
   /** Configuración */
   default: "max-w-4xl",

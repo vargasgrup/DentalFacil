@@ -191,16 +191,16 @@ def test_migracion_excluded_from_tratamientos_report(
     )
     assert evo.status_code == 201, evo.text
 
-    start = datetime.combine(date.today(), datetime.min.time()).isoformat()
-    end = datetime.combine(date.today(), datetime.max.time()).isoformat()
+    start = date.today().strftime("%Y-%m-%dT00:00:00")
+    end = date.today().strftime("%Y-%m-%dT23:59:59")
     report = client.get(
         f"/api/reports/tratamientos?start={start}&end={end}",
         headers=admin_headers,
     )
     assert report.status_code == 200, report.text
     data = report.json()
-    # Summary Total cobrado should be 80 (normal only), not 180
-    assert "S/ 80.00" in data["summary"]["Total cobrado"]
+    # Summary Costo total should be 80 (normal only), not 180
+    assert "S/ 80.00" in data["summary"]["Costo total"]
     row_text = " ".join(" ".join(map(str, r)) for r in data["rows"])
     assert "Saldo inicial por migración" not in row_text
     assert "Limpieza" in row_text

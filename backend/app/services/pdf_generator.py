@@ -790,28 +790,70 @@ def _build_presupuesto(story: list, data: dict, styles: dict, fmt: str):
     )
 
 
+def _esc_pdf(text: object) -> str:
+    return (
+        str(text if text is not None else "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
 def _build_reporte(story: list, data: dict, styles: dict, fmt: str):
-    """Report (used by Phase 9 reports)."""
+    """Professional multi-module report layout."""
+    from reportlab.lib import colors
+    from reportlab.platypus import Table as RLTable, TableStyle as RLTableStyle
+
     title = data.get("title", "Reporte")
-    story.append(Paragraph(title, styles["section"]))
-    story.append(Paragraph(
-        f"Período: {data.get('fecha_inicio', '—')} a {data.get('fecha_fin', '—')}",
-        styles["small"],
-    ))
-    story.append(Spacer(1, 6))
+    story.append(Paragraph(_esc_pdf(title), styles["section"]))
+    story.append(
+        Paragraph(
+            f"Período: {data.get('fecha_inicio', '—')} — {data.get('fecha_fin', '—')}",
+            styles["small"],
+        )
+    )
+    story.append(Spacer(1, 8))
 
-    # Summary
-    summary = data.get("summary", {})
-    for label, value in summary.items():
-        story.append(Paragraph(f"<b>{label}:</b> {value}", styles["body"]))
-
-    # Table data
-    rows = data.get("rows", [])
-    if rows:
+    summary = data.get("summary", {}) or {}
+    if summary:
+        story.append(Paragraph("<b>Resumen</b>", styles["body"]))
         page_w = FORMAT_DIMENSIONS[fmt][0]
-        margin = 3 * mm if fmt == "80mm" else 15 * mm
+        margin = 3 * mm if fmt == "80mm" else (8 * mm if fmt == "A5" else 15 * mm)
         content_w = page_w - 2 * margin
-        n_cols = len(rows[0]) if rows else 1
-        col_w = content_w / n_cols
-        story.append(Spacer(1, 6))
-        story.append(_build_table(rows, [col_w] * n_cols, styles))
+        sum_rows = [[str(k), str(v)] for k, v in summary.items()]
+        sum_table = RLTable(sum_rows, colWidths=[content_w * 0.55, content_w * 0.45])
+        sum_table.setStyle(
+            RLTableStyle(
+                [
+                    ("FONTNAME", (0, 0), (0, -1), "Helvetica"),
+                    ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8 if fmt == "80mm" else 9),
+                    ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#475569")),
+                    ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("LINEBELOW", (0, 0), (-1, -2), 0.3, colors.HexColor("#e2e8f0")),
+                ]
+            )
+        )
+        story.append(sum_table)
+        story.append(Spacer(1, 10))
+
+    rows = data.get("rows", []) or []
+    if len(rows) > 1:
+        story.append(Paragraph("<b>Detalle</b>", styles["body"]))
+        page_w = FORMAT_DIMENSIONS[fmt][0]
+        margin = 3 * mm if fmt == "80mm" else (8 * mm if fmt == "A5" else 15 * mm)
+        content_w = page_w - 2 * margin
+        n_cols = max(1, len(rows[0]))
+        # Prefer wider first text columns
+        if n_cols <= 3:
+            widths = [content_w / n_cols] * n_cols
+        else:
+            weights = [1.1] + [1.0] * (n_cols - 2) + [0.9]
+            total_w = sum(weights)
+            widths = [content_w * (w / total_w) for w in weights]
+        story.append(Spacer(1, 4))
+        story.append(_build_table(rows, widths, styles))
+    elif rows:
+        story.append(Paragraph("Sin movimientos en el período seleccionado.", styles["small"]))

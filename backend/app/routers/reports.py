@@ -1,25 +1,63 @@
+"""API de reportes: Caja, Pacientes atendidos, Tratamientos."""
+
+from __future__ import annotations
+
+import csv
 from datetime import datetime
+from io import StringIO
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, Response
-from fastapi.responses import StreamingResponse
-from io import StringIO
-import csv
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
 from app.database import get_db
-from app.models import (
-    Appointment,
-    CashSession,
-    CashTransaction,
-    ClinicalEvolutionEntry,
-    Patient,
-    User,
-)
+from app.models import User
 from app.services.pdf_generator import generate_pdf
+from app.services.reports_service import (
+    build_caja_report,
+    build_pacientes_report,
+    build_resumen,
+    build_tratamientos_report,
+)
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
+
+
+def _csv_response(rows: list[list], filename: str) -> StreamingResponse:
+    output = StringIO()
+    writer = csv.writer(output)
+    for row in rows:
+        writer.writerow(row)
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _pdf_or_json(data: dict, fmt: Optional[str]):
+    if fmt:
+        pdf_bytes, filename = generate_pdf("reporte", fmt, data)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    return data
+
+
+@router.get("/resumen")
+def report_resumen(
+    start: datetime = Query(...),
+    end: datetime = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """KPIs consolidados Agenda + Evolución + Caja para el dashboard de reportes."""
+    return build_resumen(db, start, end)
 
 
 @router.get("/caja")
@@ -31,78 +69,10 @@ def report_caja(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Cash report: income, expenses, net, by payment method."""
-    transactions = (
-        db.query(CashTransaction)
-        .filter(CashTransaction.created_at >= start, CashTransaction.created_at <= end)
-        .all()
-    )
-    ingresos = [t for t in transactions if t.tipo == "ingreso"]
-    egresos = [t for t in transactions if t.tipo == "egreso"]
-    total_ingresos = sum(float(t.monto) for t in ingresos)
-    total_egresos = sum(float(t.monto) for t in egresos)
-    neto = total_ingresos - total_egresos
-
-    por_metodo: dict[str, float] = {}
-    for t in ingresos:
-        por_metodo[t.metodo_pago] = por_metodo.get(t.metodo_pago, 0) + float(t.monto)
-
+    payload = build_caja_report(db, start, end)
     if csv_export:
-        output = StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["Fecha", "Tipo", "Concepto", "Paciente", "Método", "Monto"])
-        for t in transactions:
-            patient = db.get(Patient, t.patient_id) if t.patient_id else None
-            writer.writerow([
-                t.created_at.strftime("%d/%m/%Y %H:%M"),
-                t.tipo,
-                t.concepto,
-                f"{patient.nombres} {patient.apellidos}" if patient else "—",
-                t.metodo_pago,
-                float(t.monto),
-            ])
-        writer.writerow([])
-        writer.writerow(["RESUMEN"])
-        writer.writerow(["Total ingresos", total_ingresos])
-        writer.writerow(["Total egresos", total_egresos])
-        writer.writerow(["Neto", neto])
-        output.seek(0)
-        return StreamingResponse(
-            iter([output.getvalue()]),
-            media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=reporte_caja.csv"},
-        )
-
-    data = {
-        "title": "Reporte de Caja",
-        "fecha_inicio": start.strftime("%d/%m/%Y"),
-        "fecha_fin": end.strftime("%d/%m/%Y"),
-        "summary": {
-            "Total ingresos": f"S/ {total_ingresos:.2f}",
-            "Total egresos": f"S/ {total_egresos:.2f}",
-            "Neto": f"S/ {neto:.2f}",
-        },
-        "rows": [["Fecha", "Tipo", "Concepto", "Método", "Monto"]] + [
-            [
-                t.created_at.strftime("%d/%m/%Y"),
-                t.tipo,
-                t.concepto,
-                t.metodo_pago,
-                f"S/ {float(t.monto):.2f}",
-            ]
-            for t in transactions
-        ],
-    }
-
-    if fmt:
-        pdf_bytes, filename = generate_pdf("reporte", fmt, data)
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-
-    return data
+        return _csv_response(payload.rows, "reporte_caja.csv")
+    return _pdf_or_json(payload.as_dict(), fmt)
 
 
 @router.get("/pacientes")
@@ -115,67 +85,11 @@ def report_pacientes(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Patients treated report: by date range and optional doctor."""
-    q = db.query(Appointment).filter(
-        Appointment.fecha_hora >= start,
-        Appointment.fecha_hora <= end,
-        Appointment.estado.in_(["programada", "completada"]),
-    )
-    if doctor_id:
-        q = q.filter(Appointment.doctor_id == doctor_id)
-    appointments = q.order_by(Appointment.fecha_hora).all()
-
+    """Pacientes atendidos: citas + evolución + cobros de caja en el período."""
+    payload = build_pacientes_report(db, start, end, doctor_id)
     if csv_export:
-        output = StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["Fecha", "Hora", "Paciente", "Doctor", "Estado", "Duración"])
-        for a in appointments:
-            patient = db.get(Patient, a.patient_id)
-            doctor = db.get(User, a.doctor_id) if a.doctor_id else None
-            writer.writerow([
-                a.fecha_hora.strftime("%d/%m/%Y"),
-                a.fecha_hora.strftime("%H:%M"),
-                f"{patient.nombres} {patient.apellidos}" if patient else "—",
-                doctor.nombre if doctor else "—",
-                a.estado,
-                f"{a.duracion_minutos} min",
-            ])
-        output.seek(0)
-        return StreamingResponse(
-            iter([output.getvalue()]),
-            media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=reporte_pacientes.csv"},
-        )
-
-    data = {
-        "title": "Reporte de Pacientes Atendidos",
-        "fecha_inicio": start.strftime("%d/%m/%Y"),
-        "fecha_fin": end.strftime("%d/%m/%Y"),
-        "summary": {
-            "Total citas": len(appointments),
-            "Doctor": db.get(User, doctor_id).nombre if doctor_id else "Todos",
-        },
-        "rows": [["Fecha", "Hora", "Paciente", "Doctor", "Estado"]] + [
-            [
-                a.fecha_hora.strftime("%d/%m/%Y"),
-                a.fecha_hora.strftime("%H:%M"),
-                f"{db.get(Patient, a.patient_id).nombres} {db.get(Patient, a.patient_id).apellidos}" if db.get(Patient, a.patient_id) else "—",
-                db.get(User, a.doctor_id).nombre if a.doctor_id and db.get(User, a.doctor_id) else "—",
-                a.estado,
-            ]
-            for a in appointments
-        ],
-    }
-
-    if fmt:
-        pdf_bytes, filename = generate_pdf("reporte", fmt, data)
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-
-    return data
+        return _csv_response(payload.rows, "reporte_pacientes.csv")
+    return _pdf_or_json(payload.as_dict(), fmt)
 
 
 @router.get("/tratamientos")
@@ -187,83 +101,7 @@ def report_tratamientos(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Treatments/evolution report: what was treated, charged, pending."""
-    entries = (
-        db.query(ClinicalEvolutionEntry)
-        .filter(
-            ClinicalEvolutionEntry.fecha >= start,
-            ClinicalEvolutionEntry.fecha <= end,
-            ClinicalEvolutionEntry.origen != "migracion",
-        )
-        .order_by(ClinicalEvolutionEntry.fecha.desc())
-        .all()
-    )
-
-    total_cobrado = sum(float(e.costo) for e in entries)
-    total_pagado = 0.0
-    for e in entries:
-        txs = (
-            db.query(CashTransaction)
-            .filter(CashTransaction.patient_id == e.patient_id, CashTransaction.tipo == "ingreso")
-            .all()
-        )
-        total_pagado += sum(float(t.monto) for t in txs)
-
-    total_pendiente = total_cobrado - total_pagado
-
+    payload = build_tratamientos_report(db, start, end)
     if csv_export:
-        output = StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["Fecha", "Paciente", "Tratamiento", "Especialidad", "Costo", "Estado"])
-        for e in entries:
-            patient = db.get(Patient, e.patient_id)
-            writer.writerow([
-                e.fecha.strftime("%d/%m/%Y"),
-                f"{patient.nombres} {patient.apellidos}" if patient else "—",
-                e.tratamiento_descripcion,
-                e.especialidad or "—",
-                float(e.costo),
-                e.estado,
-            ])
-        writer.writerow([])
-        writer.writerow(["RESUMEN"])
-        writer.writerow(["Total cobrado", total_cobrado])
-        writer.writerow(["Total pagado", total_pagado])
-        writer.writerow(["Total pendiente", total_pendiente])
-        output.seek(0)
-        return StreamingResponse(
-            iter([output.getvalue()]),
-            media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=reporte_tratamientos.csv"},
-        )
-
-    data = {
-        "title": "Reporte de Tratamientos",
-        "fecha_inicio": start.strftime("%d/%m/%Y"),
-        "fecha_fin": end.strftime("%d/%m/%Y"),
-        "summary": {
-            "Total cobrado": f"S/ {total_cobrado:.2f}",
-            "Total pagado": f"S/ {total_pagado:.2f}",
-            "Total pendiente": f"S/ {total_pendiente:.2f}",
-        },
-        "rows": [["Fecha", "Paciente", "Tratamiento", "Costo", "Estado"]] + [
-            [
-                e.fecha.strftime("%d/%m/%Y"),
-                f"{db.get(Patient, e.patient_id).nombres} {db.get(Patient, e.patient_id).apellidos}" if db.get(Patient, e.patient_id) else "—",
-                e.tratamiento_descripcion,
-                f"S/ {float(e.costo):.2f}",
-                e.estado,
-            ]
-            for e in entries
-        ],
-    }
-
-    if fmt:
-        pdf_bytes, filename = generate_pdf("reporte", fmt, data)
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-
-    return data
+        return _csv_response(payload.rows, "reporte_tratamientos.csv")
+    return _pdf_or_json(payload.as_dict(), fmt)

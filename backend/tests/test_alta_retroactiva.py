@@ -265,6 +265,10 @@ def test_snapshot_origen_migracion(
     admin_headers: dict[str, str],
     patient: dict,
 ):
+    before = client.get(
+        f"/api/clinical/{patient['id']}/evolution",
+        headers=admin_headers,
+    ).json()
     resp = client.post(
         f"/api/odontogram/{patient['id']}/snapshots",
         headers=admin_headers,
@@ -278,3 +282,105 @@ def test_snapshot_origen_migracion(
     body = resp.json()
     assert body["origen"] == "migracion"
     assert "histórico" in body["label"].lower() or "migracion" in body["label"].lower()
+    after = client.get(
+        f"/api/clinical/{patient['id']}/evolution",
+        headers=admin_headers,
+    ).json()
+    assert len(after) == len(before)
+
+
+def test_future_fecha_ingreso_rejected(
+    client: TestClient,
+    admin_headers: dict[str, str],
+):
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    resp = client.post(
+        "/api/patients",
+        headers=admin_headers,
+        json={
+            "nombres": "Futuro",
+            "apellidos": "Ingreso",
+            "tipo_documento": "DNI",
+            "numero_documento": "10101010",
+            "telefono": "911111111",
+            "es_migrado": True,
+            "fecha_ingreso_clinica": tomorrow,
+        },
+    )
+    assert resp.status_code == 422, resp.text
+
+
+def test_resumen_historia_max_5000(
+    client: TestClient,
+    admin_headers: dict[str, str],
+):
+    resp = client.post(
+        "/api/patients",
+        headers=admin_headers,
+        json={
+            "nombres": "Largo",
+            "apellidos": "Resumen",
+            "tipo_documento": "DNI",
+            "numero_documento": "20202020",
+            "telefono": "922222222",
+            "es_migrado": True,
+            "fecha_ingreso_clinica": "2020-01-01",
+            "resumen_historia_previa": "x" * 5001,
+        },
+    )
+    assert resp.status_code == 422, resp.text
+
+
+def test_saldo_cero_no_crea_evolucion(
+    client: TestClient,
+    admin_headers: dict[str, str],
+):
+    resp = client.post(
+        "/api/patients",
+        headers=admin_headers,
+        json={
+            "nombres": "Cero",
+            "apellidos": "Saldo",
+            "tipo_documento": "DNI",
+            "numero_documento": "30303030",
+            "telefono": "933333333",
+            "es_migrado": True,
+            "fecha_ingreso_clinica": "2018-06-01",
+            "saldo_inicial_migracion": 0,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    pid = resp.json()["id"]
+    evo = client.get(f"/api/clinical/{pid}/evolution", headers=admin_headers)
+    assert evo.json() == []
+    fin = client.get(f"/api/clinical/{pid}/financial", headers=admin_headers)
+    assert fin.json()["costo_total"] == 0
+
+
+def test_public_evolution_ignores_fecha_and_origen_backdate(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    patient: dict,
+):
+    """API pública no debe permitir backdating ni marcar migracion a mano."""
+    past = (datetime.now() - timedelta(days=900)).isoformat()
+    resp = client.post(
+        f"/api/clinical/{patient['id']}/evolution",
+        headers=admin_headers,
+        json={
+            "tratamiento_descripcion": "Intento backdate",
+            "costo": 50,
+            "costo_unitario": 50,
+            "cantidad": 1,
+            "fecha": past,
+            "origen": "migracion",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["origen"] == "tiempo_real"
+    # fecha debe ser reciente (default now), no la pasada enviada en el body
+    got = datetime.fromisoformat(body["fecha"].replace("Z", "+00:00")).replace(tzinfo=None)
+    assert got.year == date.today().year
+    assert abs((datetime.utcnow() - got).total_seconds()) < 24 * 3600
+    assert got.date() != (date.today() - timedelta(days=900))

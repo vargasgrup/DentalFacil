@@ -94,6 +94,7 @@ def sync_active_plan_to_evolution(
                     a_cuenta=plan_ac,
                     estado=estado,
                     plan_item_id=item_id,
+                    origen="tiempo_real",
                 )
                 db.add(entry)
                 db.flush()

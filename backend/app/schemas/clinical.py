@@ -60,8 +60,7 @@ class ClinicalEvolutionEntryCreate(BaseModel):
     estado: str = "pendiente"
     plan_item_id: Optional[str] = None
     proxima_cita_fecha: Optional[datetime] = None
-    origen: str = "tiempo_real"
-    fecha: Optional[datetime] = None
+    # fecha / origen NO se aceptan por API pública (solo alta retroactiva interna)
 
 
 class ClinicalEvolutionEntryUpdate(BaseModel):
@@ -76,8 +75,7 @@ class ClinicalEvolutionEntryUpdate(BaseModel):
     estado: Optional[str] = None
     plan_item_id: Optional[str] = None
     proxima_cita_fecha: Optional[datetime] = None
-    origen: Optional[str] = None
-    fecha: Optional[datetime] = None
+    # fecha / origen no editables por API (evita backdating y falsear migración)
 
 
 class ClinicalEvolutionEntryOut(BaseModel):

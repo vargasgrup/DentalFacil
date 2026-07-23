@@ -223,11 +223,14 @@ export default function NuevoPacientePage() {
       errs.numero_documento = "Documento ya registrado";
     }
 
-    if (form.es_migrado) {
+      if (form.es_migrado) {
       if (!form.fecha_ingreso_clinica) {
         errs.fecha_ingreso_clinica = "Obligatoria para alta retroactiva";
       } else if (form.fecha_ingreso_clinica > new Date().toISOString().slice(0, 10)) {
         errs.fecha_ingreso_clinica = "No puede ser futura";
+      }
+      if (form.resumen_historia_previa.length > 5000) {
+        errs.resumen_historia_previa = "Máximo 5000 caracteres";
       }
       const saldo = Number(form.saldo_inicial_migracion);
       if (Number.isNaN(saldo)) {
@@ -540,6 +543,14 @@ export default function NuevoPacientePage() {
                     className={selectClass}
                     placeholder="Antecedentes y tratamientos previos al sistema…"
                   />
+                  {fieldErrors.resumen_historia_previa && (
+                    <p className="mt-1 text-help text-danger-600">
+                      {fieldErrors.resumen_historia_previa}
+                    </p>
+                  )}
+                  <p className="mt-1 text-help text-slate-400">
+                    {form.resumen_historia_previa.length}/5000
+                  </p>
                 </label>
                 <div>
                   <Input

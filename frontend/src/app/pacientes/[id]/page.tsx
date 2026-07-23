@@ -234,6 +234,21 @@ export default function FichaClinicaPage() {
   const [fichaTab, setFichaTab] = useState<FichaTab>("historia");
   const [hasOdontogramSnapshot, setHasOdontogramSnapshot] = useState<boolean | null>(null);
 
+  const refreshMigratedSnapshotFlag = useCallback(async (migrated: boolean) => {
+    if (!migrated) {
+      setHasOdontogramSnapshot(null);
+      return;
+    }
+    try {
+      const snaps = await apiFetch<{ id: string }[]>(
+        `/api/odontogram/${patientId}/snapshots`
+      );
+      setHasOdontogramSnapshot(snaps.length > 0);
+    } catch {
+      setHasOdontogramSnapshot(false);
+    }
+  }, [patientId]);
+
   const loadPayments = useCallback(async () => {
     try {
       const txs = await apiFetch<PaymentTx[]>(
@@ -259,14 +274,7 @@ export default function FichaClinicaPage() {
       setEvolution(e);
       setFinancial(f);
       if (p.es_migrado) {
-        try {
-          const snaps = await apiFetch<{ id: string }[]>(
-            `/api/odontogram/${patientId}/snapshots`
-          );
-          setHasOdontogramSnapshot(snaps.length > 0);
-        } catch {
-          setHasOdontogramSnapshot(false);
-        }
+        await refreshMigratedSnapshotFlag(true);
       } else {
         setHasOdontogramSnapshot(null);
       }
@@ -302,11 +310,17 @@ export default function FichaClinicaPage() {
     } finally {
       setLoading(false);
     }
-  }, [patientId, loadPayments]);
+  }, [patientId, loadPayments, refreshMigratedSnapshotFlag]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (fichaTab === "evaluacion" && patient?.es_migrado) {
+      void refreshMigratedSnapshotFlag(true);
+    }
+  }, [fichaTab, patient?.es_migrado, refreshMigratedSnapshotFlag]);
 
   const refreshFinancial = async () => {
     try {

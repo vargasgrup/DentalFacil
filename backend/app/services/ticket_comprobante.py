@@ -431,6 +431,30 @@ def build_comprobante_story(
     story.append(Paragraph(f"<b>Condición de pago:</b> Contado", styles["left"]))
     story.append(Paragraph(f"<b>Pagos:</b>", styles["left"]))
     story.append(Paragraph(f"• {metodo} — {format_price_plain(monto)}", styles["left"]))
+
+    # Abono parcial / saldo del tratamiento vinculado
+    t_costo = data.get("tratamiento_costo")
+    t_ac = data.get("tratamiento_a_cuenta")
+    t_saldo = data.get("tratamiento_saldo")
+    if t_costo is not None and t_ac is not None and t_saldo is not None:
+        story.append(Spacer(1, 1 * mm))
+        story.append(Paragraph("<b>Estado del tratamiento:</b>", styles["left"]))
+        story.append(
+            Paragraph(
+                f"Costo: {format_price_plain(float(t_costo))} · "
+                f"A cuenta: {format_price_plain(float(t_ac))} · "
+                f"Saldo: {format_price_plain(float(t_saldo))}",
+                styles["left"],
+            )
+        )
+        if float(t_saldo) > 0.009:
+            story.append(
+                Paragraph(
+                    f"Pendiente por cobrar: {format_price_plain(float(t_saldo))}",
+                    styles["left"],
+                )
+            )
+
     story.append(Paragraph(f"<b>Atendido por:</b> {vendedor}", styles["left"]))
 
     story.append(_dash(content_w))

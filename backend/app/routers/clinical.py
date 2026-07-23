@@ -42,8 +42,6 @@ def _sync_plan_item_from_evolution(
     db: Session, patient_id: str, entry: ClinicalEvolutionEntry
 ) -> None:
     """Mirror evolution economics back onto the linked plan item (presupuesto ↔ atención)."""
-    if not entry.plan_item_id:
-        return
     from sqlalchemy.orm.attributes import flag_modified
 
     record = (
@@ -53,23 +51,39 @@ def _sync_plan_item_from_evolution(
         return
     plans = normalize_plans(record.plan_tratamiento)
     changed = False
+    plan_item_id = str(entry.plan_item_id or "").strip() or None
+
     for alt in plans.get("alternatives") or []:
         for it in alt.get("items") or []:
-            if str(it.get("id") or "") != str(entry.plan_item_id):
+            it_id = str(it.get("id") or "")
+            evo_link = str(it.get("evolution_entry_id") or "")
+            matched = False
+            if plan_item_id and it_id == plan_item_id:
+                matched = True
+            elif evo_link and evo_link == str(entry.id):
+                matched = True
+                # Backfill missing plan_item_id on evolution for next syncs
+                if not entry.plan_item_id and it_id:
+                    entry.plan_item_id = it_id
+                    plan_item_id = it_id
+            if not matched:
                 continue
             it["evolution_entry_id"] = entry.id
+            if plan_item_id:
+                it["id"] = plan_item_id
             it["a_cuenta"] = float(entry.a_cuenta or 0)
             it["estado"] = entry.estado or it.get("estado") or "pendiente"
             it["cantidad"] = float(entry.cantidad or it.get("cantidad") or 1)
             it["costo_unitario"] = float(
-                entry.costo_unitario
-                or it.get("costo_unitario")
-                or 0
+                entry.costo_unitario or it.get("costo_unitario") or 0
             )
             if entry.pieza_fdi:
                 it["pieza_fdi"] = entry.pieza_fdi
             changed = True
             break
+        if changed:
+            break
+
     if changed:
         record.plan_tratamiento = plans
         flag_modified(record, "plan_tratamiento")

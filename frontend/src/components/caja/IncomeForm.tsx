@@ -406,6 +406,19 @@ export function IncomeForm({
                 Cobro registrado · S/ {lastReceipt.monto.toFixed(2)} ·{" "}
                 {formatMetodoLabel(lastReceipt)} · {lastReceipt.concepto}
               </p>
+              {typeof lastReceipt.allocated_total === "number" &&
+                lastReceipt.allocated_total > 0 && (
+                  <p className="mb-2 text-xs text-success-800">
+                    Aplicado al plan/evolución: S/{" "}
+                    {lastReceipt.allocated_total.toFixed(2)}
+                    {typeof lastReceipt.saldo_pendiente_destino === "number" &&
+                    lastReceipt.saldo_pendiente_destino > 0.009
+                      ? ` · Saldo pendiente del tratamiento: S/ ${lastReceipt.saldo_pendiente_destino.toFixed(2)}`
+                      : lastReceipt.saldo_pendiente_destino === 0
+                        ? " · Tratamiento saldado"
+                        : ""}
+                  </p>
+                )}
               <DocumentActions
                 key={`receipt-${lastReceipt.id}-${receiptAction || "idle"}`}
                 label="Comprobante de pago"

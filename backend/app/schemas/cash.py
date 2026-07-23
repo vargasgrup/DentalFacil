@@ -79,7 +79,10 @@ class CashTransactionOut(BaseModel):
     evolution_entry_id: Optional[str] = None
     created_at: datetime
     allocated_total: Optional[float] = None
+    unallocated_amount: Optional[float] = None
     allocations: Optional[list[dict]] = None
+    # Tras abono parcial: saldo que queda en el destino clínico
+    saldo_pendiente_destino: Optional[float] = None
     # Partes del cobro mixto (si aplica), para UI/comprobante
     pagos_parciales: Optional[list[dict]] = None
 

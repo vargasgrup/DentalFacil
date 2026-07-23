@@ -333,8 +333,9 @@ export function EvaluacionTab({
           </div>
         </div>
         <p className="mt-2 text-help text-slate-400">
-          Guardar el plan sincroniza Evolución y habilita destinos en Registrar pago. El saldo
-          oficial de la ficha usa costos de evolución y pagos de Caja.
+          Guardar el plan sincroniza Evolución y habilita destinos en Registrar pago (Caja).
+          Un abono parcial (ej. S/ 100 de S/ 120) actualiza «A cuenta» y deja el saldo
+          restante en el mismo ítem para la siguiente cita.
         </p>
       </Section>
 

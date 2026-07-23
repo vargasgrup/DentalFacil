@@ -293,8 +293,53 @@ export default function CajaPage() {
           (incomePatient ? `${incomePatient.nombres} ${incomePatient.apellidos}` : null),
         pagos_parciales: tx.pagos_parciales || pagos_parciales || null,
       };
+
+      // Feedback: abono aplicado al plan/evolución
+      const allocated = Number(tx.allocated_total ?? 0);
+      if (incomePatient?.id && allocated <= 0.009 && paymentTargets.length > 0) {
+        setError(
+          "Cobro registrado en Caja, pero no se aplicó al plan/evolución. Elige un destino en «Aplicar a» o revisa que el ítem tenga saldo."
+        );
+      } else if (
+        incomePatient?.id &&
+        typeof tx.saldo_pendiente_destino === "number" &&
+        tx.saldo_pendiente_destino > 0.009
+      ) {
+        setError("");
+      }
+
       setLastReceipt(enriched);
       await loadData();
+
+      // Refrescar destinos (saldo restante) y avisar a la ficha clínica
+      if (incomePatient?.id) {
+        try {
+          const res = await apiFetch<{ targets: PaymentTarget[] }>(
+            `/api/clinical/${incomePatient.id}/payment-targets`
+          );
+          setPaymentTargets(res.targets || []);
+          const still = (res.targets || []).find(
+            (t) =>
+              (tx.evolution_entry_id && t.kind === "evolution" && t.id === tx.evolution_entry_id) ||
+              (tx.plan_item_ref && t.kind === "plan" && t.id === tx.plan_item_ref)
+          );
+          if (still) {
+            setPayTarget(`${still.kind}:${still.id}`);
+            setIncomeMonto(String(still.saldo));
+          } else {
+            setPayTarget("auto");
+          }
+        } catch {
+          /* ignore */
+        }
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("dentalfacil:clinical-money-updated", {
+              detail: { patientId: incomePatient.id },
+            })
+          );
+        }
+      }
       return enriched;
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "No se pudo registrar el ingreso");

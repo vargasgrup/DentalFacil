@@ -98,6 +98,43 @@ def download_comprobante(
         "fecha_emision": emitido,
         "vendedor": (operator.nombre if operator else None) or user.nombre or "Administrador",
     }
+
+    # Abono parcial: costo / a cuenta / saldo del destino clínico vinculado
+    evo_id = getattr(tx, "evolution_entry_id", None)
+    plan_ref = getattr(tx, "plan_item_ref", None)
+    if evo_id or plan_ref:
+        from app.models import ClinicalEvolutionEntry, ClinicalRecord
+        from app.odontogram.plans import normalize_plans
+        from app.services.payment_allocation import (
+            _evo_saldo,
+            _plan_item_saldo,
+            _plan_item_subtotal,
+        )
+
+        if evo_id:
+            entry = db.get(ClinicalEvolutionEntry, evo_id)
+            if entry:
+                data["tratamiento_costo"] = float(entry.costo or 0)
+                data["tratamiento_a_cuenta"] = float(entry.a_cuenta or 0)
+                data["tratamiento_saldo"] = _evo_saldo(entry)
+                data["tratamiento_label"] = entry.tratamiento_descripcion
+        elif plan_ref and tx.patient_id:
+            record = (
+                db.query(ClinicalRecord)
+                .filter(ClinicalRecord.patient_id == tx.patient_id)
+                .first()
+            )
+            if record and record.plan_tratamiento:
+                for alt in normalize_plans(record.plan_tratamiento).get("alternatives") or []:
+                    for it in alt.get("items") or []:
+                        if str(it.get("id") or "") != str(plan_ref):
+                            continue
+                        data["tratamiento_costo"] = _plan_item_subtotal(it)
+                        data["tratamiento_a_cuenta"] = float(it.get("a_cuenta") or 0)
+                        data["tratamiento_saldo"] = _plan_item_saldo(it)
+                        data["tratamiento_label"] = it.get("item") or tx.concepto
+                        break
+
     pdf_bytes, filename = generate_pdf("comprobante", fmt, data)
 
     _register_document(db, patient.id if patient else None, "comprobante", fmt, filename)

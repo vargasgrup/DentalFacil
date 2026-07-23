@@ -219,6 +219,17 @@ const [patient, setPatient] = useState<Patient | null>(null);
     }
   };
 
+  useEffect(() => {
+    const onMoney = (e: Event) => {
+      const detail = (e as CustomEvent<{ patientId?: string }>).detail;
+      if (detail?.patientId && detail.patientId !== patientId) return;
+      void refreshClinicalMoney();
+    };
+    window.addEventListener("dentalfacil:clinical-money-updated", onMoney);
+    return () =>
+      window.removeEventListener("dentalfacil:clinical-money-updated", onMoney);
+  }, [patientId]);
+
   const openPaymentForm = async () => {
     const next = !showPayment;
     setShowPayment(next);

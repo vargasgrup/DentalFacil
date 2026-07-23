@@ -15,7 +15,21 @@ export interface CashTransaction {
   monto: number;
   metodo_pago: string;
   grupo_pago_id?: string | null;
+  plan_item_ref?: string | null;
+  evolution_entry_id?: string | null;
   created_at: string;
+  allocated_total?: number | null;
+  unallocated_amount?: number | null;
+  allocations?: {
+    kind: string;
+    id: string;
+    amount: number;
+    label: string;
+    saldo_after?: number;
+    a_cuenta_after?: number;
+    costo?: number;
+  }[] | null;
+  saldo_pendiente_destino?: number | null;
   pagos_parciales?: { metodo_pago: string; monto: number }[] | null;
 }
 

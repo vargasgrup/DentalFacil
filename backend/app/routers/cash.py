@@ -24,7 +24,9 @@ def _tx_to_out(
     *,
     patient: Patient | None = None,
     allocated_total: float | None = None,
+    unallocated_amount: float | None = None,
     allocations: list[dict] | None = None,
+    saldo_pendiente_destino: float | None = None,
     pagos_parciales: list[dict] | None = None,
 ) -> CashTransactionOut:
     if patient is None and db is not None and tx.patient_id:
@@ -45,7 +47,9 @@ def _tx_to_out(
         evolution_entry_id=getattr(tx, "evolution_entry_id", None),
         created_at=tx.created_at,
         allocated_total=allocated_total,
+        unallocated_amount=unallocated_amount,
         allocations=allocations,
+        saldo_pendiente_destino=saldo_pendiente_destino,
         pagos_parciales=pagos_parciales,
     )
 
@@ -57,6 +61,84 @@ def _txs_to_out(db: Session, txs: list[CashTransaction]) -> list[CashTransaction
         _tx_to_out(t, patient=patients.get(t.patient_id) if t.patient_id else None)
         for t in txs
     ]
+
+
+def _run_clinical_allocation(
+    db: Session,
+    *,
+    patient_id: str,
+    monto: float,
+    evolution_entry_id: str | None,
+    plan_item_ref: str | None,
+) -> tuple[float, float, list[dict], float | None]:
+    """Apply ingreso to plan/evolución. Raises HTTPException on explicit target failure."""
+    from app.services.payment_allocation import AllocationError, allocate_ingreso
+
+    explicit = bool(evolution_entry_id or plan_item_ref)
+    try:
+        applied = allocate_ingreso(
+            db,
+            patient_id=patient_id,
+            monto=monto,
+            evolution_entry_id=evolution_entry_id,
+            plan_item_id=plan_item_ref,
+            require_target=explicit,
+        )
+    except AllocationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"El pago no pudo aplicarse al plan/evolución: {exc}",
+        ) from exc
+
+    allocated_total = round(sum(a.amount for a in applied), 2) if applied else 0.0
+    unallocated = round(max(0.0, float(monto) - allocated_total), 2)
+    allocations_out = [
+        {
+            "kind": a.kind,
+            "id": a.id,
+            "amount": a.amount,
+            "label": a.label,
+            "saldo_after": a.saldo_after,
+            "costo": a.costo,
+            "a_cuenta_after": a.a_cuenta_after,
+        }
+        for a in applied
+    ]
+    saldo_pendiente = None
+    if applied:
+        saldo_pendiente = round(float(applied[-1].saldo_after), 2)
+    return allocated_total, unallocated, allocations_out, saldo_pendiente
+
+
+def _backfill_tx_refs(
+    db: Session, txs: list[CashTransaction], applied_rows: list[dict]
+) -> None:
+    if not applied_rows or not txs:
+        return
+    primary = txs[0]
+    if not primary.evolution_entry_id:
+        evo = next((a for a in applied_rows if a["kind"] == "evolution"), None)
+        if evo:
+            for tx in txs:
+                tx.evolution_entry_id = evo["id"]
+    if not primary.plan_item_ref:
+        plan = next((a for a in applied_rows if a["kind"] == "plan"), None)
+        if plan:
+            for tx in txs:
+                tx.plan_item_ref = plan["id"]
+        else:
+            from app.models import ClinicalEvolutionEntry
+
+            for a in applied_rows:
+                if a["kind"] != "evolution":
+                    continue
+                entry = db.get(ClinicalEvolutionEntry, a["id"])
+                if entry and entry.plan_item_id:
+                    for tx in txs:
+                        tx.plan_item_ref = entry.plan_item_id
+                    break
 
 
 def _get_open_session(db: Session) -> CashSession | None:
@@ -239,42 +321,24 @@ def create_transaction(
             created.append(tx)
         db.flush()
 
-        allocated_total = None
+        allocated_total = 0.0
+        unallocated_amount = None
         allocations_out = None
+        saldo_pendiente = None
         if payload.allocate and payload.tipo == "ingreso" and payload.patient_id:
-            from app.services.payment_allocation import allocate_ingreso
-
-            try:
-                applied = allocate_ingreso(
-                    db,
-                    patient_id=payload.patient_id,
-                    monto=float(payload.monto),
-                    evolution_entry_id=evo_id,
-                    plan_item_id=plan_ref,
-                )
-            except Exception as exc:
-                db.rollback()
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"El pago no pudo aplicarse al plan/evolución: {exc}",
-                ) from exc
-            if applied:
-                allocated_total = round(sum(a.amount for a in applied), 2)
-                allocations_out = [
-                    {"kind": a.kind, "id": a.id, "amount": a.amount, "label": a.label}
-                    for a in applied
-                ]
-                primary = created[0]
-                if not primary.evolution_entry_id:
-                    evo_apps = [a for a in applied if a.kind == "evolution"]
-                    if evo_apps:
-                        for tx in created:
-                            tx.evolution_entry_id = evo_apps[0].id
-                if not primary.plan_item_ref:
-                    plan_apps = [a for a in applied if a.kind == "plan"]
-                    if plan_apps:
-                        for tx in created:
-                            tx.plan_item_ref = plan_apps[0].id
+            (
+                allocated_total,
+                unallocated_amount,
+                allocations_out,
+                saldo_pendiente,
+            ) = _run_clinical_allocation(
+                db,
+                patient_id=payload.patient_id,
+                monto=float(payload.monto),
+                evolution_entry_id=evo_id,
+                plan_item_ref=plan_ref,
+            )
+            _backfill_tx_refs(db, created, allocations_out or [])
 
         try:
             db.commit()
@@ -288,12 +352,13 @@ def create_transaction(
         for tx in created:
             db.refresh(tx)
         primary = created[0]
-        # Respuesta “cabecera”: monto total + detalle de partes (auditoría / comprobante)
         out = _tx_to_out(
             primary,
             db,
             allocated_total=allocated_total,
+            unallocated_amount=unallocated_amount,
             allocations=allocations_out,
+            saldo_pendiente_destino=saldo_pendiente,
             pagos_parciales=[{"metodo_pago": m, "monto": a} for m, a in parts],
         )
         out.monto = float(payload.monto)
@@ -315,55 +380,24 @@ def create_transaction(
     db.add(tx)
     db.flush()
 
-    allocated_total = None
+    allocated_total = 0.0 if (payload.allocate and payload.tipo == "ingreso" and payload.patient_id) else None
+    unallocated_amount = None
     allocations_out = None
-    if (
-        payload.allocate
-        and payload.tipo == "ingreso"
-        and payload.patient_id
-    ):
-        from app.services.payment_allocation import allocate_ingreso
-
-        try:
-            applied = allocate_ingreso(
-                db,
-                patient_id=payload.patient_id,
-                monto=float(payload.monto),
-                evolution_entry_id=evo_id,
-                plan_item_id=plan_ref,
-            )
-        except Exception as exc:
-            db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail=f"El pago no pudo aplicarse al plan/evolución: {exc}",
-            ) from exc
-        if applied:
-            allocated_total = round(sum(a.amount for a in applied), 2)
-            allocations_out = [
-                {"kind": a.kind, "id": a.id, "amount": a.amount, "label": a.label}
-                for a in applied
-            ]
-            # Persist primary clinical refs on the cash row for audit
-            if not tx.evolution_entry_id:
-                evo_apps = [a for a in applied if a.kind == "evolution"]
-                if evo_apps:
-                    tx.evolution_entry_id = evo_apps[0].id
-            if not tx.plan_item_ref:
-                plan_apps = [a for a in applied if a.kind == "plan"]
-                if plan_apps:
-                    tx.plan_item_ref = plan_apps[0].id
-                else:
-                    # evolution may carry plan_item_id
-                    from app.models import ClinicalEvolutionEntry
-
-                    for a in applied:
-                        if a.kind != "evolution":
-                            continue
-                        entry = db.get(ClinicalEvolutionEntry, a.id)
-                        if entry and entry.plan_item_id:
-                            tx.plan_item_ref = entry.plan_item_id
-                            break
+    saldo_pendiente = None
+    if payload.allocate and payload.tipo == "ingreso" and payload.patient_id:
+        (
+            allocated_total,
+            unallocated_amount,
+            allocations_out,
+            saldo_pendiente,
+        ) = _run_clinical_allocation(
+            db,
+            patient_id=payload.patient_id,
+            monto=float(payload.monto),
+            evolution_entry_id=evo_id,
+            plan_item_ref=plan_ref,
+        )
+        _backfill_tx_refs(db, [tx], allocations_out or [])
 
     try:
         db.commit()
@@ -375,5 +409,10 @@ def create_transaction(
         ) from exc
     db.refresh(tx)
     return _tx_to_out(
-        tx, db, allocated_total=allocated_total, allocations=allocations_out
+        tx,
+        db,
+        allocated_total=allocated_total,
+        unallocated_amount=unallocated_amount,
+        allocations=allocations_out,
+        saldo_pendiente_destino=saldo_pendiente,
     )

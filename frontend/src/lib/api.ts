@@ -48,35 +48,61 @@ export function formatApiDetail(detail: unknown, fallback = "Error en la solicit
 
 function storageGet(key: string): string | null {
   if (typeof window === "undefined") return null;
-  // sessionStorage: no sobrevive al cerrar el navegador
-  const fromSession = sessionStorage.getItem(key);
-  if (fromSession) return fromSession;
-  // Migración puntual: limpiar tokens viejos de localStorage (sesión persistente indebida)
-  const legacy = localStorage.getItem(key);
-  if (legacy) {
-    localStorage.removeItem(ACCESS_KEY);
-    localStorage.removeItem(REFRESH_KEY);
+  // Escritorio multi-PC: localStorage sobrevive reinicios y ventanas nuevas
+  const fromLocal = localStorage.getItem(key);
+  if (fromLocal) return fromLocal;
+  // Migración desde sessionStorage (versión anterior de la app)
+  try {
+    const fromSession = sessionStorage.getItem(key);
+    if (fromSession) {
+      localStorage.setItem(key, fromSession);
+      sessionStorage.removeItem(key);
+      return fromSession;
+    }
+  } catch {
+    /* private mode / storage blocked */
   }
   return null;
 }
 
 function storageSet(key: string, value: string) {
-  sessionStorage.setItem(key, value);
-  localStorage.removeItem(key);
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* ignore quota */
+  }
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
 }
 
 function storageRemove(key: string) {
-  sessionStorage.removeItem(key);
-  localStorage.removeItem(key);
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
 }
 
-/** Punto único de lectura del access token (sessionStorage → cookie legada). */
+/** Punto único de lectura del access token (localStorage → cookie). */
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   const fromStore = storageGet(ACCESS_KEY);
   if (looksLikeJwt(fromStore)) return fromStore;
   const fromCookie = readAuthCookie();
-  return looksLikeJwt(fromCookie) ? fromCookie : null;
+  if (looksLikeJwt(fromCookie)) {
+    // Rehidratar store desde cookie (p.ej. otra ventana del escritorio)
+    storageSet(ACCESS_KEY, fromCookie!);
+    return fromCookie;
+  }
+  return null;
 }
 
 let refreshPromise: Promise<boolean> | null = null;
@@ -185,7 +211,10 @@ export async function apiFetch<T>(
 
     // Solo rutas ya autenticadas hablan de "sesión expirada"
     if (res.status === 401 && !isAuthCredentialPath(path)) {
-      msg = "Sesión expirada. Cierra sesión e ingresa de nuevo.";
+      const refresh = storageGet(REFRESH_KEY);
+      msg = refresh
+        ? "Sesión expirada o inválida en este equipo. Cierra sesión e ingresa de nuevo."
+        : "No hay sesión activa en este equipo. Inicia sesión para continuar.";
     } else if (res.status === 401 && path.startsWith("/api/auth/login")) {
       msg = msg || "Email o contraseña incorrectos";
     }

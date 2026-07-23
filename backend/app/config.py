@@ -48,8 +48,8 @@ class Settings(BaseSettings):
     # JWT
     JWT_SECRET: str = "change-me-in-production-please-use-a-long-random-string"
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 720  # 12 h — jornada clínica de escritorio
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # multi-PC / reinicios sin re-login diario
 
     # Rate limiting (auth endpoints)
     RATE_LIMIT_LOGIN_PER_MINUTE: int = 10

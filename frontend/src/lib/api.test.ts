@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const storage = new Map<string, string>();
 
 function installBrowserStubs() {
-  const sessionStorage = {
+  const localStorage = {
     getItem: (k: string) => storage.get(k) ?? null,
     setItem: (k: string, v: string) => {
       storage.set(k, v);
@@ -12,7 +12,7 @@ function installBrowserStubs() {
       storage.delete(k);
     },
   };
-  const localStorage = {
+  const sessionStorage = {
     getItem: () => null,
     setItem: () => {},
     removeItem: () => {},

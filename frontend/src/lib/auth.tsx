@@ -62,19 +62,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = useCallback(async () => {
     if (!mounted.current) return;
 
-    // Abrir la URL raíz = siempre pedir credenciales (no restaurar sesión previa).
+    const token = getToken();
+
+    // Pantalla de login: si hay sesión válida, restaurarla (escritorio);
+    // no borrar tokens al abrir "/" — eso provocaba "Sesión expirada" al crear pacientes.
     if (isLoginPath()) {
-      clearToken();
-      clearRefreshToken();
-      if (mounted.current) {
-        setUser(null);
-        setLoading(false);
+      if (!looksLikeJwt(token)) {
+        if (mounted.current) {
+          setUser(null);
+          setLoading(false);
+        }
+        await loadSetupStatus();
+        return;
       }
-      await loadSetupStatus();
+      writeAuthCookie(token!);
+      try {
+        const me = await apiFetch<User>("/api/users/me");
+        if (mounted.current) {
+          setUser(me);
+          setNeedsSetup(false);
+        }
+      } catch {
+        clearToken();
+        clearRefreshToken();
+        if (mounted.current) setUser(null);
+        await loadSetupStatus();
+      } finally {
+        if (mounted.current) setLoading(false);
+      }
       return;
     }
-
-    const token = getToken();
 
     if (!looksLikeJwt(token)) {
       clearToken();

@@ -8,7 +8,7 @@ import { Input } from "@/components/Input";
 import { AlertCircle } from "lucide-react";
 
 export default function LoginPage() {
-  const { needsSetup, loading, login, setup } = useAuth();
+  const { needsSetup, loading, login, setup, user } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,6 +22,21 @@ export default function LoginPage() {
         <div
           className="h-9 w-9 animate-spin rounded-full border-[3px] border-slate-200 border-t-brand-600"
           aria-label="Cargando"
+        />
+      </div>
+    );
+  }
+
+  // Sesión de escritorio ya válida → entrar al panel sin re-login
+  if (user) {
+    if (typeof window !== "undefined") {
+      window.location.assign("/dashboard");
+    }
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface-muted">
+        <div
+          className="h-9 w-9 animate-spin rounded-full border-[3px] border-slate-200 border-t-brand-600"
+          aria-label="Entrando"
         />
       </div>
     );

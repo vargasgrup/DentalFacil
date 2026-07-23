@@ -1,6 +1,9 @@
 /** Cookie name used by middleware to gate protected app routes. */
 export const AUTH_COOKIE = "ds_access_token";
 
+/** Alineado con REFRESH_TOKEN_EXPIRE_DAYS del backend (sesión de escritorio). */
+export const AUTH_COOKIE_MAX_AGE_SEC = 30 * 24 * 60 * 60;
+
 const isBrowser = () => typeof window !== "undefined";
 
 function cookieSecureFlag(): string {
@@ -9,17 +12,20 @@ function cookieSecureFlag(): string {
 }
 
 /**
- * Session cookie (no Max-Age): se borra al cerrar el navegador.
- * Obliga a volver a autenticarse en la siguiente apertura del sistema.
+ * Cookie persistente (Max-Age): mantiene la sesión al reiniciar la app de escritorio
+ * y al abrir nuevas ventanas en el mismo equipo.
  */
 export function writeAuthCookie(token: string) {
   if (!isBrowser()) return;
-  document.cookie = `${AUTH_COOKIE}=${encodeURIComponent(token)}; Path=/; SameSite=Lax${cookieSecureFlag()}`;
+  document.cookie =
+    `${AUTH_COOKIE}=${encodeURIComponent(token)}; Path=/; Max-Age=${AUTH_COOKIE_MAX_AGE_SEC}; SameSite=Lax` +
+    cookieSecureFlag();
 }
 
 export function clearAuthCookie() {
   if (!isBrowser()) return;
-  document.cookie = `${AUTH_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${cookieSecureFlag()}`;
+  document.cookie =
+    `${AUTH_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax` + cookieSecureFlag();
 }
 
 export function readAuthCookie(): string | null {

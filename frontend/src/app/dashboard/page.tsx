@@ -44,33 +44,23 @@ const KPI_TONE: Record<
   KpiTone,
   {
     card: string;
-    iconWrap: string;
-    icon: string;
     bar: string;
   }
 > = {
   brand: {
     card: "dash-kpi-brand",
-    iconWrap: "bg-brand-50",
-    icon: "text-brand-600",
     bar: "bg-brand-500",
   },
   success: {
     card: "dash-kpi-success",
-    iconWrap: "bg-success-50",
-    icon: "text-success-600",
     bar: "bg-success-500",
   },
   info: {
     card: "dash-kpi-info",
-    iconWrap: "bg-info-50",
-    icon: "text-info-600",
     bar: "bg-info-500",
   },
   danger: {
     card: "dash-kpi-danger",
-    iconWrap: "bg-danger-50",
-    icon: "text-danger-600",
     bar: "bg-danger-500",
   },
 };
@@ -106,9 +96,7 @@ function KpiCard({
           <h3 className="mt-1 text-2xl font-bold tabular-nums text-slate-800">{value}</h3>
           <div className="mt-2 min-h-[1.125rem] text-xs leading-snug text-slate-500">{meta}</div>
         </div>
-        <div
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${t.iconWrap} ${t.icon}`}
-        >
+        <div className="dash-kpi-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl">
           {icon}
         </div>
       </div>

@@ -196,29 +196,83 @@ p {
 .dash-kpi {
   position: relative;
   overflow: hidden;
+  isolation: isolate;
 }
+/* Soft corner wash — sits behind the icon, never competes with it */
 .dash-kpi::before {
   content: "";
   position: absolute;
-  top: -50%;
-  right: -20%;
-  width: 120px;
-  height: 120px;
+  top: -42%;
+  right: -18%;
+  width: 140px;
+  height: 140px;
   border-radius: 50%;
-  opacity: 0.08;
   pointer-events: none;
+  z-index: 0;
+  opacity: 1;
+  filter: blur(2px);
 }
 .dash-kpi-brand::before {
-  background: #1c66e8;
+  background: radial-gradient(
+    circle at 35% 40%,
+    rgba(28, 102, 232, 0.22) 0%,
+    rgba(28, 102, 232, 0.1) 45%,
+    rgba(28, 102, 232, 0) 72%
+  );
+  box-shadow: 0 0 40px 8px rgba(28, 102, 232, 0.08);
 }
 .dash-kpi-success::before {
-  background: #22c55e;
+  background: radial-gradient(
+    circle at 35% 40%,
+    rgba(34, 197, 94, 0.22) 0%,
+    rgba(34, 197, 94, 0.1) 45%,
+    rgba(34, 197, 94, 0) 72%
+  );
+  box-shadow: 0 0 40px 8px rgba(34, 197, 94, 0.08);
 }
 .dash-kpi-info::before {
-  background: #3b82f6;
+  background: radial-gradient(
+    circle at 35% 40%,
+    rgba(59, 130, 246, 0.22) 0%,
+    rgba(59, 130, 246, 0.1) 45%,
+    rgba(59, 130, 246, 0) 72%
+  );
+  box-shadow: 0 0 40px 8px rgba(59, 130, 246, 0.08);
 }
 .dash-kpi-danger::before {
-  background: #ef4444;
+  background: radial-gradient(
+    circle at 35% 40%,
+    rgba(239, 68, 68, 0.2) 0%,
+    rgba(239, 68, 68, 0.09) 45%,
+    rgba(239, 68, 68, 0) 72%
+  );
+  box-shadow: 0 0 40px 8px rgba(239, 68, 68, 0.07);
+}
+/* Icon tile — lifted above the wash so it reads as a separate surface */
+.dash-kpi-icon {
+  position: relative;
+  z-index: 1;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.04);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 6px 16px -4px var(--kpi-icon-shadow, rgba(28, 102, 232, 0.28));
+}
+.dash-kpi-brand .dash-kpi-icon {
+  --kpi-icon-shadow: rgba(28, 102, 232, 0.32);
+  color: #1c66e8;
+}
+.dash-kpi-success .dash-kpi-icon {
+  --kpi-icon-shadow: rgba(22, 163, 74, 0.32);
+  color: #16a34a;
+}
+.dash-kpi-info .dash-kpi-icon {
+  --kpi-icon-shadow: rgba(37, 99, 235, 0.3);
+  color: #2563eb;
+}
+.dash-kpi-danger .dash-kpi-icon {
+  --kpi-icon-shadow: rgba(220, 38, 38, 0.3);
+  color: #dc2626;
 }
 .dash-progress-fill {
   transform-origin: left center;

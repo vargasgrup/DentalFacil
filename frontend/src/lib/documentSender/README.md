@@ -5,13 +5,17 @@ Arquitectura adaptada al stack **Next.js + FastAPI** (no Node/Express del brief 
 ## Flujo
 
 ```
-PDF (RAM) → Cloud API (backend) → reintentos → Web Share API → descarga + wa.me
+PDF (RAM) → Cloud API (backend multipart) → reintentos → Web Share API → descarga + guía 📎 + wa.me
 ```
 
-1. **Cloud API** — el frontend sube el PDF al backend; Meta Graph se llama solo en servidor.
+**Importante:** `wa.me` / WhatsApp Desktop **no pueden adjuntar archivos solos**. Sin Cloud API configurada, el sistema descarga el PDF, abre el chat con texto limpio y muestra un modal con pasos para adjuntar con el clip.
+
+Nunca se envía base64 ni el PDF dentro del texto del mensaje.
+
+1. **Cloud API** — el frontend sube el PDF al backend (multipart); Meta Graph se llama solo en servidor.
 2. **Reintentos** — hasta 3 con delay exponencial (`/send-document`).
 3. **Web Share** — `navigator.share({ files })` (móvil / Chromium).
-4. **Fallback** — descarga del PDF + apertura de `wa.me` para adjuntar a mano.
+4. **Fallback** — descarga del PDF + modal de guía (clip 📎) + apertura de chat (solo texto).
 
 Sin `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID`, se salta Cloud API automáticamente.
 

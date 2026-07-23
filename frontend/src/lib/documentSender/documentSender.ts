@@ -1,10 +1,29 @@
+/**
+ * Motor de envío de documentos PDF por WhatsApp.
+ *
+ * Orden:
+ *  1. Cloud API (multipart → backend → Meta) — único adjunto 100% automático
+ *  2. Reintentos Cloud API
+ *  3. Web Share API con File (móvil / Windows Share)
+ *  4. Fallback desktop: descarga + guía 📎 + abrir chat (solo texto limpio)
+ *
+ * NUNCA poner base64/PDF en el texto de wa.me.
+ * El frontend NUNCA llama a Graph API de Meta directamente.
+ */
+
 import { getToken } from "@/lib/api";
-import { buildWhatsAppUrl, isValidPhone } from "@/lib/whatsapp";
+import {
+  buildWhatsAppUrl,
+  isValidPhone,
+  openWhatsAppChat,
+  sanitizeWhatsAppText,
+} from "@/lib/whatsapp";
 import { DocumentErrorHandler, DocumentSendError } from "./errorHandler";
 import { LruBlobCache } from "./lruCache";
 import { dismissDocumentNotification, showDocumentNotification } from "./notifications";
 import {
   DEFAULT_SENDER_CONFIG,
+  type AttachGuidePayload,
   type DocumentSenderConfig,
   type SendDocumentParams,
   type SendDocumentResult,
@@ -57,6 +76,7 @@ export class DocumentSender {
     }
   }
 
+  /** Solo para depuración / futuras APIs. No usar en el texto del chat. */
   async bufferToBase64(blob: Blob): Promise<string> {
     const buffer = await blob.arrayBuffer();
     let binary = "";
@@ -71,7 +91,7 @@ export class DocumentSender {
   showUserNotification(
     message: string,
     type: "info" | "success" | "warning" | "error" | "progress",
-    opts?: { progress?: number; id?: string }
+    opts?: { progress?: number; id?: string; durationMs?: number }
   ): string {
     return showDocumentNotification(message, type, opts);
   }
@@ -130,6 +150,10 @@ export class DocumentSender {
     }
   }
 
+  private cleanChatMessage(raw: string): string {
+    return sanitizeWhatsAppText(raw, this.config.maxWhatsAppTextLength);
+  }
+
   async getCloudStatus(force = false): Promise<WhatsAppCloudStatus | null> {
     const now = Date.now();
     if (!force && this.statusCache.value && now - this.statusCache.at < 60_000) {
@@ -161,9 +185,10 @@ export class DocumentSender {
   }): Promise<{ success: boolean; messageId?: string; error?: string; errorCode?: string }> {
     const token = getToken();
     const form = new FormData();
+    // Multipart real — nunca JSON con base64 (el backend espera UploadFile)
     form.append("file", opts.blob, opts.fileName);
     form.append("phone_number", opts.phoneNumber);
-    form.append("message", opts.message);
+    form.append("message", this.cleanChatMessage(opts.message));
     form.append("file_name", opts.fileName);
     form.append("document_type", opts.documentType);
     form.append("attempt", String(opts.attempt));
@@ -268,7 +293,7 @@ export class DocumentSender {
       await navigator.share({
         files: [file],
         title: opts.fileName,
-        text: opts.message,
+        text: this.cleanChatMessage(opts.message).slice(0, 200),
       });
       return { success: true };
     } catch (err) {
@@ -285,33 +310,86 @@ export class DocumentSender {
     fileName: string;
     message: string;
     phoneNumber?: string | null;
-  }): Promise<{ success: boolean; requiresManualAttach: boolean; error?: string }> {
-    const blobUrl = URL.createObjectURL(opts.pdfBlob);
+  }): Promise<{
+    success: boolean;
+    requiresManualAttach: boolean;
+    attachGuide: AttachGuidePayload;
+    error?: string;
+  }> {
+    const safeName = opts.fileName.endsWith(".pdf") ? opts.fileName : `${opts.fileName}.pdf`;
+    const chatMessage = this.cleanChatMessage(
+      opts.message ||
+        `Hola, te compartimos el documento ${safeName}. Adjúntalo con el clip 📎.`
+    );
+
+    const pdfObjectUrl = URL.createObjectURL(opts.pdfBlob);
     try {
       const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = opts.fileName;
+      a.href = pdfObjectUrl;
+      a.download = safeName;
+      a.rel = "noopener";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-    } finally {
-      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+    } catch {
+      /* download may still work via object URL in guide */
     }
 
-    if (opts.phoneNumber && isValidPhone(opts.phoneNumber)) {
-      const waUrl = buildWhatsAppUrl(opts.phoneNumber, opts.message);
-      if (waUrl) {
-        window.open(waUrl, "_blank", "noopener,noreferrer");
-        return { success: true, requiresManualAttach: true };
+    // Conservar object URL para re-descarga desde el modal (~10 min)
+    window.setTimeout(() => {
+      try {
+        URL.revokeObjectURL(pdfObjectUrl);
+      } catch {
+        /* ignore */
       }
+    }, 10 * 60 * 1000);
+
+    if (opts.phoneNumber && isValidPhone(opts.phoneNumber)) {
+      openWhatsAppChat(opts.phoneNumber, chatMessage);
     }
+
+    const attachGuide: AttachGuidePayload = {
+      fileName: safeName,
+      phoneNumber: opts.phoneNumber,
+      message: chatMessage,
+      pdfObjectUrl,
+    };
+
+    // Disparar evento global para el modal de asistencia
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("dentalfacil:attach-guide", { detail: attachGuide })
+      );
+    }
+
     return {
       success: true,
       requiresManualAttach: true,
-      error: opts.phoneNumber
-        ? undefined
-        : "PDF descargado. Abre WhatsApp y adjunta el archivo.",
+      attachGuide,
+      error:
+        opts.phoneNumber && isValidPhone(opts.phoneNumber)
+          ? undefined
+          : "PDF descargado. Abre WhatsApp y adjunta el archivo con el clip 📎.",
     };
+  }
+
+  /** Re-descarga el PDF y reabre el chat (desde el modal). */
+  reopenAttachAssist(guide: AttachGuidePayload): void {
+    const a = document.createElement("a");
+    a.href = guide.pdfObjectUrl;
+    a.download = guide.fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    if (guide.phoneNumber && isValidPhone(guide.phoneNumber)) {
+      openWhatsAppChat(guide.phoneNumber, guide.message);
+    }
+  }
+
+  previewWhatsAppLink(phone: string | null | undefined, message: string): string | null {
+    return buildWhatsAppUrl(phone, this.cleanChatMessage(message), {
+      preferDeepLink: false,
+    });
   }
 
   private async reportMetric(payload: {
@@ -353,7 +431,7 @@ export class DocumentSender {
   async sendDocument(params: SendDocumentParams): Promise<SendDocumentResult> {
     const started = performance.now();
     const documentType = params.documentType || "documento";
-    const message = (params.message || "").trim();
+    const message = this.cleanChatMessage((params.message || "").trim());
     const progressId = this.showUserNotification("Preparando documento…", "progress", {
       progress: 10,
     });
@@ -376,11 +454,11 @@ export class DocumentSender {
       let lastError: string | undefined;
       let lastCode: string | undefined;
 
-      // --- Estrategia 1 + 2: Cloud API ---
+      // --- Estrategia 1 + 2: Cloud API (multipart) ---
       if (preferCloud && phone && isValidPhone(phone)) {
         const status = await this.getCloudStatus();
-        if (status?.enabled) {
-          this.showUserNotification("Enviando por WhatsApp Cloud…", "progress", {
+        if (status?.configured && status.enabled) {
+          this.showUserNotification("Enviando PDF por WhatsApp (Cloud API)…", "progress", {
             id: progressId,
             progress: 45,
           });
@@ -403,7 +481,10 @@ export class DocumentSender {
               durationMs,
             });
             dismissDocumentNotification(progressId);
-            this.showUserNotification("Documento enviado por WhatsApp", "success");
+            this.showUserNotification(
+              "Documento enviado por WhatsApp con PDF adjunto",
+              "success"
+            );
             return {
               success: true,
               strategy: "cloud_api",
@@ -458,8 +539,8 @@ export class DocumentSender {
         }
       }
 
-      // --- Estrategia 3: Web Share ---
-      this.showUserNotification("Abriendo compartir nativo…", "progress", {
+      // --- Estrategia 3: Web Share con archivo ---
+      this.showUserNotification("Abriendo compartir con archivo adjunto…", "progress", {
         id: progressId,
         progress: 70,
       });
@@ -480,7 +561,10 @@ export class DocumentSender {
             durationMs,
           });
           dismissDocumentNotification(progressId);
-          this.showUserNotification("Documento compartido", "success");
+          this.showUserNotification(
+            "Documento compartido — elige WhatsApp en el menú",
+            "success"
+          );
           return { success: true, strategy: "web_share", durationMs };
         }
         if (shared.aborted) {
@@ -491,11 +575,12 @@ export class DocumentSender {
         DocumentErrorHandler.handleError(err, "web_share");
       }
 
-      // --- Estrategia 4: descarga + wa.me ---
-      this.showUserNotification("Descargando PDF para envío manual…", "progress", {
-        id: progressId,
-        progress: 90,
-      });
+      // --- Estrategia 4: descarga + guía + chat (wa.me no adjunta archivos) ---
+      this.showUserNotification(
+        "Descargando PDF. WhatsApp Desktop no adjunta solo: usa el clip 📎.",
+        "progress",
+        { id: progressId, progress: 90 }
+      );
       const fallback = await this.downloadAsFallback({
         pdfBlob: blob,
         fileName,
@@ -516,15 +601,15 @@ export class DocumentSender {
       });
       dismissDocumentNotification(progressId);
       this.showUserNotification(
-        fallback.requiresManualAttach
-          ? "PDF listo. Adjúntalo en el chat de WhatsApp y envíalo."
-          : "PDF descargado",
-        fallback.success ? "warning" : "error"
+        "PDF descargado. En el chat de WhatsApp: clip 📎 → elige el archivo → Enviar.",
+        "warning",
+        { durationMs: 9000 }
       );
       return {
         success: fallback.success,
         strategy: "download_fallback",
-        requiresManualAttach: fallback.requiresManualAttach,
+        requiresManualAttach: true,
+        attachGuide: fallback.attachGuide,
         error: fallback.error || lastError,
         errorCode: lastCode,
         durationMs,

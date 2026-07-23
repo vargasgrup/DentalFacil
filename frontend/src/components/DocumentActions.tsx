@@ -265,12 +265,12 @@ export function DocumentActions({
         setSent(true);
         if (result.requiresManualAttach) {
           setSendHint(
-            "PDF descargado. Adjúntalo en el chat de WhatsApp que se abrió y envíalo."
+            "PDF descargado. En WhatsApp: clip 📎 → Documento → elige el archivo → Enviar."
           );
         } else if (result.strategy === "cloud_api" || result.strategy === "cloud_api_retry") {
-          setSendHint("Enviado directamente al WhatsApp del paciente.");
+          setSendHint("Enviado con PDF adjunto al WhatsApp del paciente.");
         } else if (result.strategy === "web_share") {
-          setSendHint("Documento compartido con la app seleccionada.");
+          setSendHint("Documento compartido — elige WhatsApp en el menú del sistema.");
         }
       } else {
         alert(result.error || "Error al enviar");

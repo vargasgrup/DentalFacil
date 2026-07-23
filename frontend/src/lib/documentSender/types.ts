@@ -2,12 +2,13 @@
  * Sistema Universal de Envío de Documentos (WhatsApp).
  *
  * Estrategias (en orden):
- *  1. Cloud API (backend) — PDF en RAM, sin disco
+ *  1. Cloud API (backend) — PDF en RAM, adjunto automático
  *  2. Reintentos Cloud API (exponencial)
  *  3. Web Share API (nativo, ideal móvil)
- *  4. Descarga + wa.me (último recurso manual)
+ *  4. Descarga + guía de adjunto + wa.me (último recurso; wa.me NO adjunta archivos)
  *
  * El frontend NUNCA llama a la Graph API de Meta directamente.
+ * Nunca poner base64/PDF en el texto del mensaje.
  */
 
 export type DocumentType =
@@ -44,6 +45,14 @@ export interface SendDocumentParams {
   preferCloudApi?: boolean;
 }
 
+export interface AttachGuidePayload {
+  fileName: string;
+  phoneNumber?: string | null;
+  message: string;
+  /** Object URL del PDF para re-descargar desde el modal */
+  pdfObjectUrl: string;
+}
+
 export interface SendDocumentResult {
   success: boolean;
   strategy: SendStrategy | null;
@@ -52,6 +61,7 @@ export interface SendDocumentResult {
   errorCode?: string;
   /** true si el usuario debe adjuntar el PDF manualmente en WhatsApp */
   requiresManualAttach?: boolean;
+  attachGuide?: AttachGuidePayload;
   durationMs: number;
 }
 
@@ -61,6 +71,8 @@ export interface DocumentSenderConfig {
   maxFileBytes: number;
   cacheMaxSize: number;
   baseRetryDelayMs: number;
+  /** Máximo de caracteres en el texto de wa.me (evitar basura/base64) */
+  maxWhatsAppTextLength: number;
 }
 
 export const DEFAULT_SENDER_CONFIG: DocumentSenderConfig = {
@@ -69,6 +81,7 @@ export const DEFAULT_SENDER_CONFIG: DocumentSenderConfig = {
   maxFileBytes: 25 * 1024 * 1024,
   cacheMaxSize: 50,
   baseRetryDelayMs: 800,
+  maxWhatsAppTextLength: 700,
 };
 
 export interface WhatsAppCloudStatus {

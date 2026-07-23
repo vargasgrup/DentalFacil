@@ -1,4 +1,5 @@
 export type {
+  AttachGuidePayload,
   DocumentType,
   SendDocumentParams,
   SendDocumentResult,

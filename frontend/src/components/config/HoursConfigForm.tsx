@@ -3,7 +3,6 @@
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Time12hSelect } from "@/components/config/Time12hSelect";
-import { formatMinutes12h, localTimeToMinutes } from "@/lib/datetime";
 
 interface HoursConfigFormProps {
   horaApertura: string;
@@ -24,16 +23,12 @@ export function HoursConfigForm({
   onSubmit,
   readOnly = false,
 }: HoursConfigFormProps) {
-  const openLabel = formatMinutes12h(localTimeToMinutes(horaApertura));
-  const closeLabel = formatMinutes12h(localTimeToMinutes(horaCierre));
-
   return (
     <Card>
       <h2 className="mb-2 text-section-title text-slate-700">Horario de atención</h2>
       <p className="mb-4 text-sm text-slate-500">
         Define el rango visible en la grilla de Agenda. El sistema usa siempre formato de{" "}
-        <strong className="font-medium text-slate-700">12 horas</strong> (a. m. / p. m.),
-        como se maneja en el Perú. Actual: {openLabel} – {closeLabel}.
+        <strong className="font-medium text-slate-700">12 horas</strong> (a. m. / p. m.).
       </p>
       <form
         onSubmit={onSubmit}

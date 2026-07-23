@@ -19,7 +19,7 @@ export function sanitizeWhatsAppText(mensaje: string, maxLen = WA_TEXT_MAX): str
     compact.length > 200 &&
     /^[A-Za-z0-9+/=]+$/.test(compact.slice(0, 500))
   ) {
-    text = "Te compartimos un documento PDF. Adjúntalo en este chat con el clip 📎.";
+    text = "Te compartimos un documento PDF.";
   }
   if (text.length > maxLen) {
     text = `${text.slice(0, maxLen - 1)}…`;

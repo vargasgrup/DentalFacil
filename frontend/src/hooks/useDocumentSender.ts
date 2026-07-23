@@ -28,6 +28,7 @@ export function useDocumentSender() {
       const failed: SendDocumentResult = {
         success: false,
         strategy: null,
+        cloud_api_sent: false,
         error: message,
         durationMs: 0,
       };

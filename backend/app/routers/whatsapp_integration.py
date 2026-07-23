@@ -42,6 +42,8 @@ class WhatsAppShareOut(BaseModel):
     error: str | None = None
     error_code: str | None = None
     attempt: int = 1
+    # True cuando Meta Cloud API aceptó/entregó el documento
+    cloud_api_sent: bool = False
 
 
 class WhatsAppMetricsNote(BaseModel):
@@ -104,6 +106,7 @@ async def share_document(
     if not whatsapp_cloud_service.configured:
         return WhatsAppShareOut(
             success=False,
+            cloud_api_sent=False,
             error="WhatsApp Cloud API no configurada en el servidor",
             error_code="CLOUD_API_NOT_CONFIGURED",
             attempt=attempt,
@@ -142,11 +145,13 @@ async def share_document(
     )
     return WhatsAppShareOut(
         success=result.ok,
+        strategy="cloud_api",
         message_id=result.message_id,
         media_id=result.media_id,
         error=result.error,
         error_code=result.error_code,
         attempt=attempt,
+        cloud_api_sent=bool(result.ok),
     )
 
 

@@ -29,17 +29,17 @@ const ERROR_MAP: Record<DocumentErrorCode, Omit<DocumentErrorInfo, "code">> = {
   },
   CloudAPIError: {
     message: "WhatsApp Cloud API no pudo entregar el documento.",
-    action: "Se intentará compartir o descargar para envío manual.",
+    action: "Se reintentará y, si falla, se abrirá compartir nativo.",
     retryable: true,
   },
   CloudAPINotConfigured: {
     message: "Cloud API no está configurada en esta instalación.",
-    action: "Se usará compartir nativo o descarga + WhatsApp.",
+    action: "Se usará el selector nativo del sistema (Web Share) con el PDF.",
     retryable: false,
   },
   WebShareUnsupported: {
     message: "Este navegador no soporta compartir archivos nativo.",
-    action: "Se descargará el PDF para adjuntarlo en WhatsApp.",
+    action: "Configura WhatsApp Cloud API o usa Chrome/Edge.",
     retryable: false,
   },
   WebShareAborted: {

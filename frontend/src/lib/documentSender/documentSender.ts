@@ -1,29 +1,23 @@
 /**
- * Motor de envío de documentos PDF por WhatsApp.
+ * Sistema Universal de Envío de Documentos (WhatsApp) — flujo nativo.
  *
- * Orden:
- *  1. Cloud API (multipart → backend → Meta) — único adjunto 100% automático
- *  2. Reintentos Cloud API
- *  3. Web Share API con File (móvil / Windows Share)
- *  4. Fallback desktop: descarga + guía 📎 + abrir chat (solo texto limpio)
+ * Al hacer clic en Enviar (orden fijo, sin excepciones):
+ *  1. Cloud API (servidor) — POST /api/integrations/whatsapp/share
+ *     PDF en RAM → Meta → cloud_api_sent: true (un solo clic)
+ *  2. Reintento Cloud API (cliente) — POST .../send-document
+ *  3. Web Share API — PDF en RAM + mensaje → selector del SO → WhatsApp con archivo
  *
- * NUNCA poner base64/PDF en el texto de wa.me.
- * El frontend NUNCA llama a Graph API de Meta directamente.
+ * Nunca: base64 en el chat, Graph API desde el frontend, ni modal de arrastre/clip.
+ * El frontend NUNCA llama a Meta Graph directamente.
  */
 
 import { getToken } from "@/lib/api";
-import {
-  buildWhatsAppUrl,
-  isValidPhone,
-  openWhatsAppChat,
-  sanitizeWhatsAppText,
-} from "@/lib/whatsapp";
+import { isValidPhone, sanitizeWhatsAppText } from "@/lib/whatsapp";
 import { DocumentErrorHandler, DocumentSendError } from "./errorHandler";
 import { LruBlobCache } from "./lruCache";
 import { dismissDocumentNotification, showDocumentNotification } from "./notifications";
 import {
   DEFAULT_SENDER_CONFIG,
-  type AttachGuidePayload,
   type DocumentSenderConfig,
   type SendDocumentParams,
   type SendDocumentResult,
@@ -38,7 +32,6 @@ function emptyMetrics(): StrategyMetrics {
     cloud_api: { success: 0, fail: 0 },
     cloud_api_retry: { success: 0, fail: 0 },
     web_share: { success: 0, fail: 0 },
-    download_fallback: { success: 0, fail: 0 },
   };
 }
 
@@ -76,18 +69,6 @@ export class DocumentSender {
     }
   }
 
-  /** Solo para depuración / futuras APIs. No usar en el texto del chat. */
-  async bufferToBase64(blob: Blob): Promise<string> {
-    const buffer = await blob.arrayBuffer();
-    let binary = "";
-    const bytes = new Uint8Array(buffer);
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-    }
-    return btoa(binary);
-  }
-
   showUserNotification(
     message: string,
     type: "info" | "success" | "warning" | "error" | "progress",
@@ -96,7 +77,7 @@ export class DocumentSender {
     return showDocumentNotification(message, type, opts);
   }
 
-  /** Obtiene el PDF en RAM (con caché LRU). No escribe a disco. */
+  /** Obtiene el PDF en RAM (caché LRU). No escribe a disco. */
   async fetchPdfBlob(
     downloadUrl: string
   ): Promise<{ blob: Blob; fileName: string }> {
@@ -182,10 +163,15 @@ export class DocumentSender {
     documentType: string;
     attempt: number;
     metadata?: Record<string, unknown>;
-  }): Promise<{ success: boolean; messageId?: string; error?: string; errorCode?: string }> {
+  }): Promise<{
+    success: boolean;
+    cloudApiSent: boolean;
+    messageId?: string;
+    error?: string;
+    errorCode?: string;
+  }> {
     const token = getToken();
     const form = new FormData();
-    // Multipart real — nunca JSON con base64 (el backend espera UploadFile)
     form.append("file", opts.blob, opts.fileName);
     form.append("phone_number", opts.phoneNumber);
     form.append("message", this.cleanChatMessage(opts.message));
@@ -209,12 +195,15 @@ export class DocumentSender {
       if (resp.status === 429) {
         return {
           success: false,
+          cloudApiSent: false,
           error: body.detail || "Demasiados reintentos",
           errorCode: "TOO_MANY_RETRIES",
         };
       }
+      const ok = Boolean(body.success);
       return {
-        success: Boolean(body.success),
+        success: ok,
+        cloudApiSent: Boolean(body.cloud_api_sent ?? ok),
         messageId: body.message_id,
         error: body.error || (!resp.ok ? `HTTP ${resp.status}` : undefined),
         errorCode: body.error_code,
@@ -231,7 +220,7 @@ export class DocumentSender {
     phoneNumber: string;
     documentType: string;
     metadata?: Record<string, unknown>;
-  }): Promise<{ success: boolean; messageId?: string; error?: string; errorCode?: string }> {
+  }) {
     return this.postCloudShare({
       endpoint: "/api/integrations/whatsapp/share",
       blob: opts.pdfBlob,
@@ -252,7 +241,7 @@ export class DocumentSender {
     documentType: string;
     metadata?: Record<string, unknown>;
     attempt: number;
-  }): Promise<{ success: boolean; messageId?: string; error?: string; errorCode?: string }> {
+  }) {
     await this.delay(this.config.baseRetryDelayMs * Math.pow(2, opts.attempt - 2));
     return this.postCloudShare({
       endpoint: "/api/integrations/whatsapp/send-document",
@@ -305,93 +294,6 @@ export class DocumentSender {
     }
   }
 
-  async downloadAsFallback(opts: {
-    pdfBlob: Blob;
-    fileName: string;
-    message: string;
-    phoneNumber?: string | null;
-  }): Promise<{
-    success: boolean;
-    requiresManualAttach: boolean;
-    attachGuide: AttachGuidePayload;
-    error?: string;
-  }> {
-    const safeName = opts.fileName.endsWith(".pdf") ? opts.fileName : `${opts.fileName}.pdf`;
-    const chatMessage = this.cleanChatMessage(
-      opts.message ||
-        `Hola, te compartimos el documento ${safeName}. Adjúntalo con el clip 📎.`
-    );
-
-    const pdfObjectUrl = URL.createObjectURL(opts.pdfBlob);
-    try {
-      const a = document.createElement("a");
-      a.href = pdfObjectUrl;
-      a.download = safeName;
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch {
-      /* download may still work via object URL in guide */
-    }
-
-    // Conservar object URL para re-descarga desde el modal (~10 min)
-    window.setTimeout(() => {
-      try {
-        URL.revokeObjectURL(pdfObjectUrl);
-      } catch {
-        /* ignore */
-      }
-    }, 10 * 60 * 1000);
-
-    if (opts.phoneNumber && isValidPhone(opts.phoneNumber)) {
-      openWhatsAppChat(opts.phoneNumber, chatMessage);
-    }
-
-    const attachGuide: AttachGuidePayload = {
-      fileName: safeName,
-      phoneNumber: opts.phoneNumber,
-      message: chatMessage,
-      pdfObjectUrl,
-    };
-
-    // Disparar evento global para el modal de asistencia
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("dentalfacil:attach-guide", { detail: attachGuide })
-      );
-    }
-
-    return {
-      success: true,
-      requiresManualAttach: true,
-      attachGuide,
-      error:
-        opts.phoneNumber && isValidPhone(opts.phoneNumber)
-          ? undefined
-          : "PDF descargado. Abre WhatsApp y adjunta el archivo con el clip 📎.",
-    };
-  }
-
-  /** Re-descarga el PDF y reabre el chat (desde el modal). */
-  reopenAttachAssist(guide: AttachGuidePayload): void {
-    const a = document.createElement("a");
-    a.href = guide.pdfObjectUrl;
-    a.download = guide.fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    if (guide.phoneNumber && isValidPhone(guide.phoneNumber)) {
-      openWhatsAppChat(guide.phoneNumber, guide.message);
-    }
-  }
-
-  previewWhatsAppLink(phone: string | null | undefined, message: string): string | null {
-    return buildWhatsAppUrl(phone, this.cleanChatMessage(message), {
-      preferDeepLink: false,
-    });
-  }
-
   private async reportMetric(payload: {
     strategy: SendStrategy;
     success: boolean;
@@ -416,7 +318,7 @@ export class DocumentSender {
         }),
       });
     } catch {
-      /* ignore metrics failures */
+      /* ignore */
     }
   }
 
@@ -426,7 +328,8 @@ export class DocumentSender {
   }
 
   /**
-   * Orquesta el envío con fallback automático.
+   * Flujo nativo: Cloud share → reintentos send-document → Web Share.
+   * Sin modal de arrastre / wa.me con PDF.
    */
   async sendDocument(params: SendDocumentParams): Promise<SendDocumentResult> {
     const started = performance.now();
@@ -454,95 +357,94 @@ export class DocumentSender {
       let lastError: string | undefined;
       let lastCode: string | undefined;
 
-      // --- Estrategia 1 + 2: Cloud API (multipart) ---
+      // --- 1–2. Cloud API: /share luego /send-document ---
       if (preferCloud && phone && isValidPhone(phone)) {
-        const status = await this.getCloudStatus();
-        if (status?.configured && status.enabled) {
-          this.showUserNotification("Enviando PDF por WhatsApp (Cloud API)…", "progress", {
-            id: progressId,
-            progress: 45,
-          });
-          const first = await this.sendViaCloudAPI({
-            pdfBlob: blob,
-            fileName,
-            message,
-            phoneNumber: phone,
-            documentType,
-            metadata: params.metadata,
-          });
-          if (first.success) {
-            this.track("cloud_api", true);
-            await params.onMarkedSent?.().catch(() => undefined);
-            const durationMs = Math.round(performance.now() - started);
-            await this.reportMetric({
-              strategy: "cloud_api",
-              success: true,
-              documentType,
-              durationMs,
-            });
-            dismissDocumentNotification(progressId);
-            this.showUserNotification(
-              "Documento enviado por WhatsApp con PDF adjunto",
-              "success"
-            );
-            return {
-              success: true,
-              strategy: "cloud_api",
-              messageId: first.messageId,
-              durationMs,
-            };
-          }
-          this.track("cloud_api", false);
-          lastError = first.error;
-          lastCode = first.errorCode;
+        this.showUserNotification("Enviando por WhatsApp Cloud…", "progress", {
+          id: progressId,
+          progress: 45,
+        });
+        const first = await this.sendViaCloudAPI({
+          pdfBlob: blob,
+          fileName,
+          message,
+          phoneNumber: phone,
+          documentType,
+          metadata: params.metadata,
+        });
 
-          if (first.errorCode !== "CLOUD_API_NOT_CONFIGURED") {
-            for (let attempt = 2; attempt <= this.config.maxRetries; attempt += 1) {
-              this.showUserNotification(
-                `Reintento Cloud API (${attempt}/${this.config.maxRetries})…`,
-                "progress",
-                { id: progressId, progress: 45 + attempt * 8 }
-              );
-              const retry = await this.sendViaCloudAPIRetry({
-                pdfBlob: blob,
-                fileName,
-                message,
-                phoneNumber: phone,
+        if (first.success && first.cloudApiSent) {
+          this.track("cloud_api", true);
+          await params.onMarkedSent?.().catch(() => undefined);
+          const durationMs = Math.round(performance.now() - started);
+          await this.reportMetric({
+            strategy: "cloud_api",
+            success: true,
+            documentType,
+            durationMs,
+          });
+          dismissDocumentNotification(progressId);
+          this.showUserNotification("Documento enviado por WhatsApp", "success");
+          return {
+            success: true,
+            strategy: "cloud_api",
+            cloud_api_sent: true,
+            messageId: first.messageId,
+            durationMs,
+          };
+        }
+
+        this.track("cloud_api", false);
+        lastError = first.error;
+        lastCode = first.errorCode;
+
+        // Reintentos solo si Cloud está configurada pero falló el envío
+        if (first.errorCode !== "CLOUD_API_NOT_CONFIGURED") {
+          for (let attempt = 2; attempt <= this.config.maxRetries; attempt += 1) {
+            this.showUserNotification(
+              `Reintento Cloud API (${attempt}/${this.config.maxRetries})…`,
+              "progress",
+              { id: progressId, progress: 45 + attempt * 8 }
+            );
+            const retry = await this.sendViaCloudAPIRetry({
+              pdfBlob: blob,
+              fileName,
+              message,
+              phoneNumber: phone,
+              documentType,
+              metadata: params.metadata,
+              attempt,
+            });
+            if (retry.success && retry.cloudApiSent) {
+              this.track("cloud_api_retry", true);
+              await params.onMarkedSent?.().catch(() => undefined);
+              const durationMs = Math.round(performance.now() - started);
+              await this.reportMetric({
+                strategy: "cloud_api_retry",
+                success: true,
                 documentType,
-                metadata: params.metadata,
-                attempt,
+                durationMs,
               });
-              if (retry.success) {
-                this.track("cloud_api_retry", true);
-                await params.onMarkedSent?.().catch(() => undefined);
-                const durationMs = Math.round(performance.now() - started);
-                await this.reportMetric({
-                  strategy: "cloud_api_retry",
-                  success: true,
-                  documentType,
-                  durationMs,
-                });
-                dismissDocumentNotification(progressId);
-                this.showUserNotification("Documento enviado (reintento)", "success");
-                return {
-                  success: true,
-                  strategy: "cloud_api_retry",
-                  messageId: retry.messageId,
-                  durationMs,
-                };
-              }
-              this.track("cloud_api_retry", false);
-              lastError = retry.error;
-              lastCode = retry.errorCode;
+              dismissDocumentNotification(progressId);
+              this.showUserNotification("Documento enviado (reintento)", "success");
+              return {
+                success: true,
+                strategy: "cloud_api_retry",
+                cloud_api_sent: true,
+                messageId: retry.messageId,
+                durationMs,
+              };
             }
+            this.track("cloud_api_retry", false);
+            lastError = retry.error;
+            lastCode = retry.errorCode;
           }
         }
       }
 
-      // --- Estrategia 3: Web Share con archivo ---
-      this.showUserNotification("Abriendo compartir con archivo adjunto…", "progress", {
+      // --- 3. Web Share (selector nativo del SO, con archivo) ---
+      this.showUserNotification("Abriendo compartir… elige WhatsApp", "progress", {
         id: progressId,
-        progress: 70,
+        progress: 75,
       });
       try {
         const shared = await this.sendViaWebShare({
@@ -562,56 +464,56 @@ export class DocumentSender {
           });
           dismissDocumentNotification(progressId);
           this.showUserNotification(
-            "Documento compartido — elige WhatsApp en el menú",
+            "Elige WhatsApp en el selector para enviar con el PDF adjunto",
             "success"
           );
-          return { success: true, strategy: "web_share", durationMs };
+          return {
+            success: true,
+            strategy: "web_share",
+            cloud_api_sent: false,
+            durationMs,
+          };
         }
         if (shared.aborted) {
           this.track("web_share", false);
+          dismissDocumentNotification(progressId);
+          this.showUserNotification("Envío cancelado", "warning");
+          return {
+            success: false,
+            strategy: "web_share",
+            cloud_api_sent: false,
+            error: "Compartir cancelado",
+            errorCode: "WebShareAborted",
+            durationMs: Math.round(performance.now() - started),
+          };
         }
       } catch (err) {
         this.track("web_share", false);
         DocumentErrorHandler.handleError(err, "web_share");
       }
 
-      // --- Estrategia 4: descarga + guía + chat (wa.me no adjunta archivos) ---
-      this.showUserNotification(
-        "Descargando PDF. WhatsApp Desktop no adjunta solo: usa el clip 📎.",
-        "progress",
-        { id: progressId, progress: 90 }
-      );
-      const fallback = await this.downloadAsFallback({
-        pdfBlob: blob,
-        fileName,
-        message,
-        phoneNumber: phone,
-      });
-      this.track("download_fallback", fallback.success);
-      if (fallback.success) {
-        await params.onMarkedSent?.().catch(() => undefined);
-      }
+      // Sin Cloud ni Web Share: error claro (sin modal de arrastre / wa.me)
       const durationMs = Math.round(performance.now() - started);
       await this.reportMetric({
-        strategy: "download_fallback",
-        success: fallback.success,
+        strategy: "web_share",
+        success: false,
         documentType,
         durationMs,
-        errorCode: lastCode,
+        errorCode: lastCode || "NATIVE_FLOW_UNAVAILABLE",
       });
       dismissDocumentNotification(progressId);
-      this.showUserNotification(
-        "PDF descargado. En el chat de WhatsApp: clip 📎 → elige el archivo → Enviar.",
-        "warning",
-        { durationMs: 9000 }
-      );
+      const failMsg =
+        lastCode === "CLOUD_API_NOT_CONFIGURED" || !phone
+          ? "No se pudo compartir el PDF. Configura WhatsApp Cloud API en el servidor o usa un navegador con compartir archivos (Chrome/Edge)."
+          : lastError ||
+            "No se pudo enviar. Revisa Cloud API o usa Chrome/Edge con Web Share.";
+      this.showUserNotification(failMsg, "error", { durationMs: 8000 });
       return {
-        success: fallback.success,
-        strategy: "download_fallback",
-        requiresManualAttach: true,
-        attachGuide: fallback.attachGuide,
-        error: fallback.error || lastError,
-        errorCode: lastCode,
+        success: false,
+        strategy: null,
+        cloud_api_sent: false,
+        error: failMsg,
+        errorCode: lastCode || "NATIVE_FLOW_UNAVAILABLE",
         durationMs,
       };
     } catch (err) {
@@ -621,6 +523,7 @@ export class DocumentSender {
       return {
         success: false,
         strategy: null,
+        cloud_api_sent: false,
         error: info.message,
         errorCode: info.code,
         durationMs: Math.round(performance.now() - started),

@@ -1,6 +1,5 @@
 import { AuthProvider } from "@/lib/auth";
 import { ReactNode } from "react";
-import { DocumentAttachGuide } from "@/components/DocumentAttachGuide";
 import { DocumentSendToast } from "@/components/DocumentSendToast";
 
 export function ClientProviders({ children }: { children: ReactNode }) {
@@ -8,7 +7,6 @@ export function ClientProviders({ children }: { children: ReactNode }) {
     <AuthProvider>
       {children}
       <DocumentSendToast />
-      <DocumentAttachGuide />
     </AuthProvider>
   );
 }

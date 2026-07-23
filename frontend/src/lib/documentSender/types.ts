@@ -1,11 +1,10 @@
 /**
- * Sistema Universal de Envío de Documentos (WhatsApp).
+ * Sistema Universal de Envío de Documentos (WhatsApp) — flujo nativo.
  *
- * Estrategias (en orden):
- *  1. Cloud API (backend) — PDF en RAM, adjunto automático
- *  2. Reintentos Cloud API (exponencial)
- *  3. Web Share API (nativo, ideal móvil)
- *  4. Descarga + guía de adjunto + wa.me (último recurso; wa.me NO adjunta archivos)
+ * Orden fijo al hacer clic en Enviar:
+ *  1. Cloud API — POST /api/integrations/whatsapp/share → cloud_api_sent: true
+ *  2. Reintento — POST /api/integrations/whatsapp/send-document
+ *  3. Web Share API — selector del SO con PDF adjunto (sin modal de arrastre)
  *
  * El frontend NUNCA llama a la Graph API de Meta directamente.
  * Nunca poner base64/PDF en el texto del mensaje.
@@ -23,11 +22,8 @@ export type DocumentType =
   | "cierre_caja"
   | "documento";
 
-export type SendStrategy =
-  | "cloud_api"
-  | "cloud_api_retry"
-  | "web_share"
-  | "download_fallback";
+/** Estrategias del flujo nativo (sin download_fallback / wa.me). */
+export type SendStrategy = "cloud_api" | "cloud_api_retry" | "web_share";
 
 export type NotificationType = "info" | "success" | "warning" | "error" | "progress";
 
@@ -39,29 +35,19 @@ export interface SendDocumentParams {
   message?: string;
   phoneNumber?: string | null;
   metadata?: Record<string, unknown>;
-  /** Callback opcional al marcar enviado (p. ej. markSentUrl) */
   onMarkedSent?: () => Promise<void>;
-  /** Si false, no intenta Cloud API aunque esté configurada */
+  /** Si false, salta Cloud API y va directo a Web Share */
   preferCloudApi?: boolean;
-}
-
-export interface AttachGuidePayload {
-  fileName: string;
-  phoneNumber?: string | null;
-  message: string;
-  /** Object URL del PDF para re-descargar desde el modal */
-  pdfObjectUrl: string;
 }
 
 export interface SendDocumentResult {
   success: boolean;
   strategy: SendStrategy | null;
+  /** true solo cuando Meta Cloud API entregó el documento */
+  cloud_api_sent?: boolean;
   messageId?: string;
   error?: string;
   errorCode?: string;
-  /** true si el usuario debe adjuntar el PDF manualmente en WhatsApp */
-  requiresManualAttach?: boolean;
-  attachGuide?: AttachGuidePayload;
   durationMs: number;
 }
 
@@ -71,7 +57,6 @@ export interface DocumentSenderConfig {
   maxFileBytes: number;
   cacheMaxSize: number;
   baseRetryDelayMs: number;
-  /** Máximo de caracteres en el texto de wa.me (evitar basura/base64) */
   maxWhatsAppTextLength: number;
 }
 

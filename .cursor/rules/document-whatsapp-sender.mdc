@@ -1,35 +1,56 @@
 ---
-description: Sistema universal de envío de documentos/tiques/comprobantes por WhatsApp
+description: Flujo nativo único de envío de documentos PDF por WhatsApp (Cloud → retry → Web Share)
 alwaysApply: true
 ---
 
-# Envío universal de documentos (WhatsApp)
+# Envío nativo de documentos (WhatsApp) — regla única
 
-Para **cualquier** envío de PDF (comprobantes, tiques 80mm, reportes, presupuestos, consentimientos, fichas, evolución, recetas, formatos):
+Para **cualquier** envío de PDF (comprobantes, tiques 80mm, reportes, presupuestos, consentimientos, fichas, evolución, recetas, formatos) en **todo el sistema**:
+
+## Flujo obligatorio al hacer clic en Enviar
+
+Orden fijo — **no inventar otros caminos**:
+
+1. **WhatsApp Cloud API (servidor)** — `POST /api/integrations/whatsapp/share`  
+   PDF en RAM → Meta → respuesta con `cloud_api_sent: true`.  
+   **Un solo clic, sin pasos extra.**
+
+2. **Reintento Cloud API (cliente)** — si el servidor no pudo:  
+   `POST /api/integrations/whatsapp/send-document` (hasta `maxRetries`).
+
+3. **Web Share API** — PDF en RAM + mensaje → selector del sistema → WhatsApp **con archivo adjunto**.  
+   **Sin modal de arrastre / clip / wa.me.**
 
 ## Obligatorio
 
-1. Usar el **Sistema Universal** — no reinventar `wa.me` + descarga a mano.
-2. **Nunca** llamar a Meta Graph / WhatsApp Cloud API desde el frontend.
-3. Generar/obtener el PDF **en RAM** (`Blob` / bytes). No persistir PDF temporal en disco salvo requisito explícito.
-4. Orquestar con fallback: **Cloud API → reintentos → Web Share → descarga + wa.me**.
+1. Usar el **Sistema Universal** (`documentSender` / `DocumentActions` / `ShareDocumentButton`).
+2. **Nunca** llamar a Meta Graph desde el frontend.
+3. PDF **en RAM** (`Blob` / bytes). No persistir PDF temporal en disco.
+4. **Nunca** poner base64/PDF en el texto del chat.
+5. **Nunca** abrir `wa.me` + descarga manual como flujo de documentos PDF.
+6. Feedback solo vía `DocumentSendToast` (no otro stack de toasts para este flujo).
+
+## Excepción (solo texto, sin PDF)
+
+Recordatorios de cita / mensajes de texto: `openWhatsAppText` está permitido.  
+**No** usarlo para comprobantes u otros PDFs.
 
 ## APIs a usar
 
 | Capa | Usar |
 |------|------|
-| UI completa (preview/print/WA) | `DocumentActions` con `documentType` |
+| UI completa (preview/print/WA) | `DocumentActions` + `documentType` |
 | Solo botón WhatsApp | `ShareDocumentButton` |
-| Lógica programática | `useDocumentSender` / `documentSender.sendDocument` |
-| Backend Cloud API | `POST /api/integrations/whatsapp/share` (+ `/send-document`, `/status`) |
-| Servicio Meta | `app/services/whatsapp_cloud.py` |
+| Lógica | `useDocumentSender` / `documentSender.sendDocument` |
+| Backend | `POST /api/integrations/whatsapp/share`, `/send-document`, `GET /status` |
+| Meta | solo `app/services/whatsapp_cloud.py` |
 
-Docs: `frontend/src/lib/documentSender/README.md`
+Resultado esperado en Cloud exitoso: `success: true`, `strategy: "cloud_api"|"cloud_api_retry"`, **`cloud_api_sent: true`**.
 
 ## Ejemplos
 
 ```tsx
-// ✅ Acciones de documento (Caja, ficha, reportes)
+// ✅
 <DocumentActions
   label="Comprobante"
   documentType="comprobante"
@@ -39,9 +60,9 @@ Docs: `frontend/src/lib/documentSender/README.md`
   forceFormat="80mm"
 />
 
-// ✅ Solo compartir
+// ✅
 <ShareDocumentButton
-  documentType="reporte"
+  documentType="presupuesto"
   downloadUrl={url}
   phoneNumber={telefono}
   message={mensaje}
@@ -49,15 +70,16 @@ Docs: `frontend/src/lib/documentSender/README.md`
 ```
 
 ```tsx
-// ❌ BAD — bypass del sistema
+// ❌ BAD — bypass del flujo nativo
 window.open(`https://wa.me/${phone}?text=...`);
-// + <a download> manual sin DocumentSender
+// + <a download> / modal de “adjunta con el clip”
+// + fetch a graph.facebook.com desde el browser
 ```
 
 ## Al agregar un módulo nuevo
 
-1. Endpoint backend que devuelva PDF en memoria (como `documents` / `reports`).
-2. Integrar `DocumentActions` o `ShareDocumentButton` (no links sueltos).
-3. Pasar `documentType` correcto para métricas.
-4. Si hay Cloud API: variables solo en backend (`WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`).
-5. Feedback vía toasts del sistema (`DocumentSendToast`) — no inventar otro stack de notificaciones para este flujo.
+1. Endpoint backend que devuelva PDF en memoria.
+2. Integrar `DocumentActions` o `ShareDocumentButton` (nada de links sueltos).
+3. Pasar `documentType` para métricas.
+4. Credenciales Cloud solo en backend: `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`.
+5. No crear UI de “arrastra el PDF” ni fallback `wa.me` para documentos.

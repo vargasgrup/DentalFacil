@@ -1,77 +1,51 @@
 # Sistema Universal de Envío de Documentos (WhatsApp)
 
-Arquitectura adaptada al stack **Next.js + FastAPI** (no Node/Express del brief original).
+Flujo **nativo** (regla única del proyecto).
 
-## Flujo
+## Al hacer clic en Enviar
 
 ```
-PDF (RAM) → Cloud API (backend multipart) → reintentos → Web Share API → descarga + guía 📎 + wa.me
+PDF (RAM)
+  → POST /api/integrations/whatsapp/share     → cloud_api_sent: true
+  → POST /api/integrations/whatsapp/send-document  (reintentos)
+  → navigator.share({ files })               → selector SO → WhatsApp
 ```
 
-**Importante:** `wa.me` / WhatsApp Desktop **no pueden adjuntar archivos solos**. Sin Cloud API configurada, el sistema descarga el PDF, abre el chat con texto limpio y muestra un modal con pasos para adjuntar con el clip.
+1. **Cloud API** — multipart PDF al backend; Meta Graph solo en servidor. Un clic.
+2. **Reintentos** — `/send-document` hasta 3 veces.
+3. **Web Share** — selector nativo con archivo adjunto (**sin** modal de arrastre / `wa.me`).
 
-Nunca se envía base64 ni el PDF dentro del texto del mensaje.
+Sin `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID`, se salta a Web Share automáticamente.
 
-1. **Cloud API** — el frontend sube el PDF al backend (multipart); Meta Graph se llama solo en servidor.
-2. **Reintentos** — hasta 3 con delay exponencial (`/send-document`).
-3. **Web Share** — `navigator.share({ files })` (móvil / Chromium).
-4. **Fallback** — descarga del PDF + modal de guía (clip 📎) + apertura de chat (solo texto).
-
-Sin `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID`, se salta Cloud API automáticamente.
-
-## Uso rápido
+## Uso
 
 ```tsx
 import { ShareDocumentButton } from "@/components/ShareDocumentButton";
+import { DocumentActions } from "@/components/DocumentActions";
 
-<ShareDocumentButton
+<DocumentActions
   documentType="comprobante"
   downloadUrl={`/api/documents/comprobante/${id}`}
-  fileName={`comprobante-${id}.pdf`}
-  message={`Comprobante de pago #${id}`}
+  telefono={paciente.telefono}
+  mensaje={mensaje}
+/>
+
+<ShareDocumentButton
+  documentType="presupuesto"
+  downloadUrl={url}
   phoneNumber={paciente.telefono}
+  message={mensaje}
 />
 ```
 
-O con el hook:
+## Resultado
 
-```tsx
-const { sendDocument, isSending } = useDocumentSender();
-await sendDocument({ downloadUrl, phoneNumber, message, documentType: "reporte" });
-```
+| Campo | Cloud OK | Web Share |
+|-------|----------|-----------|
+| `success` | `true` | `true` |
+| `strategy` | `cloud_api` / `cloud_api_retry` | `web_share` |
+| `cloud_api_sent` | `true` | `false` |
 
-`DocumentActions` ya usa este sistema en Caja, Ficha, Reportes, etc.
+## Regla Cursor
 
-## Backend
-
-| Endpoint | Descripción |
-|----------|-------------|
-| `GET /api/integrations/whatsapp/status` | ¿Cloud API configurada? |
-| `POST /api/integrations/whatsapp/share` | Envío (multipart PDF) |
-| `POST /api/integrations/whatsapp/send-document` | Reintento |
-| `POST /api/integrations/whatsapp/metrics` | Métricas de fallback |
-
-Variables (ver `backend/.env.example`):
-
-```
-WHATSAPP_PHONE_NUMBER_ID=
-WHATSAPP_ACCESS_TOKEN=
-WHATSAPP_API_VERSION=v17.0
-```
-
-## Archivos
-
-| Ruta | Rol |
-|------|-----|
-| `frontend/src/lib/documentSender/` | Servicio, errores, caché LRU, toasts |
-| `frontend/src/hooks/useDocumentSender.ts` | Hook |
-| `frontend/src/components/ShareDocumentButton.tsx` | Botón reutilizable |
-| `frontend/src/components/DocumentSendToast.tsx` | Feedback visual |
-| `backend/app/services/whatsapp_cloud.py` | Meta Graph |
-| `backend/app/routers/whatsapp_integration.py` | Endpoints |
-
-## Notas
-
-- El PDF se genera en el backend en memoria (ReportLab) y el cliente lo mantiene como `Blob` (caché LRU máx. 50).
-- Cloud API exige cuenta WhatsApp Business y ventana de mensajería / plantillas según políticas de Meta.
-- En escritorio Windows, el fallback descarga + `wa.me` sigue siendo el camino más frecuente si Cloud API no está activa.
+`.cursor/rules/document-whatsapp-sender.mdc` (`alwaysApply: true`).

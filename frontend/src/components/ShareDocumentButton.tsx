@@ -29,7 +29,8 @@ export interface ShareDocumentButtonProps {
 }
 
 /**
- * Botón reutilizable: un clic → Cloud API → Web Share → descarga+wa.me.
+ * Botón reutilizable — flujo nativo:
+ * Cloud API (/share) → reintentos (/send-document) → Web Share (selector SO).
  */
 export function ShareDocumentButton({
   documentType = "documento",
@@ -49,12 +50,7 @@ export function ShareDocumentButton({
 }: ShareDocumentButtonProps) {
   const { sendDocument, isSending, lastResult } = useDocumentSender();
   const hasPhone = isValidPhone(phoneNumber);
-  const sent =
-    Boolean(lastResult?.success) &&
-    (lastResult?.strategy === "cloud_api" ||
-      lastResult?.strategy === "cloud_api_retry" ||
-      lastResult?.strategy === "web_share" ||
-      lastResult?.strategy === "download_fallback");
+  const sent = Boolean(lastResult?.success);
 
   if (requirePhone && phoneNumber !== undefined && !hasPhone) {
     return compact ? (
@@ -92,7 +88,7 @@ export function ShareDocumentButton({
       type="button"
       variant="primary"
       className={`share-document-btn ${className || ""} ${compact ? "text-xs px-2" : "text-xs"}`}
-      disabled={disabled || isSending || (sent && lastResult?.strategy === "cloud_api")}
+      disabled={disabled || isSending || (sent && lastResult?.cloud_api_sent)}
       loading={isSending}
       onClick={() => void handleClick()}
       icon={
@@ -103,7 +99,7 @@ export function ShareDocumentButton({
         ) : undefined
       }
       aria-label="Enviar documento por WhatsApp"
-      title="Enviar por WhatsApp (Cloud API → compartir → descarga)"
+      title="Enviar por WhatsApp (Cloud API → reintento → compartir)"
     >
       {children ?? (compact ? null : sent ? "Enviado" : "WhatsApp")}
     </Button>

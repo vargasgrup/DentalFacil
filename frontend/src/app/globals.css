@@ -109,7 +109,8 @@ p {
 /* Universal document share (WhatsApp) — subtle motion, matches clinic UI */
 @layer components {
   .share-document-btn {
-    @apply transition-smooth;
+    transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease,
+      box-shadow 0.2s ease, filter 0.2s ease;
   }
   .share-document-btn:not(:disabled):hover {
     filter: brightness(1.03);

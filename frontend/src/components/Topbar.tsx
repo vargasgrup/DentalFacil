@@ -271,7 +271,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           {canAccessModule(user, "pacientes") && (
             <Link
               href="/pacientes/nuevo"
-              className={`inline-flex ${CTRL} items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 text-sm font-medium leading-none text-white transition-smooth hover:bg-brand-700 sm:px-3`}
+              className={`btn-float-brand inline-flex ${CTRL} items-center gap-1.5 rounded-full bg-brand-600 px-3 text-sm font-semibold leading-none text-white hover:bg-brand-700 sm:px-4`}
             >
               <Users className="h-4 w-4 shrink-0" aria-hidden />
               <span className="hidden md:inline">Nuevo paciente</span>

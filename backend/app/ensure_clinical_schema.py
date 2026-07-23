@@ -16,6 +16,9 @@ _EVOLUTION_EXTRA = [
 
 _CASH_TX_EXTRA = [
     ("evolution_entry_id", "VARCHAR(36)"),
+    ("plan_item_ref", "VARCHAR(80)"),
+    ("pieza_fdi", "VARCHAR(4)"),
+    ("grupo_pago_id", "VARCHAR(36)"),
 ]
 
 

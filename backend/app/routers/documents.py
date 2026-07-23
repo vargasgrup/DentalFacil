@@ -60,6 +60,23 @@ def download_comprobante(
     session = db.get(CashSession, tx.cash_session_id)
     operator = db.get(User, session.usuario_id) if session else user
 
+    # Cobro mixto: sumar partes del mismo grupo para el ticket (total + detalle).
+    monto = float(tx.monto)
+    metodo = tx.metodo_pago
+    grupo_id = getattr(tx, "grupo_pago_id", None)
+    if grupo_id:
+        parts = (
+            db.query(CashTransaction)
+            .filter(CashTransaction.grupo_pago_id == grupo_id)
+            .order_by(CashTransaction.created_at.asc())
+            .all()
+        )
+        if parts:
+            monto = round(sum(float(p.monto) for p in parts), 2)
+            metodo = "mixto (" + " + ".join(
+                f"{p.metodo_pago} S/ {float(p.monto):.2f}" for p in parts
+            ) + ")"
+
     serie = format_serie(tx.id)
     emitido = tx.created_at
     if emitido is not None and getattr(emitido, "tzinfo", None) is not None:
@@ -76,8 +93,8 @@ def download_comprobante(
         "patient_documento": (patient.numero_documento if patient else "") or "—",
         "patient_direccion": (patient.direccion if patient else "") or "—",
         "concepto": tx.concepto,
-        "monto": float(tx.monto),
-        "metodo_pago": tx.metodo_pago,
+        "monto": monto,
+        "metodo_pago": metodo,
         "fecha_emision": emitido,
         "vendedor": (operator.nombre if operator else None) or user.nombre or "Administrador",
     }

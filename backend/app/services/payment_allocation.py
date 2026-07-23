@@ -109,11 +109,13 @@ def list_payment_targets(db: Session, patient_id: str) -> list[dict]:
         .order_by(ClinicalEvolutionEntry.fecha.asc())
         .all()
     )
+    # Solo ocultar el ítem de plan si su evolución vinculada aún tiene saldo
+    # (así no se pierden abonos cuando la evolución quedó en 0 por desync).
     linked_plan_ids: set[str] = set()
     for e in entries:
-        if e.plan_item_id:
-            linked_plan_ids.add(str(e.plan_item_id))
         saldo = _evo_saldo(e)
+        if e.plan_item_id and saldo > 0:
+            linked_plan_ids.add(str(e.plan_item_id))
         if saldo <= 0:
             continue
         targets.append(
@@ -135,9 +137,10 @@ def list_payment_targets(db: Session, patient_id: str) -> list[dict]:
     if record and record.plan_tratamiento:
         plans = normalize_plans(record.plan_tratamiento)
         active_id = plans.get("active_id")
-        for alt in plans.get("alternatives") or []:
-            if active_id and alt.get("id") != active_id:
-                continue
+        alts = plans.get("alternatives") or []
+        for alt in alts:
+            alt_name = (alt.get("nombre") or "Plan").strip() or "Plan"
+            is_active = (not active_id) or alt.get("id") == active_id
             for it in alt.get("items") or []:
                 pid = str(it.get("id") or "")
                 if not pid or pid in linked_plan_ids:
@@ -147,18 +150,31 @@ def list_payment_targets(db: Session, patient_id: str) -> list[dict]:
                 saldo = _plan_item_saldo(it)
                 if saldo <= 0:
                     continue
+                item_label = it.get("item") or "Ítem del plan"
+                if len(alts) > 1:
+                    suffix = " · activo" if is_active else ""
+                    item_label = f"{alt_name}{suffix}: {item_label}"
                 targets.append(
                     {
                         "kind": "plan",
                         "id": pid,
                         "plan_item_id": pid,
-                        "label": it.get("item") or "Ítem del plan",
+                        "label": item_label,
                         "pieza_fdi": it.get("pieza_fdi"),
                         "costo": _plan_item_subtotal(it),
                         "a_cuenta": float(it.get("a_cuenta") or 0),
                         "saldo": saldo,
+                        "plan_activo": is_active,
                     }
                 )
+    # Destinos del plan activo primero, luego el resto
+    targets.sort(
+        key=lambda t: (
+            0 if t.get("kind") == "evolution" else 1,
+            0 if t.get("plan_activo", True) else 1,
+            str(t.get("label") or ""),
+        )
+    )
     return targets
 
 

@@ -33,6 +33,8 @@ class CashTransaction(Base):
     concepto: Mapped[str] = mapped_column(String(255))
     monto: Mapped[float] = mapped_column(Numeric(10, 2))
     metodo_pago: Mapped[str] = mapped_column(String(20), default="efectivo")
+    # Agrupa partes de un cobro mixto (efectivo + yape, etc.) para auditoría
+    grupo_pago_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
     plan_item_ref: Mapped[str | None] = mapped_column(String(80), nullable=True)
     pieza_fdi: Mapped[str | None] = mapped_column(String(4), nullable=True)
     evolution_entry_id: Mapped[str | None] = mapped_column(

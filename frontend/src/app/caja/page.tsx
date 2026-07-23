@@ -41,7 +41,20 @@ interface CashTransaction {
   concepto: string;
   monto: number;
   metodo_pago: string;
+  grupo_pago_id?: string | null;
   created_at: string;
+  pagos_parciales?: { metodo_pago: string; monto: number }[] | null;
+}
+
+interface PaymentTarget {
+  kind: "evolution" | "plan";
+  id: string;
+  plan_item_id?: string;
+  label: string;
+  pieza_fdi?: string;
+  costo: number;
+  a_cuenta: number;
+  saldo: number;
 }
 
 interface CloseSummary {
@@ -79,9 +92,39 @@ const METODOS = [
   { value: "tarjeta", label: "Tarjeta" },
 ] as const;
 
+const METODO_LABEL: Record<string, string> = Object.fromEntries(
+  METODOS.map((m) => [m.value, m.label])
+);
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function isAbonoConcepto(concepto: string): boolean {
+  const c = concepto.trim().toLowerCase();
+  return c.includes("abono") && c.includes("tratamiento");
+}
+
+function formatMetodoLabel(t: CashTransaction): string {
+  if (t.pagos_parciales && t.pagos_parciales.length > 0) {
+    return t.pagos_parciales
+      .map(
+        (p) =>
+          `${METODO_LABEL[p.metodo_pago] || p.metodo_pago} S/ ${Number(p.monto).toFixed(2)}`
+      )
+      .join(" + ");
+  }
+  if (t.metodo_pago === "mixto") return "Mixto";
+  return METODO_LABEL[t.metodo_pago] || t.metodo_pago;
+}
+
 function waReceiptMessage(t: CashTransaction): string {
   const nombre = t.patient_nombre?.split(" ")[0] || "paciente";
-  return `Hola ${nombre}, adjuntamos tu comprobante de pago por S/ ${t.monto.toFixed(2)} (${t.concepto}). Gracias por tu preferencia — M&D Odontología.`;
+  const metodo =
+    t.pagos_parciales && t.pagos_parciales.length > 0
+      ? ` · ${formatMetodoLabel(t)}`
+      : "";
+  return `Hola ${nombre}, adjuntamos tu comprobante de pago por S/ ${t.monto.toFixed(2)} (${t.concepto}${metodo}). Gracias por tu preferencia — M&D Odontología.`;
 }
 
 export default function CajaPage() {
@@ -105,10 +148,39 @@ export default function CajaPage() {
   const [incomeConcepto, setIncomeConcepto] = useState("");
   const [incomeMonto, setIncomeMonto] = useState("");
   const [incomeMetodo, setIncomeMetodo] = useState("efectivo");
+  const [incomeMixto, setIncomeMixto] = useState(false);
+  const [incomePartes, setIncomePartes] = useState<
+    { metodo_pago: string; monto: string }[]
+  >([
+    { metodo_pago: "efectivo", monto: "" },
+    { metodo_pago: "yape", monto: "" },
+  ]);
   const [incomePatient, setIncomePatient] = useState<PickedPatient | null>(null);
+  const [paymentTargets, setPaymentTargets] = useState<PaymentTarget[]>([]);
+  const [targetsLoading, setTargetsLoading] = useState(false);
+  const [payTarget, setPayTarget] = useState("auto");
   const [expenseConcepto, setExpenseConcepto] = useState("");
   const [expenseMonto, setExpenseMonto] = useState("");
   const [expenseMetodo, setExpenseMetodo] = useState("efectivo");
+
+  const incomeTotal = useMemo(() => {
+    const n = parseFloat(incomeMonto);
+    return Number.isFinite(n) ? round2(n) : 0;
+  }, [incomeMonto]);
+
+  const mixtoSuma = useMemo(() => {
+    return round2(
+      incomePartes.reduce((s, p) => {
+        const n = parseFloat(p.monto);
+        return s + (Number.isFinite(n) ? n : 0);
+      }, 0)
+    );
+  }, [incomePartes]);
+
+  const mixtoDiff = useMemo(
+    () => round2(incomeTotal - mixtoSuma),
+    [incomeTotal, mixtoSuma]
+  );
 
   const totals = useMemo(() => {
     const ingresos = transactions
@@ -154,6 +226,36 @@ export default function CajaPage() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    if (!incomePatient?.id) {
+      setPaymentTargets([]);
+      setPayTarget("auto");
+      setTargetsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setTargetsLoading(true);
+    apiFetch<{ targets: PaymentTarget[] }>(
+      `/api/clinical/${incomePatient.id}/payment-targets`
+    )
+      .then((res) => {
+        if (cancelled) return;
+        setPaymentTargets(res.targets || []);
+        setPayTarget("auto");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPaymentTargets([]);
+        setPayTarget("auto");
+      })
+      .finally(() => {
+        if (!cancelled) setTargetsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [incomePatient?.id]);
+
   const openCash = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -197,7 +299,14 @@ export default function CajaPage() {
     setIncomeConcepto("");
     setIncomeMonto("");
     setIncomeMetodo("efectivo");
+    setIncomeMixto(false);
+    setIncomePartes([
+      { metodo_pago: "efectivo", monto: "" },
+      { metodo_pago: "yape", monto: "" },
+    ]);
     setIncomePatient(null);
+    setPaymentTargets([]);
+    setPayTarget("auto");
   };
 
   /** Registra el cobro y deja el formulario abierto con acciones de comprobante. */
@@ -206,18 +315,84 @@ export default function CajaPage() {
       setError("Completa concepto y monto para continuar");
       return null;
     }
+    const monto = parseFloat(incomeMonto);
+    if (!Number.isFinite(monto) || monto <= 0) {
+      setError("Ingresa un monto válido mayor a cero");
+      return null;
+    }
+
+    if (isAbonoConcepto(incomeConcepto) && !incomePatient) {
+      setError("Para abono a tratamiento selecciona al paciente");
+      return null;
+    }
+
+    let pagos_parciales:
+      | { metodo_pago: string; monto: number }[]
+      | undefined;
+    if (incomeMixto) {
+      const parts = incomePartes
+        .map((p) => ({
+          metodo_pago: p.metodo_pago,
+          monto: round2(parseFloat(p.monto) || 0),
+        }))
+        .filter((p) => p.monto > 0);
+      if (parts.length < 2) {
+        setError("El pago mixto requiere al menos 2 métodos con monto");
+        return null;
+      }
+      const suma = round2(parts.reduce((s, p) => s + p.monto, 0));
+      if (Math.abs(suma - round2(monto)) > 0.009) {
+        setError(
+          `La suma de partes (S/ ${suma.toFixed(2)}) debe coincidir con el monto total (S/ ${monto.toFixed(2)})`
+        );
+        return null;
+      }
+      const methods = new Set(parts.map((p) => p.metodo_pago));
+      if (methods.size < parts.length) {
+        setError("Usa un método distinto en cada parte del pago mixto");
+        return null;
+      }
+      pagos_parciales = parts;
+    }
+
+    let evolution_entry_id: string | undefined;
+    let plan_item_ref: string | undefined;
+    if (payTarget.startsWith("evolution:")) {
+      evolution_entry_id = payTarget.slice("evolution:".length);
+    } else if (payTarget.startsWith("plan:")) {
+      plan_item_ref = payTarget.slice("plan:".length);
+    }
+
+    const targetMeta = paymentTargets.find((t) =>
+      payTarget === "auto" ? false : payTarget === `${t.kind}:${t.id}`
+    );
+
+    let concepto = incomeConcepto.trim();
+    if (targetMeta && isAbonoConcepto(concepto)) {
+      concepto = `Abono — ${targetMeta.label}${
+        targetMeta.pieza_fdi ? ` (pieza ${targetMeta.pieza_fdi})` : ""
+      }`;
+    }
+
     setSaving(true);
     setError("");
     try {
+      const payload: Record<string, unknown> = {
+        patient_id: incomePatient?.id ?? null,
+        tipo: "ingreso",
+        concepto,
+        monto,
+        metodo_pago: incomeMixto ? "mixto" : incomeMetodo,
+        allocate: Boolean(incomePatient?.id),
+      };
+      if (evolution_entry_id) payload.evolution_entry_id = evolution_entry_id;
+      if (plan_item_ref) payload.plan_item_ref = plan_item_ref;
+      if (targetMeta?.pieza_fdi) payload.pieza_fdi = targetMeta.pieza_fdi;
+      if (pagos_parciales) payload.pagos_parciales = pagos_parciales;
+
       const tx = await apiFetch<CashTransaction>("/api/cash/transactions", {
         method: "POST",
-        body: JSON.stringify({
-          patient_id: incomePatient?.id ?? null,
-          tipo: "ingreso",
-          concepto: incomeConcepto.trim(),
-          monto: parseFloat(incomeMonto),
-          metodo_pago: incomeMetodo,
-        }),
+        body: JSON.stringify(payload),
       });
       const enriched: CashTransaction = {
         ...tx,
@@ -225,6 +400,7 @@ export default function CajaPage() {
         patient_nombre:
           tx.patient_nombre ||
           (incomePatient ? `${incomePatient.nombres} ${incomePatient.apellidos}` : null),
+        pagos_parciales: tx.pagos_parciales || pagos_parciales || null,
       };
       setLastReceipt(enriched);
       await loadData();
@@ -245,12 +421,16 @@ export default function CajaPage() {
   const saveAndRun = async (action: "preview" | "print" | "wa") => {
     setActionBusy(action);
     try {
+      const monto = parseFloat(incomeMonto || "0");
       const same =
         lastReceipt &&
-        lastReceipt.concepto === incomeConcepto.trim() &&
-        Math.abs(lastReceipt.monto - parseFloat(incomeMonto || "0")) < 0.001 &&
-        lastReceipt.metodo_pago === incomeMetodo &&
-        (lastReceipt.patient_id || null) === (incomePatient?.id ?? null);
+        Math.abs(lastReceipt.monto - monto) < 0.001 &&
+        (lastReceipt.patient_id || null) === (incomePatient?.id ?? null) &&
+        (
+          incomeMixto
+            ? lastReceipt.metodo_pago === "mixto"
+            : lastReceipt.metodo_pago === incomeMetodo
+        );
 
       let tx = same ? lastReceipt : null;
       if (!tx) {
@@ -258,7 +438,6 @@ export default function CajaPage() {
       }
       if (!tx) return;
       setReceiptAction(action);
-      // Liberar auto-* tras disparar para no reimprimir al re-render
       window.setTimeout(() => setReceiptAction(null), 1500);
     } finally {
       setActionBusy(null);
@@ -501,9 +680,10 @@ export default function CajaPage() {
                     {Object.entries(totals.porMetodo).map(([method, amount]) => (
                       <span
                         key={method}
-                        className="rounded-lg bg-surface-subtle px-2.5 py-1 text-xs capitalize text-slate-600"
+                        className="rounded-lg bg-surface-subtle px-2.5 py-1 text-xs text-slate-600"
                       >
-                        {method}: <strong>S/ {amount.toFixed(2)}</strong>
+                        {METODO_LABEL[method] || method}:{" "}
+                        <strong>S/ {amount.toFixed(2)}</strong>
                       </span>
                     ))}
                   </div>
@@ -561,7 +741,7 @@ export default function CajaPage() {
                 <PatientPicker
                   value={incomePatient}
                   onChange={setIncomePatient}
-                  label="Paciente (recomendado para WhatsApp)"
+                  label="Paciente (obligatorio para abono a tratamiento)"
                 />
 
                 <div>
@@ -571,7 +751,12 @@ export default function CajaPage() {
                       <button
                         key={preset}
                         type="button"
-                        onClick={() => setIncomeConcepto(preset)}
+                        onClick={() => {
+                          setIncomeConcepto(preset);
+                          if (isAbonoConcepto(preset) && !incomePatient) {
+                            setError("Selecciona al paciente para ver sus planes activos");
+                          }
+                        }}
                         className={`rounded-lg px-2.5 py-1 text-xs transition-smooth ${
                           incomeConcepto === preset
                             ? "bg-brand-600 text-white"
@@ -598,9 +783,72 @@ export default function CajaPage() {
                   />
                 </div>
 
+                {incomePatient && (
+                  <label className="block">
+                    <span className="mb-1 block text-label text-slate-700">
+                      Aplicar a (plan / evolución)
+                    </span>
+                    <select
+                      value={payTarget}
+                      disabled={targetsLoading || saving}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setPayTarget(value);
+                        const t = paymentTargets.find(
+                          (x) => `${x.kind}:${x.id}` === value
+                        );
+                        if (t) {
+                          if (!incomeConcepto || isAbonoConcepto(incomeConcepto)) {
+                            setIncomeConcepto(
+                              `Abono — ${t.label}${
+                                t.pieza_fdi ? ` (pieza ${t.pieza_fdi})` : ""
+                              }`
+                            );
+                          }
+                          if (!incomeMonto) {
+                            setIncomeMonto(String(t.saldo));
+                          }
+                        }
+                      }}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+                    >
+                      <option value="auto">
+                        Automático (FIFO — saldos abiertos)
+                      </option>
+                      {paymentTargets.map((t) => (
+                        <option key={`${t.kind}:${t.id}`} value={`${t.kind}:${t.id}`}>
+                          {t.kind === "evolution" ? "Evolución" : "Plan"}: {t.label}
+                          {t.pieza_fdi ? ` · pieza ${t.pieza_fdi}` : ""} — saldo S/{" "}
+                          {t.saldo.toFixed(2)}
+                        </option>
+                      ))}
+                    </select>
+                    {targetsLoading && (
+                      <p className="mt-1 text-help text-slate-500">
+                        Cargando planes activos del paciente…
+                      </p>
+                    )}
+                    {!targetsLoading && paymentTargets.length === 0 && (
+                      <p className="mt-1 text-help text-warning-700">
+                        Este paciente no tiene líneas con saldo en plan u evolución. El cobro
+                        quedará registrado en Caja; podrás asignarlo cuando existan costos.
+                      </p>
+                    )}
+                    {!targetsLoading &&
+                      paymentTargets.length > 0 &&
+                      isAbonoConcepto(incomeConcepto) &&
+                      payTarget === "auto" && (
+                        <p className="mt-1 text-help text-slate-500">
+                          Elige el plan o evolución específico, o deja Automático para aplicar
+                          FIFO a los saldos abiertos.
+                        </p>
+                      )}
+                  </label>
+                )}
+
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Input
-                    label="Monto (S/)"
+                    label="Monto total (S/)"
                     type="number"
                     step="0.01"
                     min="0.01"
@@ -612,8 +860,29 @@ export default function CajaPage() {
                   <label className="block">
                     <span className="mb-1 block text-label text-slate-700">Método de pago</span>
                     <select
-                      value={incomeMetodo}
-                      onChange={(e) => setIncomeMetodo(e.target.value)}
+                      value={incomeMixto ? "mixto" : incomeMetodo}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "mixto") {
+                          setIncomeMixto(true);
+                          setIncomePartes((prev) => {
+                            const total = incomeMonto || "";
+                            if (prev.length >= 2) {
+                              return [
+                                { ...prev[0], monto: prev[0].monto || "" },
+                                { ...prev[1], monto: prev[1].monto || "" },
+                              ];
+                            }
+                            return [
+                              { metodo_pago: "efectivo", monto: total },
+                              { metodo_pago: "yape", monto: "" },
+                            ];
+                          });
+                        } else {
+                          setIncomeMixto(false);
+                          setIncomeMetodo(v);
+                        }
+                      }}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
                     >
                       {METODOS.map((m) => (
@@ -621,9 +890,109 @@ export default function CajaPage() {
                           {m.label}
                         </option>
                       ))}
+                      <option value="mixto">Mixto (varios métodos)</option>
                     </select>
                   </label>
                 </div>
+
+                {incomeMixto && (
+                  <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-slate-700">
+                        Detalle del pago mixto
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Ej.: S/ 20 efectivo + S/ 80 Yape = S/ 100
+                      </p>
+                    </div>
+                    {incomePartes.map((parte, idx) => (
+                      <div
+                        key={idx}
+                        className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]"
+                      >
+                        <label className="block">
+                          <span className="mb-1 block text-xs text-slate-600">Método</span>
+                          <select
+                            value={parte.metodo_pago}
+                            onChange={(e) => {
+                              const next = [...incomePartes];
+                              next[idx] = { ...next[idx], metodo_pago: e.target.value };
+                              setIncomePartes(next);
+                            }}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+                          >
+                            {METODOS.map((m) => (
+                              <option key={m.value} value={m.value}>
+                                {m.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <Input
+                          label="Monto (S/)"
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={parte.monto}
+                          onChange={(e) => {
+                            const next = [...incomePartes];
+                            next[idx] = { ...next[idx], monto: e.target.value };
+                            setIncomePartes(next);
+                          }}
+                          required
+                        />
+                        <div className="flex items-end pb-0.5">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            disabled={incomePartes.length <= 2}
+                            onClick={() =>
+                              setIncomePartes((prev) => prev.filter((_, i) => i !== idx))
+                            }
+                          >
+                            Quitar
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={incomePartes.length >= METODOS.length}
+                        onClick={() => {
+                          const used = new Set(incomePartes.map((p) => p.metodo_pago));
+                          const nextMethod =
+                            METODOS.find((m) => !used.has(m.value))?.value || "tarjeta";
+                          setIncomePartes((prev) => [
+                            ...prev,
+                            { metodo_pago: nextMethod, monto: "" },
+                          ]);
+                        }}
+                      >
+                        + Agregar método
+                      </Button>
+                      <p
+                        className={`text-sm ${
+                          Math.abs(mixtoDiff) < 0.01
+                            ? "text-success-700"
+                            : "text-warning-700"
+                        }`}
+                      >
+                        Suma: S/ {mixtoSuma.toFixed(2)}
+                        {incomeTotal > 0 && (
+                          <>
+                            {" "}
+                            / Total S/ {incomeTotal.toFixed(2)}
+                            {Math.abs(mixtoDiff) >= 0.01
+                              ? ` · faltan S/ ${mixtoDiff.toFixed(2)}`
+                              : " · cuadrado"}
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-3 border-t border-slate-100 pt-4">
                   <p className="text-label text-slate-700">Comprobante (Ticket 80mm)</p>
@@ -685,7 +1054,8 @@ export default function CajaPage() {
                     <div className="rounded-lg border border-success-200 bg-success-50/60 p-3">
                       <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-success-800">
                         <Check className="h-4 w-4" />
-                        Cobro registrado · S/ {lastReceipt.monto.toFixed(2)} · {lastReceipt.concepto}
+                        Cobro registrado · S/ {lastReceipt.monto.toFixed(2)} ·{" "}
+                        {formatMetodoLabel(lastReceipt)} · {lastReceipt.concepto}
                       </p>
                       <DocumentActions
                         key={`receipt-${lastReceipt.id}-${receiptAction || "idle"}`}
@@ -894,7 +1264,12 @@ export default function CajaPage() {
                             <span className="text-slate-400">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 capitalize text-slate-500">{t.metodo_pago}</td>
+                        <td className="px-4 py-2.5 text-slate-500">
+                          {METODO_LABEL[t.metodo_pago] || t.metodo_pago}
+                          {t.grupo_pago_id ? (
+                            <span className="ml-1 text-xs text-slate-400">(mixto)</span>
+                          ) : null}
+                        </td>
                         <td
                           className={`px-4 py-2.5 text-right font-medium ${
                             t.tipo === "ingreso" ? "text-success-600" : "text-danger-500"

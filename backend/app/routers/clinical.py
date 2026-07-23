@@ -359,4 +359,10 @@ def payment_targets(
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
     from app.services.payment_allocation import list_payment_targets
 
-    return {"targets": list_payment_targets(db, patient_id)}
+    targets = list_payment_targets(db, patient_id)
+    # Persistir reparación a_cuenta ↔ Caja para que Plan/Evolución/Caja coincidan
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"targets": targets}

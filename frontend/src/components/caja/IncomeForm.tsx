@@ -161,9 +161,8 @@ export function IncomeForm({
                       t.pieza_fdi && !piezaAlready ? ` (pieza ${t.pieza_fdi})` : "";
                     setIncomeConcepto(`Abono — ${t.label}${piezaSuffix}`);
                   }
-                  if (!incomeMonto) {
-                    setIncomeMonto(String(t.saldo));
-                  }
+                  // Siempre alinear monto al saldo pendiente del destino elegido
+                  setIncomeMonto(String(t.saldo));
                 }
               }}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
@@ -172,8 +171,10 @@ export function IncomeForm({
               {paymentTargets.map((t) => (
                 <option key={`${t.kind}:${t.id}`} value={`${t.kind}:${t.id}`}>
                   {t.kind === "evolution" ? "Evolución" : "Plan"}: {t.label}
-                  {t.pieza_fdi ? ` · pieza ${t.pieza_fdi}` : ""} — saldo S/{" "}
-                  {t.saldo.toFixed(2)}
+                  {t.pieza_fdi ? ` · pieza ${t.pieza_fdi}` : ""} — costo S/{" "}
+                  {Number(t.costo || 0).toFixed(2)} · a cuenta S/{" "}
+                  {Number(t.a_cuenta || 0).toFixed(2)} · saldo S/{" "}
+                  {Number(t.saldo || 0).toFixed(2)}
                 </option>
               ))}
             </select>
@@ -411,12 +412,30 @@ export function IncomeForm({
                   <p className="mb-2 text-xs text-success-800">
                     Aplicado al plan/evolución: S/{" "}
                     {lastReceipt.allocated_total.toFixed(2)}
-                    {typeof lastReceipt.saldo_pendiente_destino === "number" &&
-                    lastReceipt.saldo_pendiente_destino > 0.009
-                      ? ` · Saldo pendiente del tratamiento: S/ ${lastReceipt.saldo_pendiente_destino.toFixed(2)}`
-                      : lastReceipt.saldo_pendiente_destino === 0
-                        ? " · Tratamiento saldado"
-                        : ""}
+                    {(() => {
+                      const alloc = lastReceipt.allocations?.[0];
+                      const aCuenta =
+                        typeof alloc?.a_cuenta_after === "number"
+                          ? alloc.a_cuenta_after
+                          : null;
+                      const costo =
+                        typeof alloc?.costo === "number" ? alloc.costo : null;
+                      const saldo =
+                        typeof lastReceipt.saldo_pendiente_destino === "number"
+                          ? lastReceipt.saldo_pendiente_destino
+                          : typeof alloc?.saldo_after === "number"
+                            ? alloc.saldo_after
+                            : null;
+                      if (saldo === null) return "";
+                      if (saldo <= 0.009) return " · Tratamiento saldado";
+                      const parts = [`Saldo pendiente: S/ ${saldo.toFixed(2)}`];
+                      if (costo !== null && aCuenta !== null) {
+                        parts.unshift(
+                          `Presupuesto S/ ${costo.toFixed(2)} · A cuenta S/ ${aCuenta.toFixed(2)}`
+                        );
+                      }
+                      return ` · ${parts.join(" · ")}`;
+                    })()}
                   </p>
                 )}
               <DocumentActions

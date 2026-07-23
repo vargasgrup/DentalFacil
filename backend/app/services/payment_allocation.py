@@ -1,21 +1,21 @@
 """Allocate cash ingresos onto clinical evolution / plan lines (single money flow).
 
-Source of truth for real money: cash_transactions (Caja).
-a_cuenta on evolution/plan is the clinical allocation mirror of those payments —
-updated here so Plan, Evolución and Resumen stay symmetrical.
+Source of truth for *real money*: cash_transactions (Caja).
+`a_cuenta` on evolution/plan is a clinical mirror — kept in sync from cash so
+Plan, Evolución, Resumen and «Aplicar a» always show the same pending saldo.
 
-Partial abonos (e.g. pay S/ 100 of S/ 120) leave saldo on the same line so the
-next visit shows remaining balance in “Aplicar a”.
+Example: presupuesto S/ 400, abono S/ 50 → a_cuenta 50, saldo pendiente 350.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
-from app.models import ClinicalEvolutionEntry, ClinicalRecord
+from app.models import CashTransaction, ClinicalEvolutionEntry, ClinicalRecord
 from app.odontogram.plans import normalize_plans
 
 
@@ -34,6 +34,92 @@ class AllocationError(ValueError):
     """Explicit clinical target could not receive the payment."""
 
 
+def _cash_paid_evolution(db: Session, evolution_entry_id: str) -> float:
+    """Σ ingresos de Caja vinculados a esta línea de evolución."""
+    total = (
+        db.query(func.coalesce(func.sum(CashTransaction.monto), 0))
+        .filter(
+            CashTransaction.evolution_entry_id == evolution_entry_id,
+            CashTransaction.tipo == "ingreso",
+        )
+        .scalar()
+    )
+    return round(float(total or 0), 2)
+
+
+def _cash_paid_plan_item(db: Session, patient_id: str, plan_item_id: str) -> float:
+    """Σ ingresos de Caja con plan_item_ref o evolución ligada al ítem."""
+    evo_ids = [
+        r[0]
+        for r in db.query(ClinicalEvolutionEntry.id)
+        .filter(
+            ClinicalEvolutionEntry.patient_id == patient_id,
+            ClinicalEvolutionEntry.plan_item_id == plan_item_id,
+        )
+        .all()
+    ]
+    q = db.query(func.coalesce(func.sum(CashTransaction.monto), 0)).filter(
+        CashTransaction.patient_id == patient_id,
+        CashTransaction.tipo == "ingreso",
+        CashTransaction.plan_item_ref == plan_item_id,
+    )
+    by_ref = float(q.scalar() or 0)
+    by_evo = 0.0
+    if evo_ids:
+        by_evo = float(
+            db.query(func.coalesce(func.sum(CashTransaction.monto), 0))
+            .filter(
+                CashTransaction.evolution_entry_id.in_(evo_ids),
+                CashTransaction.tipo == "ingreso",
+            )
+            .scalar()
+            or 0
+        )
+    # Evitar doble conteo: un mismo cobro puede tener ambos refs
+    # Preferimos el máximo coherente (misma magnitud típica)
+    if by_ref > 0 and by_evo > 0:
+        # Si los montos son casi iguales, es el mismo conjunto de filas
+        if abs(by_ref - by_evo) < 0.02:
+            return round(by_ref, 2)
+        # Si hay overlap parcial, usar la suma de txs únicas
+        rows = (
+            db.query(CashTransaction.monto, CashTransaction.id)
+            .filter(
+                CashTransaction.patient_id == patient_id,
+                CashTransaction.tipo == "ingreso",
+                (
+                    (CashTransaction.plan_item_ref == plan_item_id)
+                    | (CashTransaction.evolution_entry_id.in_(evo_ids))
+                ),
+            )
+            .all()
+        )
+        seen: set[str] = set()
+        total = 0.0
+        for monto, tid in rows:
+            if tid in seen:
+                continue
+            seen.add(tid)
+            total += float(monto or 0)
+        return round(total, 2)
+    return round(max(by_ref, by_evo), 2)
+
+
+def sync_evolution_a_cuenta_from_cash(
+    db: Session, entry: ClinicalEvolutionEntry
+) -> float:
+    """Alinea a_cuenta con Caja (nunca baja lo ya cobrado). Retorna a_cuenta efectivo."""
+    paid_cash = _cash_paid_evolution(db, entry.id)
+    current = float(entry.a_cuenta or 0)
+    costo = float(entry.costo or 0)
+    effective = round(min(costo, max(current, paid_cash)), 2) if costo > 0 else round(
+        max(current, paid_cash), 2
+    )
+    if abs(effective - current) > 0.009:
+        entry.a_cuenta = effective
+    return effective
+
+
 def _evo_saldo(entry: ClinicalEvolutionEntry) -> float:
     costo = float(entry.costo or 0)
     paid = float(entry.a_cuenta or 0)
@@ -49,19 +135,32 @@ def _plan_item_saldo(it: dict) -> float:
 
 
 def reconcile_plan_evolution_costs(db: Session, patient_id: str) -> None:
-    """Align linked evolution costs with plan subtotals; backfill plan_item_id.
-
-    Common desync: plan shows S/ 120 but evolution.costo stayed 0 → payment
-    targets disappear and Plan never receives a_cuenta updates.
-    """
+    """Align linked evolution costs with plan; sync a_cuenta from Caja."""
     record = (
         db.query(ClinicalRecord).filter(ClinicalRecord.patient_id == patient_id).first()
     )
     if not record or not record.plan_tratamiento:
+        # Aún así sincronizar evoluciones huérfanas desde caja
+        entries = (
+            db.query(ClinicalEvolutionEntry)
+            .filter(ClinicalEvolutionEntry.patient_id == patient_id)
+            .all()
+        )
+        for entry in entries:
+            sync_evolution_a_cuenta_from_cash(db, entry)
+            _sync_plan_from_entry(db, entry)
         return
 
     plans = normalize_plans(record.plan_tratamiento)
     changed_plan = False
+
+    entries = (
+        db.query(ClinicalEvolutionEntry)
+        .filter(ClinicalEvolutionEntry.patient_id == patient_id)
+        .all()
+    )
+    for entry in entries:
+        sync_evolution_a_cuenta_from_cash(db, entry)
 
     for alt in plans.get("alternatives") or []:
         for it in alt.get("items") or []:
@@ -87,30 +186,35 @@ def reconcile_plan_evolution_costs(db: Session, patient_id: str) -> None:
                 )
 
             if entry is None:
+                # Plan-only: mirror cash by plan_item_ref
+                paid = _cash_paid_plan_item(db, patient_id, item_id)
+                plan_ac = float(it.get("a_cuenta") or 0)
+                effective = round(min(plan_sub, max(plan_ac, paid)), 2) if plan_sub else paid
+                if abs(effective - plan_ac) > 0.009:
+                    it["a_cuenta"] = effective
+                    changed_plan = True
                 continue
 
             if not entry.plan_item_id:
                 entry.plan_item_id = item_id
 
-            # Plan drives list price; never shrink below already allocated a_cuenta
-            evo_ac = float(entry.a_cuenta or 0)
+            evo_ac = sync_evolution_a_cuenta_from_cash(db, entry)
+
             if plan_sub > 0 and float(entry.costo or 0) + 0.009 < plan_sub:
                 entry.cantidad = float(it.get("cantidad") or 1) or 1.0
                 entry.costo_unitario = float(it.get("costo_unitario") or 0)
                 entry.costo = max(plan_sub, evo_ac)
+                # Re-clamp a_cuenta to new costo
+                evo_ac = sync_evolution_a_cuenta_from_cash(db, entry)
 
             if not it.get("evolution_entry_id"):
                 it["evolution_entry_id"] = entry.id
                 changed_plan = True
 
-            # Prefer clinical a_cuenta (from Caja) over stale plan JSON
-            if evo_ac > float(it.get("a_cuenta") or 0) + 0.009:
+            # Plan a_cuenta siempre refleja evolución (Caja)
+            if abs(float(it.get("a_cuenta") or 0) - evo_ac) > 0.009:
                 it["a_cuenta"] = evo_ac
                 changed_plan = True
-            elif float(it.get("a_cuenta") or 0) > evo_ac + 0.009:
-                # Plan edited manually higher — keep max without exceeding cost
-                costo = float(entry.costo or 0)
-                entry.a_cuenta = min(costo, float(it.get("a_cuenta") or 0))
 
     if changed_plan:
         record.plan_tratamiento = plans
@@ -162,6 +266,7 @@ def _apply_to_plan_item(
                     if not entry.plan_item_id:
                         entry.plan_item_id = item_id
                     return _apply_to_evolution(db, entry, amount)
+            # No sync-from-cash aquí: el cobro actual puede no estar flushed.
             saldo = _plan_item_saldo(it)
             apply = min(amount, saldo)
             if apply <= 0:
@@ -180,7 +285,7 @@ def _apply_to_plan_item(
 
 
 def list_payment_targets(db: Session, patient_id: str) -> list[dict]:
-    """Open clinical lines (evolution first, then plan-only) with remaining saldo."""
+    """Open clinical lines with remaining saldo (Caja-aware)."""
     reconcile_plan_evolution_costs(db, patient_id)
 
     targets: list[dict] = []
@@ -192,6 +297,7 @@ def list_payment_targets(db: Session, patient_id: str) -> list[dict]:
     )
     linked_plan_ids: set[str] = set()
     for e in entries:
+        sync_evolution_a_cuenta_from_cash(db, e)
         saldo = _evo_saldo(e)
         if e.plan_item_id and saldo > 0:
             linked_plan_ids.add(str(e.plan_item_id))
@@ -224,15 +330,15 @@ def list_payment_targets(db: Session, patient_id: str) -> list[dict]:
                 pid = str(it.get("id") or "")
                 if not pid or pid in linked_plan_ids:
                     continue
-                # Skip plan row only if linked evolution still has open saldo
-                # (already listed above). If evolution is missing/closed but plan
-                # still shows saldo, expose the plan target.
                 evo_link = str(it.get("evolution_entry_id") or "").strip()
                 if evo_link:
                     entry = db.get(ClinicalEvolutionEntry, evo_link)
                     if entry and entry.patient_id == patient_id and _evo_saldo(entry) > 0:
                         continue
-                saldo = _plan_item_saldo(it)
+                paid = _cash_paid_plan_item(db, patient_id, pid)
+                a_cuenta = max(float(it.get("a_cuenta") or 0), paid)
+                costo = _plan_item_subtotal(it)
+                saldo = max(0.0, round(costo - a_cuenta, 2))
                 if saldo <= 0:
                     continue
                 item_label = it.get("item") or "Ítem del plan"
@@ -246,8 +352,8 @@ def list_payment_targets(db: Session, patient_id: str) -> list[dict]:
                         "plan_item_id": pid,
                         "label": item_label,
                         "pieza_fdi": it.get("pieza_fdi"),
-                        "costo": _plan_item_subtotal(it),
-                        "a_cuenta": float(it.get("a_cuenta") or 0),
+                        "costo": costo,
+                        "a_cuenta": a_cuenta,
                         "saldo": saldo,
                         "plan_activo": is_active,
                     }
@@ -283,6 +389,18 @@ def _pack_applied(
     )
 
 
+def _snapshot_evolution(entry: ClinicalEvolutionEntry) -> AllocationApplied:
+    return _pack_applied(
+        "evolution",
+        entry.id,
+        0.0,
+        entry.tratamiento_descripcion,
+        saldo_after=_evo_saldo(entry),
+        costo=float(entry.costo or 0),
+        a_cuenta_after=float(entry.a_cuenta or 0),
+    )
+
+
 def allocate_ingreso(
     db: Session,
     *,
@@ -292,11 +410,7 @@ def allocate_ingreso(
     plan_item_id: str | None = None,
     require_target: bool = False,
 ) -> list[AllocationApplied]:
-    """Distribute an ingreso across clinical lines. Returns applications made.
-
-    If require_target and an explicit evolution/plan id is given but nothing
-    can be applied, raises AllocationError (Caja should surface 400).
-    """
+    """Distribute an ingreso across clinical lines. Returns applications made."""
     reconcile_plan_evolution_costs(db, patient_id)
 
     remaining = round(float(monto), 2)
@@ -305,6 +419,23 @@ def allocate_ingreso(
 
     applied: list[AllocationApplied] = []
     explicit = bool(evolution_entry_id or plan_item_id)
+
+    def _finalize_evo(entry: ClinicalEvolutionEntry, got: float) -> AllocationApplied:
+        # No sync-from-cash aquí: el cobro actual puede no estar flushed aún.
+        # El router hace sync después del flush del CashTransaction.
+        _sync_plan_from_entry(db, entry)
+        costo = float(entry.costo or 0)
+        a_cuenta_after = float(entry.a_cuenta or 0)
+        saldo_after = max(0.0, round(costo - a_cuenta_after, 2))
+        return _pack_applied(
+            "evolution",
+            entry.id,
+            got,
+            entry.tratamiento_descripcion,
+            saldo_after=saldo_after,
+            costo=costo,
+            a_cuenta_after=a_cuenta_after,
+        )
 
     if evolution_entry_id:
         entry = db.get(ClinicalEvolutionEntry, evolution_entry_id)
@@ -316,17 +447,7 @@ def allocate_ingreso(
             return []
         got = _apply_to_evolution(db, entry, remaining)
         if got:
-            applied.append(
-                _pack_applied(
-                    "evolution",
-                    entry.id,
-                    got,
-                    entry.tratamiento_descripcion,
-                    saldo_after=_evo_saldo(entry),
-                    costo=float(entry.costo or 0),
-                    a_cuenta_after=float(entry.a_cuenta or 0),
-                )
-            )
+            applied.append(_finalize_evo(entry, got))
         elif require_target or explicit:
             raise AllocationError(
                 f"«{entry.tratamiento_descripcion}» no tiene saldo pendiente "
@@ -346,17 +467,7 @@ def allocate_ingreso(
         if entry:
             got = _apply_to_evolution(db, entry, remaining)
             if got:
-                applied.append(
-                    _pack_applied(
-                        "evolution",
-                        entry.id,
-                        got,
-                        entry.tratamiento_descripcion,
-                        saldo_after=_evo_saldo(entry),
-                        costo=float(entry.costo or 0),
-                        a_cuenta_after=float(entry.a_cuenta or 0),
-                    )
-                )
+                applied.append(_finalize_evo(entry, got))
             elif require_target or explicit:
                 raise AllocationError(
                     f"El ítem del plan no tiene saldo pendiente "
@@ -365,7 +476,6 @@ def allocate_ingreso(
             return applied
         got = _apply_to_plan_item(db, patient_id, plan_item_id, remaining)
         if got:
-            # Re-read saldo after apply
             saldo_after = 0.0
             costo = got
             a_cuenta_after = got
@@ -375,12 +485,13 @@ def allocate_ingreso(
                 .first()
             )
             if record and record.plan_tratamiento:
-                for alt in normalize_plans(record.plan_tratamiento).get("alternatives") or []:
+                plans = normalize_plans(record.plan_tratamiento)
+                for alt in plans.get("alternatives") or []:
                     for it in alt.get("items") or []:
                         if str(it.get("id") or "") == str(plan_item_id):
-                            saldo_after = _plan_item_saldo(it)
-                            costo = _plan_item_subtotal(it)
                             a_cuenta_after = float(it.get("a_cuenta") or 0)
+                            costo = _plan_item_subtotal(it)
+                            saldo_after = max(0.0, round(costo - a_cuenta_after, 2))
                             break
             applied.append(
                 _pack_applied(
@@ -399,7 +510,6 @@ def allocate_ingreso(
             )
         return applied
 
-    # Auto FIFO
     for target in list_payment_targets(db, patient_id):
         if remaining <= 0:
             break
@@ -409,30 +519,23 @@ def allocate_ingreso(
                 continue
             got = _apply_to_evolution(db, entry, remaining)
             if got:
-                applied.append(
-                    _pack_applied(
-                        "evolution",
-                        entry.id,
-                        got,
-                        entry.tratamiento_descripcion,
-                        saldo_after=_evo_saldo(entry),
-                        costo=float(entry.costo or 0),
-                        a_cuenta_after=float(entry.a_cuenta or 0),
-                    )
-                )
+                applied.append(_finalize_evo(entry, got))
                 remaining = round(remaining - got, 2)
         else:
             got = _apply_to_plan_item(db, patient_id, target["id"], remaining)
             if got:
+                a_after = float(target.get("a_cuenta") or 0) + got
+                costo = float(target.get("costo") or 0)
+                saldo_after = max(0.0, round(costo - a_after, 2))
                 applied.append(
                     _pack_applied(
                         "plan",
                         target["id"],
                         got,
                         str(target.get("label") or target["id"]),
-                        saldo_after=max(0.0, round(float(target["saldo"]) - got, 2)),
-                        costo=float(target.get("costo") or 0),
-                        a_cuenta_after=float(target.get("a_cuenta") or 0) + got,
+                        saldo_after=saldo_after,
+                        costo=costo,
+                        a_cuenta_after=a_after,
                     )
                 )
                 remaining = round(remaining - got, 2)

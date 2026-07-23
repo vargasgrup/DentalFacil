@@ -71,7 +71,11 @@ def _run_clinical_allocation(
     evolution_entry_id: str | None,
     plan_item_ref: str | None,
 ) -> tuple[float, float, list[dict], float | None]:
-    """Apply ingreso to plan/evolución. Raises HTTPException on explicit target failure."""
+    """Apply ingreso to plan/evolución. Raises HTTPException on explicit target failure.
+
+    Must run BEFORE the new CashTransaction is flushed (or before it has clinical
+    refs), so sync-from-cash does not double-count this same cobro.
+    """
     from app.services.payment_allocation import AllocationError, allocate_ingreso
 
     explicit = bool(evolution_entry_id or plan_item_ref)
@@ -110,6 +114,80 @@ def _run_clinical_allocation(
     if applied:
         saldo_pendiente = round(float(applied[-1].saldo_after), 2)
     return allocated_total, unallocated, allocations_out, saldo_pendiente
+
+
+def _refresh_allocation_after_cash_flush(
+    db: Session,
+    allocations_out: list[dict] | None,
+    *,
+    patient_id: str | None = None,
+) -> tuple[list[dict] | None, float | None]:
+    """After cash refs are flushed, align a_cuenta with Σ Caja and refresh saldos."""
+    from app.services.payment_allocation import (
+        sync_evolution_a_cuenta_from_cash,
+        _sync_plan_from_entry,
+        _evo_saldo,
+        _cash_paid_plan_item,
+        _plan_item_subtotal,
+    )
+    from app.models import ClinicalEvolutionEntry, ClinicalRecord
+    from app.odontogram.plans import normalize_plans
+    from sqlalchemy.orm.attributes import flag_modified
+
+    if not allocations_out:
+        return allocations_out, None
+    saldo_pendiente = None
+    refreshed: list[dict] = []
+    for a in allocations_out:
+        row = dict(a)
+        if a.get("kind") == "evolution" and a.get("id"):
+            entry = db.get(ClinicalEvolutionEntry, a["id"])
+            if entry:
+                sync_evolution_a_cuenta_from_cash(db, entry)
+                _sync_plan_from_entry(db, entry)
+                row["a_cuenta_after"] = float(entry.a_cuenta or 0)
+                row["costo"] = float(entry.costo or 0)
+                row["saldo_after"] = _evo_saldo(entry)
+        elif a.get("kind") == "plan" and a.get("id") and patient_id:
+            entry = (
+                db.query(ClinicalEvolutionEntry)
+                .filter(
+                    ClinicalEvolutionEntry.patient_id == patient_id,
+                    ClinicalEvolutionEntry.plan_item_id == a["id"],
+                )
+                .first()
+            )
+            if entry:
+                sync_evolution_a_cuenta_from_cash(db, entry)
+                _sync_plan_from_entry(db, entry)
+                row["a_cuenta_after"] = float(entry.a_cuenta or 0)
+                row["costo"] = float(entry.costo or 0)
+                row["saldo_after"] = _evo_saldo(entry)
+            else:
+                record = (
+                    db.query(ClinicalRecord)
+                    .filter(ClinicalRecord.patient_id == patient_id)
+                    .first()
+                )
+                if record and record.plan_tratamiento:
+                    plans = normalize_plans(record.plan_tratamiento)
+                    for alt in plans.get("alternatives") or []:
+                        for it in alt.get("items") or []:
+                            if str(it.get("id") or "") != str(a["id"]):
+                                continue
+                            paid = _cash_paid_plan_item(db, patient_id, a["id"])
+                            ac = max(float(it.get("a_cuenta") or 0), paid)
+                            it["a_cuenta"] = ac
+                            costo = _plan_item_subtotal(it)
+                            row["a_cuenta_after"] = ac
+                            row["costo"] = costo
+                            row["saldo_after"] = max(0.0, round(costo - ac, 2))
+                            record.plan_tratamiento = plans
+                            flag_modified(record, "plan_tratamiento")
+                            break
+        refreshed.append(row)
+        saldo_pendiente = round(float(row.get("saldo_after") or 0), 2)
+    return refreshed, saldo_pendiente
 
 
 def _backfill_tx_refs(
@@ -319,8 +397,8 @@ def create_transaction(
             )
             db.add(tx)
             created.append(tx)
-        db.flush()
 
+        # Allocate BEFORE flush so Σ Caja aún no incluye este cobro (evita doble conteo).
         allocated_total = 0.0
         unallocated_amount = None
         allocations_out = None
@@ -339,6 +417,12 @@ def create_transaction(
                 plan_item_ref=plan_ref,
             )
             _backfill_tx_refs(db, created, allocations_out or [])
+
+        db.flush()
+        if allocations_out and payload.patient_id:
+            allocations_out, saldo_pendiente = _refresh_allocation_after_cash_flush(
+                db, allocations_out, patient_id=payload.patient_id
+            )
 
         try:
             db.commit()
@@ -378,9 +462,11 @@ def create_transaction(
         evolution_entry_id=evo_id,
     )
     db.add(tx)
-    db.flush()
 
-    allocated_total = 0.0 if (payload.allocate and payload.tipo == "ingreso" and payload.patient_id) else None
+    # Allocate BEFORE flush (autoflush=False): a_cuenta += monto, then cash gets refs.
+    allocated_total = (
+        0.0 if (payload.allocate and payload.tipo == "ingreso" and payload.patient_id) else None
+    )
     unallocated_amount = None
     allocations_out = None
     saldo_pendiente = None
@@ -398,6 +484,12 @@ def create_transaction(
             plan_item_ref=plan_ref,
         )
         _backfill_tx_refs(db, [tx], allocations_out or [])
+
+    db.flush()
+    if allocations_out and payload.patient_id:
+        allocations_out, saldo_pendiente = _refresh_allocation_after_cash_flush(
+            db, allocations_out, patient_id=payload.patient_id
+        )
 
     try:
         db.commit()

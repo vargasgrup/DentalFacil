@@ -313,6 +313,10 @@ export default function CajaPage() {
 
       // Refrescar destinos (saldo restante) y avisar a la ficha clínica
       if (incomePatient?.id) {
+        const saldoFromPay =
+          typeof tx.saldo_pendiente_destino === "number"
+            ? tx.saldo_pendiente_destino
+            : null;
         try {
           const res = await apiFetch<{ targets: PaymentTarget[] }>(
             `/api/clinical/${incomePatient.id}/payment-targets`
@@ -320,17 +324,31 @@ export default function CajaPage() {
           setPaymentTargets(res.targets || []);
           const still = (res.targets || []).find(
             (t) =>
-              (tx.evolution_entry_id && t.kind === "evolution" && t.id === tx.evolution_entry_id) ||
-              (tx.plan_item_ref && t.kind === "plan" && t.id === tx.plan_item_ref)
+              (tx.evolution_entry_id &&
+                t.kind === "evolution" &&
+                t.id === tx.evolution_entry_id) ||
+              (tx.plan_item_ref && t.kind === "plan" && t.id === tx.plan_item_ref) ||
+              (tx.allocations || []).some(
+                (a) => a.kind === t.kind && a.id === t.id
+              )
           );
           if (still) {
             setPayTarget(`${still.kind}:${still.id}`);
-            setIncomeMonto(String(still.saldo));
+            const nextSaldo =
+              saldoFromPay !== null && saldoFromPay >= 0
+                ? saldoFromPay
+                : still.saldo;
+            setIncomeMonto(nextSaldo > 0.009 ? String(nextSaldo) : "");
+          } else if (saldoFromPay !== null && saldoFromPay > 0.009) {
+            setIncomeMonto(String(saldoFromPay));
           } else {
             setPayTarget("auto");
+            setIncomeMonto("");
           }
         } catch {
-          /* ignore */
+          if (saldoFromPay !== null && saldoFromPay > 0.009) {
+            setIncomeMonto(String(saldoFromPay));
+          }
         }
         if (typeof window !== "undefined") {
           window.dispatchEvent(

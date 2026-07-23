@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch, apiFetchBlob } from "@/lib/api";
+import { apiFetch, apiFetchBlob, getToken } from "@/lib/api";
 
 interface MediaItem {
   id: string;
@@ -103,7 +103,7 @@ export function ToothAttachments({
       fd.append("file", file);
       fd.append("pieza_fdi", pieza);
       fd.append("tipo", tipo);
-      const token = localStorage.getItem("access_token");
+      const token = getToken();
       const res = await fetch(`/api/tooth-media/${patientId}`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},

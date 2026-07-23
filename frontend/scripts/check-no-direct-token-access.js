@@ -11,9 +11,6 @@ const ALLOW = new Set([
   path.normalize("lib/api.ts"),
   path.normalize("lib/auth.tsx"),
 ]);
-const ODONTO_EXCEPTIONS = new Set([
-  path.normalize("components/odontogram/ToothAttachments.tsx"),
-]);
 
 const PATTERN = /localStorage\.getItem\(\s*['"]access_token['"]\s*\)/g;
 
@@ -42,22 +39,15 @@ function walk(dir) {
 
 walk(ROOT);
 
-const violations = hits.filter(
-  (h) => !ALLOW.has(h.file) && !ODONTO_EXCEPTIONS.has(h.file)
-);
+const violations = hits.filter((h) => !ALLOW.has(h.file));
 
 if (violations.length) {
   console.error("Forbidden direct access_token reads via localStorage:\n");
   for (const v of violations) {
     console.error(`  ${v.file}:${v.line}`);
   }
-  console.error(
-    "\nUse getToken() from lib/api.ts. If odontogram-related, add EXCEPCIONES_ODONTOGRAMA.md instead."
-  );
+  console.error("\nUse getToken() from lib/api.ts.");
   process.exit(1);
 }
 
-const exceptHits = hits.filter((h) => ODONTO_EXCEPTIONS.has(h.file));
-console.log(
-  `OK: no unauthorized localStorage access_token reads (${exceptHits.length} odontogram exception(s) documented).`
-);
+console.log("OK: no unauthorized localStorage access_token reads.");

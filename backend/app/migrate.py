@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import time
 
+from app.logging_config import get_logger
+
+logger = get_logger('migrate')
+
 _migrations_ok = False
 _migrations_error: str | None = None
 
@@ -24,7 +28,7 @@ def _sqlite_bootstrap() -> bool:
     from app.database import Base, engine
     import app.models  # noqa: F401
 
-    print("[dentalfacil] SQLite bootstrap: create_all + stamp head", flush=True)
+    logger.info("[dentalfacil] SQLite bootstrap: create_all + stamp head")
     Base.metadata.create_all(bind=engine)
     with engine.begin() as conn:
         conn.execute(text("PRAGMA foreign_keys=ON"))
@@ -50,7 +54,7 @@ def _sqlite_bootstrap() -> bool:
     command.stamp(cfg, HEAD_REVISION)
     _migrations_ok = True
     _migrations_error = None
-    print("[dentalfacil] SQLite bootstrap ok", flush=True)
+    logger.info("[dentalfacil] SQLite bootstrap ok")
     return True
 
 
@@ -78,7 +82,7 @@ def run_migrations_blocking(retries: int = 3) -> bool:
                 command.upgrade(Config("alembic.ini"), "head")
             except Exception as exc:  # noqa: BLE001
                 # If chain is broken for sqlite, re-stamp head if schema looks ready
-                print(f"[dentalfacil] SQLite upgrade note: {exc}", flush=True)
+                logger.warning(f"[dentalfacil] SQLite upgrade note: {exc}")
                 from alembic import command
                 from alembic.config import Config
                 from app.db_health import schema_ready
@@ -94,7 +98,7 @@ def run_migrations_blocking(retries: int = 3) -> bool:
         except Exception as exc:  # noqa: BLE001
             _migrations_ok = False
             _migrations_error = str(exc)
-            print(f"[dentalfacil] SQLite migrations FAILED: {exc}", flush=True)
+            logger.error(f"[dentalfacil] SQLite migrations FAILED: {exc}")
             return False
 
     for attempt in range(1, retries + 1):
@@ -102,17 +106,17 @@ def run_migrations_blocking(retries: int = 3) -> bool:
             from alembic import command
             from alembic.config import Config
 
-            print(f"[dentalfacil] running migrations (attempt {attempt}/{retries})...", flush=True)
+            logger.info(f"[dentalfacil] running migrations (attempt {attempt}/{retries})...")
             command.upgrade(Config("alembic.ini"), "head")
             _migrations_ok = True
             _migrations_error = None
-            print("[dentalfacil] migrations ok", flush=True)
+            logger.info("[dentalfacil] migrations ok")
             return True
         except Exception as exc:  # noqa: BLE001
             err = str(exc)
             _migrations_ok = False
             _migrations_error = err
-            print(f"[dentalfacil] migrations FAILED (attempt {attempt}): {exc}", flush=True)
+            logger.error(f"[dentalfacil] migrations FAILED (attempt {attempt}): {exc}")
 
             duplicate = any(
                 token in err.lower()
@@ -135,21 +139,18 @@ def run_migrations_blocking(retries: int = 3) -> bool:
                     cfg = Config("alembic.ini")
                     ready, _ = schema_ready()
                     if stamp_target:
-                        print(f"[dentalfacil] stamping {stamp_target} then retry upgrade", flush=True)
+                        logger.info(f"[dentalfacil] stamping {stamp_target} then retry upgrade")
                         command.stamp(cfg, stamp_target)
                         command.upgrade(cfg, "head")
                         _migrations_ok = True
                         _migrations_error = None
-                        print("[dentalfacil] migrations ok after stamp+upgrade", flush=True)
+                        logger.info("[dentalfacil] migrations ok after stamp+upgrade")
                         return True
                     if ready:
-                        print(
-                            "[dentalfacil] schema_ready but duplicate-column mid-upgrade; "
-                            "NOT stamping head — re-raise for retry/manual fix",
-                            flush=True,
-                        )
+                        logger.info("[dentalfacil] schema_ready but duplicate-column mid-upgrade; "
+                            "NOT stamping head — re-raise for retry/manual fix",)
                 except Exception as stamp_exc:  # noqa: BLE001
-                    print(f"[dentalfacil] stamp recovery failed: {stamp_exc}", flush=True)
+                    logger.error(f"[dentalfacil] stamp recovery failed: {stamp_exc}")
                     _migrations_error = f"{err} | stamp: {stamp_exc}"
 
             if attempt < retries:

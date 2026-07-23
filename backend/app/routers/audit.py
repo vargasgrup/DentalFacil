@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
 from app.database import get_db
+from app.db_prefetch import prefetch_users
 from app.models import Patient, User
 from app.models.periodontogram import ClinicalAuditLog
 
@@ -40,9 +41,10 @@ def list_audit(
     if entity_type:
         q = q.filter(ClinicalAuditLog.entity_type == entity_type)
     rows = q.order_by(ClinicalAuditLog.created_at.desc()).limit(limit).all()
+    users = prefetch_users(db, (r.user_id for r in rows))
     out: list[AuditOut] = []
     for r in rows:
-        u = db.get(User, r.user_id) if r.user_id else None
+        u = users.get(r.user_id) if r.user_id else None
         out.append(
             AuditOut(
                 id=r.id,

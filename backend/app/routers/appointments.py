@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, require_roles
 from app.core.roles import Rol
 from app.database import SessionLocal, get_db
+from app.db_prefetch import prefetch_patients, prefetch_users
+from app.logging_config import get_logger
 from app.models import Appointment, AppointmentReminder, Patient, User, ClinicSettings
 from app.models.ids import CLINIC_SETTINGS_ID
 from app.schemas.appointment import (
@@ -38,14 +40,23 @@ from app.services.reminder_messages import (
 )
 
 CLINIC_TZ = ZoneInfo("America/Lima")
+logger = get_logger("appointments")
 
 router = APIRouter(prefix="/api/appointments", tags=["appointments"])
 config_router = APIRouter(prefix="/api/config", tags=["config"])
 
 
-def _appointment_to_out(a: Appointment, db: Session) -> AppointmentOut:
-    doctor = db.get(User, a.doctor_id) if a.doctor_id else None
-    patient = db.get(Patient, a.patient_id)
+def _appointment_to_out(
+    a: Appointment,
+    db: Session | None = None,
+    *,
+    patient: Patient | None = None,
+    doctor: User | None = None,
+) -> AppointmentOut:
+    if patient is None and db is not None:
+        patient = db.get(Patient, a.patient_id)
+    if doctor is None and db is not None and a.doctor_id:
+        doctor = db.get(User, a.doctor_id)
     return AppointmentOut(
         id=a.id,
         patient_id=a.patient_id,
@@ -60,6 +71,20 @@ def _appointment_to_out(a: Appointment, db: Session) -> AppointmentOut:
         recordatorio_enviado=a.recordatorio_enviado,
         created_at=a.created_at,
     )
+
+
+def _appointments_to_out(db: Session, appts: list[Appointment]) -> list[AppointmentOut]:
+    """Serializa lista con prefetch (1 + 2 queries fijas, no N+1)."""
+    patients = prefetch_patients(db, (a.patient_id for a in appts))
+    doctors = prefetch_users(db, (a.doctor_id for a in appts))
+    return [
+        _appointment_to_out(
+            a,
+            patient=patients.get(a.patient_id),
+            doctor=doctors.get(a.doctor_id) if a.doctor_id else None,
+        )
+        for a in appts
+    ]
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -131,7 +156,7 @@ def list_appointments(
     if end:
         q = q.filter(Appointment.fecha_hora <= end)
     appts = q.order_by(Appointment.fecha_hora).all()
-    return [_appointment_to_out(a, db) for a in appts]
+    return _appointments_to_out(db, appts)
 
 
 @router.post("", response_model=AppointmentOut, status_code=status.HTTP_201_CREATED)
@@ -204,11 +229,20 @@ def delete_appointment(
 
 # --- Reminders ---
 
-def _reminder_to_out(r: AppointmentReminder, db: Session, *, refresh_message: bool = False) -> AppointmentReminderOut:
-    apt = db.get(Appointment, r.appointment_id)
-    patient = db.get(Patient, apt.patient_id) if apt else None
+def _reminder_to_out(
+    r: AppointmentReminder,
+    db: Session | None = None,
+    *,
+    apt: Appointment | None = None,
+    patient: Patient | None = None,
+    refresh_message: bool = False,
+) -> AppointmentReminderOut:
+    if apt is None and db is not None:
+        apt = db.get(Appointment, r.appointment_id)
+    if patient is None and apt is not None and db is not None:
+        patient = db.get(Patient, apt.patient_id)
     mensaje = r.mensaje_sugerido
-    if refresh_message and r.estado == "pendiente" and apt and patient:
+    if refresh_message and r.estado == "pendiente" and apt and patient and db is not None:
         mensaje = build_reminder_message(db, apt, patient)
         if r.mensaje_sugerido != mensaje:
             r.mensaje_sugerido = mensaje
@@ -239,7 +273,24 @@ def pending_reminders(
         .order_by(AppointmentReminder.programado_para)
         .all()
     )
-    out = [_reminder_to_out(r, db, refresh_message=True) for r in reminders]
+    from app.db_prefetch import prefetch_by_ids
+
+    appts = prefetch_by_ids(db, Appointment, (r.appointment_id for r in reminders))
+    patients = prefetch_patients(db, (a.patient_id for a in appts.values()))
+    out = [
+        _reminder_to_out(
+            r,
+            db,
+            apt=appts.get(r.appointment_id),
+            patient=(
+                patients.get(appts[r.appointment_id].patient_id)
+                if r.appointment_id in appts
+                else None
+            ),
+            refresh_message=True,
+        )
+        for r in reminders
+    ]
     db.commit()
     return out
 
@@ -552,22 +603,28 @@ def generate_reminders_job():
             .all()
         )
 
-        for apt in appts:
-            existing = (
+        patients = prefetch_patients(db, (a.patient_id for a in appts))
+        existing_by_apt = {
+            r.appointment_id: r
+            for r in (
                 db.query(AppointmentReminder)
-                .filter(AppointmentReminder.appointment_id == apt.id)
-                .first()
+                .filter(AppointmentReminder.appointment_id.in_([a.id for a in appts] or ["__none__"]))
+                .all()
+                if appts
+                else []
             )
+        }
+
+        for apt in appts:
+            existing = existing_by_apt.get(apt.id)
+            patient = patients.get(apt.patient_id)
             if existing:
-                # Mantener mensaje al día con datos del centro
-                patient = db.get(Patient, apt.patient_id)
                 if patient:
                     existing.mensaje_sugerido = build_reminder_message(
                         db, apt, patient, template
                     )
                 continue
 
-            patient = db.get(Patient, apt.patient_id)
             if not patient:
                 continue
 
@@ -584,6 +641,6 @@ def generate_reminders_job():
 
         db.commit()
     except Exception as e:
-        print(f"[scheduler] Error generating reminders: {e}")
+        logger.error("Error generating reminders: %s", e, exc_info=True)
     finally:
         db.close()

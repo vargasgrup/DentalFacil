@@ -1,11 +1,13 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
+from app.logging_config import configure_logging, get_logger
 from app.migrate import migrations_status, run_migrations_blocking
 from app.routers.auth import router as auth_router, users_router
 from app.routers.patients import router as patients_router
@@ -21,6 +23,12 @@ from app.routers.reports import router as reports_router
 from app.routers.audit import router as audit_router
 from app.routers.whatsapp_integration import router as whatsapp_integration_router
 
+configure_logging()
+logger = get_logger("main")
+
+# Referencia global para /api/health (también en app.state)
+_scheduler: BackgroundScheduler | None = None
+
 
 def _run_migrations() -> None:
     """Fallback when not started via boot.py (e.g. local start.sh)."""
@@ -28,47 +36,67 @@ def _run_migrations() -> None:
         run_migrations_blocking()
 
 
+def _scheduler_health() -> dict[str, Any]:
+    sch = _scheduler
+    if sch is None:
+        return {"running": False, "job_id": "reminders", "next_run": None}
+    job = None
+    try:
+        job = sch.get_job("reminders")
+    except Exception:  # noqa: BLE001
+        job = None
+    next_run = None
+    if job and getattr(job, "next_run_time", None) is not None:
+        next_run = job.next_run_time.isoformat()
+    return {
+        "running": bool(sch.running),
+        "job_id": "reminders",
+        "next_run": next_run,
+    }
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _scheduler
     from app.services.clinic_profile import ensure_uploads_dir
     from app.ensure_auth_schema import ensure_auth_schema
 
-    print("[dentalfacil] lifespan start", flush=True)
+    logger.info("lifespan start")
     ensure_uploads_dir()
     _run_migrations()
     # Guarantees JWT revocation columns even if Alembic stamped head without applying them.
     try:
         ensure_auth_schema()
     except Exception as exc:  # noqa: BLE001
-        print(f"[dentalfacil] ensure_auth_schema FAILED: {exc}", flush=True)
+        logger.error("ensure_auth_schema FAILED: %s", exc, exc_info=True)
         raise
     try:
         from app.ensure_clinical_schema import ensure_clinical_evolution_schema
 
         ensure_clinical_evolution_schema()
     except Exception as exc:  # noqa: BLE001
-        print(f"[dentalfacil] ensure_clinical_schema FAILED: {exc}", flush=True)
+        logger.error("ensure_clinical_schema FAILED: %s", exc, exc_info=True)
         raise
     try:
         from app.ensure_complementary_tests_schema import ensure_complementary_tests_schema
 
         ensure_complementary_tests_schema()
     except Exception as exc:  # noqa: BLE001
-        print(f"[dentalfacil] ensure_complementary_tests_schema FAILED: {exc}", flush=True)
+        logger.error("ensure_complementary_tests_schema FAILED: %s", exc, exc_info=True)
         raise
     try:
         from app.ensure_alta_retroactiva_schema import ensure_alta_retroactiva_schema
 
         ensure_alta_retroactiva_schema()
     except Exception as exc:  # noqa: BLE001
-        print(f"[dentalfacil] ensure_alta_retroactiva_schema FAILED: {exc}", flush=True)
+        logger.error("ensure_alta_retroactiva_schema FAILED: %s", exc, exc_info=True)
         raise
     try:
         from app.ensure_odontogram_unique import ensure_odontogram_unique_indexes
 
         ensure_odontogram_unique_indexes()
     except Exception as exc:  # noqa: BLE001
-        print(f"[dentalfacil] ensure_odontogram_unique FAILED: {exc}", flush=True)
+        logger.error("ensure_odontogram_unique FAILED: %s", exc, exc_info=True)
         raise
 
     scheduler = BackgroundScheduler()
@@ -81,9 +109,13 @@ async def lifespan(app: FastAPI):
         next_run_time=datetime.now() + timedelta(minutes=1),
     )
     scheduler.start()
-    print("[dentalfacil] lifespan ready", flush=True)
+    _scheduler = scheduler
+    app.state.scheduler = scheduler
+    logger.info("lifespan ready (scheduler reminders started)")
     yield
     scheduler.shutdown()
+    _scheduler = None
+    logger.info("lifespan shutdown")
 
 
 app = FastAPI(
@@ -146,6 +178,7 @@ def health():
         "schema_ready": tables_ok,
         "schema_error": tables_err,
         "jwt_secret_configured": jwt_ok,
+        "scheduler": _scheduler_health(),
     }
 
 

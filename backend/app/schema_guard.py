@@ -9,6 +9,10 @@ from sqlalchemy import inspect, text
 from app.config import settings
 from app.database import engine
 
+from app.logging_config import get_logger
+
+logger = get_logger('schema_guard')
+
 
 def assert_schema_compatible_with_uuid_models() -> None:
     """Exit with a clear error if Postgres still has integer PKs under UUID ORM.
@@ -21,10 +25,7 @@ def assert_schema_compatible_with_uuid_models() -> None:
     if settings.is_sqlite:
         return
     if os.environ.get("ALLOW_LEGACY_POSTGRES_INT", "").strip() in ("1", "true", "yes"):
-        print(
-            "[dentalfacil] WARNING: ALLOW_LEGACY_POSTGRES_INT=1 — UUID guard skipped",
-            flush=True,
-        )
+        logger.warning("[dentalfacil] WARNING: ALLOW_LEGACY_POSTGRES_INT=1 — UUID guard skipped",)
         return
 
     try:
@@ -46,19 +47,17 @@ def assert_schema_compatible_with_uuid_models() -> None:
                 "python -m scripts.railway_sqlite_cutover).\n"
                 "Emergency only: ALLOW_LEGACY_POSTGRES_INT=1 (unsupported with this image)."
             )
-            print(msg, flush=True)
+            logger.info(msg)
             raise SystemExit(2)
 
         with engine.connect() as conn:
             sample = conn.execute(text("SELECT id FROM users LIMIT 1")).scalar()
         if sample is not None and not isinstance(sample, str):
-            print(
-                f"[dentalfacil] FATAL: users.id sample type={type(sample).__name__} "
+            logger.info(f"[dentalfacil] FATAL: users.id sample type={type(sample).__name__} "
                 "(expected UUID str). Complete SQLite cutover.",
-                flush=True,
             )
             raise SystemExit(2)
     except SystemExit:
         raise
     except Exception as exc:  # noqa: BLE001
-        print(f"[dentalfacil] schema guard skipped (probe failed): {exc}", flush=True)
+        logger.error(f"[dentalfacil] schema guard skipped (probe failed): {exc}")

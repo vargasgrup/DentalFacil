@@ -7,6 +7,10 @@ from sqlalchemy import text
 from app.config import settings
 from app.database import engine
 
+from app.logging_config import get_logger
+
+logger = get_logger('ensure_auth_schema')
+
 
 def ensure_auth_schema() -> None:
     """Idempotent DDL for JWT revocation (Postgres residual installs).
@@ -14,7 +18,7 @@ def ensure_auth_schema() -> None:
     SQLite greenfield already creates the full UUID schema via metadata.create_all.
     """
     if settings.is_sqlite:
-        print("[dentalfacil] auth schema (SQLite): managed by create_all", flush=True)
+        logger.info("[dentalfacil] auth schema (SQLite): managed by create_all")
         return
 
     statements = [
@@ -43,4 +47,4 @@ def ensure_auth_schema() -> None:
     with engine.begin() as conn:
         for stmt in statements:
             conn.execute(text(stmt))
-    print("[dentalfacil] auth schema ensured (token_version / revoked_tokens)", flush=True)
+    logger.info("[dentalfacil] auth schema ensured (token_version / revoked_tokens)")

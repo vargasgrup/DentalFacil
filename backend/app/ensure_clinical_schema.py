@@ -6,6 +6,10 @@ from sqlalchemy import inspect, text
 
 from app.database import engine
 
+from app.logging_config import get_logger
+
+logger = get_logger('ensure_clinical_schema')
+
 
 _EVOLUTION_EXTRA = [
     ("pieza_fdi", "VARCHAR(4)"),
@@ -46,7 +50,7 @@ def ensure_clinical_evolution_schema() -> None:
                             f"ALTER TABLE clinical_evolution_entries ADD COLUMN {col} {ddl}"
                         )
                     )
-                print(f"[dentalfacil] added clinical_evolution_entries.{col}", flush=True)
+                logger.info(f"[dentalfacil] added clinical_evolution_entries.{col}")
 
     if "cash_transactions" in tables:
         existing = {c["name"] for c in insp.get_columns("cash_transactions")}
@@ -66,4 +70,4 @@ def ensure_clinical_evolution_schema() -> None:
                     conn.execute(
                         text(f"ALTER TABLE cash_transactions ADD COLUMN {col} {ddl}")
                     )
-                print(f"[dentalfacil] added cash_transactions.{col}", flush=True)
+                logger.info(f"[dentalfacil] added cash_transactions.{col}")

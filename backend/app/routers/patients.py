@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
 from app.database import get_db
+from app.logging_config import get_logger
 from app.migrate import migrations_status
 from app.models import ClinicalEvolutionEntry, ClinicalRecord, Patient, User
 from app.schemas.patient import (
@@ -18,6 +19,7 @@ from app.schemas.patient import (
 from app.utils.ficha import format_ficha_label, parse_ficha_query
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
+logger = get_logger("patients")
 
 
 def _db_write_error_detail(exc: Exception) -> str:
@@ -186,9 +188,9 @@ def create_patient(
                 ),
             )
         # Esquema usable aunque Alembic aún reporte error residual.
-        print(
-            f"[dentalfacil] create_patient: migrations_ok=false but schema_ready=true ({mig['error']})",
-            flush=True,
+        logger.warning(
+            "create_patient: migrations_ok=false but schema_ready=true (%s)",
+            mig["error"],
         )
 
     doc = _normalize_documento(payload.numero_documento)
@@ -258,14 +260,14 @@ def create_patient(
         )
     except (OperationalError, ProgrammingError) as exc:
         db.rollback()
-        print(f"[dentalfacil] create_patient DB error: {exc}", flush=True)
+        logger.error("create_patient DB error: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=_db_write_error_detail(exc),
         ) from exc
     except Exception as exc:
         db.rollback()
-        print(f"[dentalfacil] create_patient error: {exc}", flush=True)
+        logger.error("create_patient error: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=_db_write_error_detail(exc),

@@ -6,6 +6,10 @@ from sqlalchemy import inspect, text
 
 from app.database import engine
 
+from app.logging_config import get_logger
+
+logger = get_logger('ensure_odontogram_unique')
+
 
 _INDEXES = (
     (
@@ -38,4 +42,4 @@ def ensure_odontogram_unique_indexes() -> None:
                     f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {table} ({col_sql})"
                 )
             )
-            print(f"[dentalfacil] ensured unique index {index_name}", flush=True)
+            logger.info(f"[dentalfacil] ensured unique index {index_name}")

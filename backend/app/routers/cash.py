@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
 from app.database import get_db
+from app.db_prefetch import prefetch_patients
 from app.models import CashSession, CashTransaction, Patient, User
 from app.schemas.cash import (
     CashCloseSummary,
@@ -19,13 +20,15 @@ router = APIRouter(prefix="/api/cash", tags=["cash"])
 
 def _tx_to_out(
     tx: CashTransaction,
-    db: Session,
+    db: Session | None = None,
     *,
+    patient: Patient | None = None,
     allocated_total: float | None = None,
     allocations: list[dict] | None = None,
     pagos_parciales: list[dict] | None = None,
 ) -> CashTransactionOut:
-    patient = db.get(Patient, tx.patient_id) if tx.patient_id else None
+    if patient is None and db is not None and tx.patient_id:
+        patient = db.get(Patient, tx.patient_id)
     return CashTransactionOut(
         id=tx.id,
         cash_session_id=tx.cash_session_id,
@@ -45,6 +48,15 @@ def _tx_to_out(
         allocations=allocations,
         pagos_parciales=pagos_parciales,
     )
+
+
+def _txs_to_out(db: Session, txs: list[CashTransaction]) -> list[CashTransactionOut]:
+    """Serializa transacciones con prefetch de pacientes (evita N+1)."""
+    patients = prefetch_patients(db, (t.patient_id for t in txs))
+    return [
+        _tx_to_out(t, patient=patients.get(t.patient_id) if t.patient_id else None)
+        for t in txs
+    ]
 
 
 def _get_open_session(db: Session) -> CashSession | None:
@@ -135,7 +147,7 @@ def list_transactions(
         .order_by(CashTransaction.created_at.desc())
         .all()
     )
-    return [_tx_to_out(t, db) for t in txs]
+    return _txs_to_out(db, txs)
 
 
 @router.get("/transactions/patient/{patient_id}", response_model=list[CashTransactionOut])
@@ -156,7 +168,7 @@ def list_patient_payments(
         .order_by(CashTransaction.created_at.desc())
         .all()
     )
-    return [_tx_to_out(t, db) for t in txs]
+    return _txs_to_out(db, txs)
 
 
 def _ensure_open_session(db: Session, user: User) -> CashSession:

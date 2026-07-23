@@ -8,6 +8,10 @@ from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from app.config import settings
 
+from app.logging_config import get_logger
+
+logger = get_logger('database')
+
 
 def _is_sqlite(url: str) -> bool:
     return url.strip().lower().startswith("sqlite")
@@ -57,7 +61,7 @@ def _make_engine():
             connect_args=_connect_args(url),
         )
     except Exception as exc:  # noqa: BLE001
-        print(f"[dentalfacil] ERROR create_engine: {exc}", flush=True)
+        logger.error(f"[dentalfacil] ERROR create_engine: {exc}")
         fallback = "sqlite:///./data/clinica_fallback.db"
         _ensure_sqlite_parent(fallback)
         return create_engine(

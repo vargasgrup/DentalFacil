@@ -6,6 +6,10 @@ from sqlalchemy import inspect, text
 
 from app.database import engine
 
+from app.logging_config import get_logger
+
+logger = get_logger('ensure_alta_retroactiva_schema')
+
 
 _PATIENT_COLS = [
     ("es_migrado", "BOOLEAN NOT NULL DEFAULT 0", "BOOLEAN NOT NULL DEFAULT FALSE"),
@@ -37,7 +41,7 @@ def _add_missing(table: str, cols: list[tuple[str, str, str]]) -> None:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {name} {ddl}"))
             else:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
-            print(f"[dentalfacil] added {table}.{name}", flush=True)
+            logger.info(f"[dentalfacil] added {table}.{name}")
 
 
 def ensure_alta_retroactiva_schema() -> None:

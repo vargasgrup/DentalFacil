@@ -46,10 +46,33 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
   }
 
   const outHeaders = new Headers();
-  const pass = ["content-type", "content-disposition", "cache-control"];
+  const pass = ["content-type", "content-disposition", "cache-control", "content-length", "accept-ranges"];
   for (const key of pass) {
     const value = upstream.headers.get(key);
-    if (value) outHeaders.set(key, value);
+    if (!value) continue;
+    // Headers must be ByteString; skip invalid unicode to avoid proxy crashes
+    try {
+      outHeaders.set(key, value);
+    } catch {
+      if (key === "content-disposition") {
+        outHeaders.set(key, 'inline; filename="archivo"');
+      }
+    }
+  }
+
+  // Prefer buffering binary media so the browser always receives a complete body
+  const upstreamContentType = (upstream.headers.get("content-type") || "").toLowerCase();
+  const isBinary =
+    upstreamContentType.startsWith("image/") ||
+    upstreamContentType === "application/pdf" ||
+    upstreamContentType.includes("octet-stream");
+
+  if (isBinary) {
+    const buf = await upstream.arrayBuffer();
+    return new NextResponse(buf, {
+      status: upstream.status,
+      headers: outHeaders,
+    });
   }
 
   return new NextResponse(upstream.body, {

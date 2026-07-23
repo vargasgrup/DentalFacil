@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiFetchBlob } from "@/lib/api";
 
 interface MediaItem {
   id: string;
@@ -20,13 +20,7 @@ const TIPO_LABEL: Record<string, string> = {
 };
 
 async function fetchMediaBlob(url: string): Promise<string> {
-  const token = localStorage.getItem("access_token");
-  const res = await fetch(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("No se pudo cargar la imagen");
-  const blob = await res.blob();
+  const blob = await apiFetchBlob(url);
   return URL.createObjectURL(blob);
 }
 

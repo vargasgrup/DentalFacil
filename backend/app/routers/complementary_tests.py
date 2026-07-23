@@ -112,6 +112,35 @@ async def _stream_to_disk(upload: UploadFile, dest: Path) -> int:
     return size
 
 
+def _resolve_stored_path(stored_path: str) -> Path | None:
+    """Resolve absolute/relative stored paths; tolerate cwd changes between deploys."""
+    path = Path(stored_path)
+    if path.is_file():
+        return path
+    name = path.name
+    # Fallback: search under current upload root by filename
+    if name:
+        matches = list(UPLOAD_ROOT.rglob(name))
+        if len(matches) == 1 and matches[0].is_file():
+            return matches[0]
+    return None
+
+
+def _safe_download_name(filename: str | None, content_type: str | None) -> str:
+    raw = (filename or "archivo").strip() or "archivo"
+    # Keep ASCII-ish name for Content-Disposition (proxy-safe)
+    safe = "".join(ch if ord(ch) < 128 and ch not in '"\\' else "_" for ch in raw)
+    if not Path(safe).suffix:
+        if content_type == "application/pdf":
+            safe = f"{safe}.pdf"
+        elif content_type and content_type.startswith("image/"):
+            ext = content_type.split("/", 1)[-1].split(";")[0].strip() or "img"
+            if ext == "jpeg":
+                ext = "jpg"
+            safe = f"{safe}.{ext}"
+    return safe or "archivo.bin"
+
+
 @router.get("/file/{file_id}")
 def get_file(
     file_id: str,
@@ -121,13 +150,15 @@ def get_file(
     row = db.get(ComplementaryTestFile, file_id)
     if not row:
         raise HTTPException(404, "Archivo no encontrado")
-    path = Path(row.stored_path)
-    if not path.exists():
+    path = _resolve_stored_path(row.stored_path)
+    if not path:
         raise HTTPException(404, "Archivo no disponible en disco")
+    media_type = row.content_type or "application/octet-stream"
     return FileResponse(
         path,
-        media_type=row.content_type or "application/octet-stream",
-        filename=row.filename,
+        media_type=media_type,
+        filename=_safe_download_name(row.filename, media_type),
+        content_disposition_type="inline",
     )
 
 

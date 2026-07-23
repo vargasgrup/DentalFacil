@@ -246,3 +246,57 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
   if (res.status === 204) return null as T;
   return res.json();
 }
+
+/** Authenticated binary fetch (images/PDF preview) with the same token + refresh rules as apiFetch. */
+export async function apiFetchBlob(
+  path: string,
+  options: ApiFetchOptions = {}
+): Promise<Blob> {
+  const { _retryAuth, ...fetchOptions } = options;
+  const token = getToken();
+  const headers: Record<string, string> = {
+    ...(fetchOptions.headers as Record<string, string>),
+  };
+  if (token && !isAuthCredentialPath(path)) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError("La solicitud fue cancelada o agotó el tiempo de espera.", 0);
+    }
+    throw new ApiError(
+      "No se pudo conectar con el servidor para cargar el archivo.",
+      0
+    );
+  }
+
+  if (res.status === 401 && !_retryAuth && !isAuthCredentialPath(path)) {
+    const renewed = await refreshAccessToken();
+    if (renewed) {
+      return apiFetchBlob(path, { ...options, _retryAuth: true });
+    }
+    clearToken();
+    clearRefreshToken();
+    throw new ApiError("Sesión expirada. Cierra sesión e ingresa de nuevo.", 401);
+  }
+
+  if (!res.ok) {
+    let msg = res.statusText || "Error al obtener el archivo";
+    try {
+      const body = await res.json();
+      msg = formatApiDetail(body.detail ?? body.message, msg);
+    } catch {
+      if (res.status === 404) msg = "Archivo no encontrado o no disponible en disco.";
+      else if (res.status >= 500) {
+        msg = "Error del servidor al cargar el archivo.";
+      }
+    }
+    throw new ApiError(msg, res.status);
+  }
+
+  return res.blob();
+}

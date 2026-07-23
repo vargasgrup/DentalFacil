@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Eye, Trash2, Upload } from "lucide-react";
-import { apiFetch, apiUpload } from "@/lib/api";
+import { apiFetch, apiUpload, apiFetchBlob, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { Button } from "@/components/ui/Button";
 
@@ -83,15 +83,13 @@ function isPdf(item: ComplementaryItem): boolean {
   );
 }
 
-async function fetchBlobUrl(url: string): Promise<string> {
-  const token = localStorage.getItem("access_token");
-  const res = await fetch(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("No se pudo cargar el archivo");
-  const blob = await res.blob();
-  return URL.createObjectURL(blob);
+async function fetchBlobUrl(url: string, contentType?: string): Promise<string> {
+  const blob = await apiFetchBlob(url);
+  const typed =
+    contentType && (!blob.type || blob.type === "application/octet-stream")
+      ? new Blob([blob], { type: contentType })
+      : blob;
+  return URL.createObjectURL(typed);
 }
 
 export function PruebasComplementarias({ patientId }: { patientId: string }) {
@@ -175,13 +173,19 @@ export function PruebasComplementarias({ patientId }: { patientId: string }) {
     setError("");
     setLoadingId(item.id);
     try {
-      const src = await fetchBlobUrl(item.url);
+      const src = await fetchBlobUrl(item.url, item.content_type);
       setViewer((prev) => {
         if (prev?.src) URL.revokeObjectURL(prev.src);
         return { item, src };
       });
-    } catch {
-      setError("No se pudo visualizar el archivo. Intenta de nuevo.");
+    } catch (err) {
+      const msg =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "No se pudo visualizar el archivo. Intenta de nuevo.";
+      setError(msg);
     } finally {
       setLoadingId(null);
     }

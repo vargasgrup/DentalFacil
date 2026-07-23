@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Download,
   MessageCircle,
@@ -138,6 +138,11 @@ export function DocumentActions({
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [formatReady, setFormatReady] = useState(false);
+  const autoFiredRef = useRef<{
+    preview: boolean;
+    print: boolean;
+    wa: boolean;
+  }>({ preview: false, print: false, wa: false });
 
   useEffect(() => {
     resetPrintFormatPrefsIfNeeded();
@@ -278,18 +283,36 @@ export function DocumentActions({
     }
   };
 
+  // Disparar auto-acciones solo en flanco rising (true). Al volver a false
+  // NO desmontar ni cerrar la previsualización (evita el “flash” en Caja).
   useEffect(() => {
     if (!formatReady) return;
+
     if (autoOpenPreview) {
-      void openPreviewFromUrl(withFormat(downloadUrl, format));
-      return;
+      if (!autoFiredRef.current.preview) {
+        autoFiredRef.current.preview = true;
+        void openPreviewFromUrl(withFormat(downloadUrl, format));
+      }
+    } else {
+      autoFiredRef.current.preview = false;
     }
+
     if (autoPrint) {
-      void handlePrint();
-      return;
+      if (!autoFiredRef.current.print) {
+        autoFiredRef.current.print = true;
+        void handlePrint();
+      }
+    } else {
+      autoFiredRef.current.print = false;
     }
+
     if (autoWhatsApp) {
-      void handleWhatsApp();
+      if (!autoFiredRef.current.wa) {
+        autoFiredRef.current.wa = true;
+        void handleWhatsApp();
+      }
+    } else {
+      autoFiredRef.current.wa = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpenPreview, autoPrint, autoWhatsApp, formatReady, downloadUrl]);

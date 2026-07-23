@@ -439,7 +439,7 @@ export function IncomeForm({
                   </p>
                 )}
               <DocumentActions
-                key={`receipt-${lastReceipt.id}-${receiptAction || "idle"}`}
+                key={`receipt-${lastReceipt.id}`}
                 label="Comprobante de pago"
                 documentType="comprobante"
                 downloadUrl={`/api/documents/comprobante/${lastReceipt.id}`}

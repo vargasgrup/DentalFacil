@@ -390,7 +390,9 @@ export default function CajaPage() {
       }
       if (!tx) return;
       setReceiptAction(action);
-      window.setTimeout(() => setReceiptAction(null), 1500);
+      // Solo resetea el flag de auto-acción; no debe remountar DocumentActions
+      // (antes el key incluía receiptAction y al limpiarlo cerraba la preview).
+      window.setTimeout(() => setReceiptAction(null), 300);
     } finally {
       setActionBusy(null);
     }

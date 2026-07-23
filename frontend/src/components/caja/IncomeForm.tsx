@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Banknote, Check, Eye, MessageCircle, Printer, X } from "lucide-react";
+import { Banknote, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/Input";
@@ -39,13 +39,10 @@ export interface IncomeFormProps {
   mixtoSuma: number;
   mixtoDiff: number;
   saving: boolean;
-  actionBusy: "preview" | "print" | "wa" | null;
-  receiptAction: "preview" | "print" | "wa" | null;
   lastReceipt: CashTransaction | null;
   setError: (msg: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   onClose: () => void;
-  onSaveAndRun: (action: "preview" | "print" | "wa") => void;
   onResetForm: () => void;
   onClearReceipt: () => void;
 }
@@ -71,13 +68,10 @@ export function IncomeForm({
   mixtoSuma,
   mixtoDiff,
   saving,
-  actionBusy,
-  receiptAction,
   lastReceipt,
   setError,
   onSubmit,
   onClose,
-  onSaveAndRun,
   onResetForm,
   onClearReceipt,
 }: IncomeFormProps) {
@@ -351,8 +345,7 @@ export function IncomeForm({
             <Button
               type="submit"
               variant="success"
-              loading={saving && !actionBusy && !receiptAction}
-              disabled={!!actionBusy}
+              loading={saving}
               icon={<Banknote className="h-5 w-5" />}
               className="w-full min-h-[3rem] px-6 text-base font-semibold tracking-wide shadow-md sm:text-[15px]"
             >
@@ -365,61 +358,15 @@ export function IncomeForm({
             </p>
           </div>
 
-          {/* 2. Comprobante: registrar (si hace falta) + ticket */}
-          <div className="space-y-2">
-            <p className="text-label text-slate-700">Comprobante (Ticket 80mm)</p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                loading={actionBusy === "preview"}
-                disabled={!!actionBusy || saving}
-                onClick={() => onSaveAndRun("preview")}
-                icon={<Eye className="h-3.5 w-3.5" />}
-              >
-                Previsualizar
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                loading={actionBusy === "print"}
-                disabled={!!actionBusy || saving}
-                onClick={() => onSaveAndRun("print")}
-                icon={<Printer className="h-3.5 w-3.5" />}
-              >
-                Imprimir
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                loading={actionBusy === "wa"}
-                disabled={!!actionBusy || saving}
-                onClick={() => onSaveAndRun("wa")}
-                icon={<MessageCircle className="h-3.5 w-3.5" />}
-              >
-                WhatsApp
-              </Button>
-            </div>
-            <p className="text-help text-slate-500">
-              Previsualizar, Imprimir o WhatsApp registran el cobro (si hace falta) y abren el
-              ticket de una vez.
-            </p>
-          </div>
-
-          {/* 3. Acciones secundarias */}
+          {/* 2. Acciones secundarias */}
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
-            <Button
-              type="submit"
-              variant="secondary"
-              loading={saving && !actionBusy && !receiptAction}
-              disabled={!!actionBusy}
-            >
+            <Button type="submit" variant="secondary" loading={saving}>
               Solo registrar
             </Button>
             <Button
               type="button"
               variant="ghost"
-              disabled={!!actionBusy || saving}
+              disabled={saving}
               onClick={() => {
                 onClose();
                 onClearReceipt();
@@ -476,9 +423,6 @@ export function IncomeForm({
                 telefono={lastReceipt.patient_telefono}
                 mensaje={waReceiptMessage(lastReceipt)}
                 forceFormat="80mm"
-                autoOpenPreview={receiptAction === "preview"}
-                autoPrint={receiptAction === "print"}
-                autoWhatsApp={receiptAction === "wa"}
               />
               {!lastReceipt.patient_id && (
                 <p className="mt-2 text-xs text-warning-700">

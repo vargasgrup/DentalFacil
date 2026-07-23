@@ -30,8 +30,6 @@ export default function CajaPage() {
   const [closeSummary, setCloseSummary] = useState<CloseSummary | null>(null);
   const [lastReceipt, setLastReceipt] = useState<CashTransaction | null>(null);
   const [tipoFilter, setTipoFilter] = useState<"todos" | "ingreso" | "egreso">("todos");
-  const [receiptAction, setReceiptAction] = useState<"preview" | "print" | "wa" | null>(null);
-  const [actionBusy, setActionBusy] = useState<"preview" | "print" | "wa" | null>(null);
 
   const [montoInicial, setMontoInicial] = useState("50");
   const [incomeConcepto, setIncomeConcepto] = useState("");
@@ -372,32 +370,6 @@ export default function CajaPage() {
     await saveIncome();
   };
 
-  const saveAndRun = async (action: "preview" | "print" | "wa") => {
-    setActionBusy(action);
-    try {
-      const monto = parseFloat(incomeMonto || "0");
-      const same =
-        lastReceipt &&
-        Math.abs(lastReceipt.monto - monto) < 0.001 &&
-        (lastReceipt.patient_id || null) === (incomePatient?.id ?? null) &&
-        (incomeMixto
-          ? lastReceipt.metodo_pago === "mixto"
-          : lastReceipt.metodo_pago === incomeMetodo);
-
-      let tx = same ? lastReceipt : null;
-      if (!tx) {
-        tx = await saveIncome();
-      }
-      if (!tx) return;
-      setReceiptAction(action);
-      // Solo resetea el flag de auto-acción; no debe remountar DocumentActions
-      // (antes el key incluía receiptAction y al limpiarlo cerraba la preview).
-      window.setTimeout(() => setReceiptAction(null), 300);
-    } finally {
-      setActionBusy(null);
-    }
-  };
-
   const createExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!expenseConcepto.trim() || !expenseMonto) return;
@@ -516,17 +488,13 @@ export default function CajaPage() {
               mixtoSuma={mixtoSuma}
               mixtoDiff={mixtoDiff}
               saving={saving}
-              actionBusy={actionBusy}
-              receiptAction={receiptAction}
               lastReceipt={lastReceipt}
               setError={setError}
               onSubmit={createIncome}
               onClose={() => setShowIncome(false)}
-              onSaveAndRun={(action) => void saveAndRun(action)}
               onResetForm={resetIncomeForm}
               onClearReceipt={() => {
                 setLastReceipt(null);
-                setReceiptAction(null);
               }}
             />
           )}

@@ -1,3 +1,5 @@
+> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_DENTALSIMPLE_v1_2026-07-23.md` como fuente única de verdad.
+
 # M&D Odontología Especializada — Sistema de Gestión Odontológica
 
 Sistema simplificado y completo de gestión para **un solo centro odontológico** (Perú). Hermano menor de N&K DentalSoft (multi-tenant), reutiliza la idea central validada en producción: **la Ficha Clínica como pantalla única** que concentra identificación del paciente, historia clínica, diagnóstico, plan de tratamiento, costo, consentimiento y evolución.

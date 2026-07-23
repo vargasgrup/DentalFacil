@@ -1,3 +1,5 @@
+> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_DENTALSIMPLE_v1_2026-07-23.md` como fuente única de verdad.
+
 # Odontograma clínico con dientes realistas (PNG por FDI)
 
 Guía de implementación reutilizable para proyectos similares (**DentalSimple / M&D Odontología**, **N&K DentalSoft**, etc.).

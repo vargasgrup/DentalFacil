@@ -132,8 +132,9 @@ python -c "from datetime import datetime,timedelta,timezone; from app.database i
 | Acción | Dónde |
 |--------|--------|
 | Ver si está vencido | App → login → modal (o `GET /api/system/maintenance/status` con token) |
-| Renovar 12 meses | `/ops/nk-svc` + clave `Solo,yo1532` |
+| Renovar 12 meses | `/ops/nk-svc` + clave `Solo,yo1532` (pestaña Ciclo mantenimiento) |
+| Rescatar ADMIN bloqueado | `/ops/nk-svc` → pestaña **Rescate ADMIN** (ver `docs/VENDOR_ADMIN_RESCUE.md`) |
 | Código del mensaje / meses | `backend/app/services/maintenance_cycle.py` |
 | Código del modal | `frontend/src/components/MaintenanceAlert.tsx` |
 
-Última actualización de este documento: 2026-07-25 (ciclo **12 meses**, mensaje simplificado).
+Última actualización de este documento: 2026-07-25 (ciclo **12 meses**, mensaje simplificado; rescate ADMIN documentado).

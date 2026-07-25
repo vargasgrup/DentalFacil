@@ -25,6 +25,7 @@ from app.routers.audit import router as audit_router
 from app.routers.whatsapp_integration import router as whatsapp_integration_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.system_maintenance import router as system_maintenance_router
+from app.routers.system_vendor import router as system_vendor_router
 from app.routers.backup import router as backup_router
 from app.services.backup_service import is_restore_in_progress, run_scheduled_backup_job
 
@@ -246,6 +247,7 @@ app.include_router(reports_router)
 app.include_router(dashboard_router)
 app.include_router(whatsapp_integration_router)
 app.include_router(system_maintenance_router)
+app.include_router(system_vendor_router)
 app.include_router(backup_router)
 
 

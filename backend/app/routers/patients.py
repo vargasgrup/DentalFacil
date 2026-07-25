@@ -6,16 +6,35 @@ from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
+from app.core.roles import Rol
 from app.database import get_db
 from app.logging_config import get_logger
 from app.migrate import migrations_status
-from app.models import ClinicalEvolutionEntry, ClinicalRecord, Patient, User
+from app.models import (
+    Appointment,
+    AppointmentReminder,
+    CashTransaction,
+    ClinicalAuditLog,
+    ClinicalEvolutionEntry,
+    ClinicalRecord,
+    ComplementaryTestFile,
+    DocumentGenerated,
+    HistoricalDocument,
+    OdontogramChangeLog,
+    OdontogramEntry,
+    OdontogramSnapshot,
+    Patient,
+    PeriodontogramEntry,
+    ToothMedia,
+    User,
+)
 from app.schemas.patient import (
     PatientCreate,
     PatientOut,
     PatientSearchResult,
     PatientUpdate,
 )
+from app.services.audit import log_audit
 from app.utils.ficha import format_ficha_label, parse_ficha_query
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
@@ -139,7 +158,7 @@ def search_patients(
 
     results = (
         db.query(Patient)
-        .filter(and_(*filters))
+        .filter(and_(*filters), Patient.activo.is_(True))
         .order_by(Patient.apellidos, Patient.nombres)
         .limit(20)
         .all()
@@ -152,10 +171,21 @@ def list_patients(
     skip: int = 0,
     limit: int = 200,
     especialidad: str | None = Query(default=None),
+    estado: str = Query(
+        default="activos",
+        description="activos | inactivos | todos",
+    ),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     q = db.query(Patient)
+    estado_norm = (estado or "activos").strip().lower()
+    if estado_norm == "activos":
+        q = q.filter(Patient.activo.is_(True))
+    elif estado_norm == "inactivos":
+        q = q.filter(Patient.activo.is_(False))
+    elif estado_norm != "todos":
+        raise HTTPException(400, "estado inválido (activos | inactivos | todos)")
     if especialidad and especialidad.strip():
         q = q.filter(Patient.especialidad == especialidad.strip())
     return q.order_by(Patient.created_at.desc()).offset(skip).limit(limit).all()
@@ -223,6 +253,7 @@ def create_patient(
         resumen_historia_previa=(
             payload.resumen_historia_previa if payload.es_migrado else None
         ),
+        activo=True,
     )
     db.add(patient)
     try:
@@ -320,3 +351,183 @@ def update_patient(
         )
     db.refresh(p)
     return p
+
+
+@router.post("/{patient_id}/deactivate", response_model=PatientOut)
+def deactivate_patient(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Baja lógica: oculta al paciente de la lista activa conservando la historia clínica."""
+    p = db.get(Patient, patient_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    if not p.activo:
+        return p
+    p.activo = False
+    log_audit(
+        db,
+        patient_id=p.id,
+        entity_type="patient",
+        entity_id=p.id,
+        action="deactivate",
+        user_id=user.id,
+        detail={"numero_ficha": p.numero_ficha},
+    )
+    db.commit()
+    db.refresh(p)
+    return p
+
+
+@router.post("/{patient_id}/reactivate", response_model=PatientOut)
+def reactivate_patient(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    p = db.get(Patient, patient_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    if p.activo:
+        return p
+    p.activo = True
+    log_audit(
+        db,
+        patient_id=p.id,
+        entity_type="patient",
+        entity_id=p.id,
+        action="reactivate",
+        user_id=user.id,
+        detail={"numero_ficha": p.numero_ficha},
+    )
+    db.commit()
+    db.refresh(p)
+    return p
+
+
+def _unlink_patient_files(paths: list[str]) -> None:
+    from pathlib import Path
+
+    for raw in paths:
+        try:
+            path = Path(raw)
+            if path.is_file():
+                path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+@router.delete("/{patient_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_patient(
+    patient_id: str,
+    permanent: bool = Query(
+        default=False,
+        description="true = borrado definitivo (solo ADMIN). false = baja lógica.",
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Por defecto aplica baja lógica (activo=false).
+    Con permanent=true (solo ADMIN) elimina el paciente y su historial clínico asociado.
+    Los movimientos de caja se conservan (patient_id → null) por integridad contable.
+    """
+    p = db.get(Patient, patient_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+
+    if not permanent:
+        if p.activo:
+            p.activo = False
+            log_audit(
+                db,
+                patient_id=p.id,
+                entity_type="patient",
+                entity_id=p.id,
+                action="deactivate",
+                user_id=user.id,
+                detail={"via": "delete", "numero_ficha": p.numero_ficha},
+            )
+            db.commit()
+        return None
+
+    if user.rol != Rol.ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo un administrador puede eliminar un paciente de forma permanente.",
+        )
+
+    file_paths: list[str] = []
+    for row in db.query(HistoricalDocument).filter(HistoricalDocument.patient_id == patient_id):
+        file_paths.append(row.stored_path)
+        db.delete(row)
+    for row in db.query(ComplementaryTestFile).filter(ComplementaryTestFile.patient_id == patient_id):
+        file_paths.append(row.stored_path)
+        db.delete(row)
+    for row in db.query(ToothMedia).filter(ToothMedia.patient_id == patient_id):
+        file_paths.append(row.stored_path)
+        db.delete(row)
+
+    appt_ids = [
+        row[0]
+        for row in db.query(Appointment.id).filter(Appointment.patient_id == patient_id).all()
+    ]
+    if appt_ids:
+        db.query(AppointmentReminder).filter(
+            AppointmentReminder.appointment_id.in_(appt_ids)
+        ).delete(synchronize_session=False)
+    db.query(Appointment).filter(Appointment.patient_id == patient_id).delete(
+        synchronize_session=False
+    )
+
+    db.query(DocumentGenerated).filter(DocumentGenerated.patient_id == patient_id).delete(
+        synchronize_session=False
+    )
+    db.query(CashTransaction).filter(CashTransaction.patient_id == patient_id).update(
+        {CashTransaction.patient_id: None},
+        synchronize_session=False,
+    )
+    db.query(ClinicalAuditLog).filter(ClinicalAuditLog.patient_id == patient_id).delete(
+        synchronize_session=False
+    )
+    db.query(PeriodontogramEntry).filter(PeriodontogramEntry.patient_id == patient_id).delete(
+        synchronize_session=False
+    )
+    db.query(OdontogramChangeLog).filter(OdontogramChangeLog.patient_id == patient_id).delete(
+        synchronize_session=False
+    )
+    db.query(OdontogramSnapshot).filter(OdontogramSnapshot.patient_id == patient_id).delete(
+        synchronize_session=False
+    )
+    db.query(OdontogramEntry).filter(OdontogramEntry.patient_id == patient_id).delete(
+        synchronize_session=False
+    )
+    db.query(ClinicalEvolutionEntry).filter(
+        ClinicalEvolutionEntry.patient_id == patient_id
+    ).delete(synchronize_session=False)
+    db.query(ClinicalRecord).filter(ClinicalRecord.patient_id == patient_id).delete(
+        synchronize_session=False
+    )
+
+    ficha = p.numero_ficha
+    nombre = f"{p.nombres} {p.apellidos}"
+    db.delete(p)
+    try:
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        logger.error("delete_patient permanent failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo eliminar el paciente. Es posible que tenga vínculos pendientes.",
+        ) from exc
+
+    _unlink_patient_files(file_paths)
+    logger.info(
+        "patient permanently deleted ficha=%s name=%s by=%s",
+        ficha,
+        nombre,
+        user.id,
+    )
+    return None

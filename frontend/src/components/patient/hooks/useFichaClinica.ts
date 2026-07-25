@@ -697,5 +697,14 @@ const [patient, setPatient] = useState<Patient | null>(null);
     addEvolution, registerPayment, deleteEvolution, updateEvolutionEstado, updateEvolutionField,
     registerPlanItemInEvolution, addItemRow, addPlanFromOdontogram, removeItemRow, updateItem,
     toggleHabito, openPaymentForm, edad, planTotals, evoTotals, doctorDisplay, estadoColors, consentText,
+    applyPatientUpdate: (updated: Patient) => {
+      setPatient(updated);
+      setPatientForm({
+        ...updated,
+        fecha_nacimiento: updated.fecha_nacimiento
+          ? updated.fecha_nacimiento.slice(0, 10)
+          : "",
+      });
+    },
   };
 }

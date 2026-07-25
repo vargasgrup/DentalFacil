@@ -94,6 +94,13 @@ async def lifespan(app: FastAPI):
         logger.error("ensure_historical_documents_schema FAILED: %s", exc, exc_info=True)
         raise
     try:
+        from app.ensure_patient_activo_schema import ensure_patient_activo_schema
+
+        ensure_patient_activo_schema()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("ensure_patient_activo_schema FAILED: %s", exc, exc_info=True)
+        raise
+    try:
         from app.ensure_alta_retroactiva_schema import ensure_alta_retroactiva_schema
 
         ensure_alta_retroactiva_schema()

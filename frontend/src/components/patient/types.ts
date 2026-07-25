@@ -22,6 +22,8 @@ export interface Patient {
   es_migrado?: boolean;
   fecha_ingreso_clinica?: string | null;
   resumen_historia_previa?: string | null;
+  /** false = dado de baja (conserva historia) */
+  activo?: boolean;
   created_at: string;
 }
 

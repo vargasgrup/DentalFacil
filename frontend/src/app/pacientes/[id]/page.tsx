@@ -33,7 +33,11 @@ export default function FichaClinicaPage() {
 
   return (
     <PageContainer width="wide" className="space-y-5">
-      <FichaHeader patient={f.patient} onBack={() => router.push("/pacientes")} />
+      <FichaHeader
+        patient={f.patient}
+        onBack={() => router.push("/pacientes")}
+        onPatientUpdated={f.applyPatientUpdate}
+      />
 
       {f.error && (
         <div className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm text-danger-600">

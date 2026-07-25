@@ -41,6 +41,8 @@ class Patient(Base):
     es_migrado: Mapped[bool] = mapped_column(Boolean, default=False)
     fecha_ingreso_clinica: Mapped[date | None] = mapped_column(Date)
     resumen_historia_previa: Mapped[str | None] = mapped_column(Text)
+    # Administración: baja lógica (conserva historia clínica)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), default=datetime.utcnow
     )

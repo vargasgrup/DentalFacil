@@ -1,36 +1,57 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Users, Search, Plus, FileText, Phone, IdCard, Stethoscope } from "lucide-react";
-import { apiFetch } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import {
+  Users,
+  Search,
+  Plus,
+  FileText,
+  Phone,
+  IdCard,
+  Stethoscope,
+  MoreVertical,
+  Pencil,
+  CalendarPlus,
+  UserX,
+  UserCheck,
+  Trash2,
+} from "lucide-react";
+import { apiFetch, ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageContainer } from "@/components/ui/PageContainer";
+import {
+  PatientEditModal,
+  type PatientAdmin,
+} from "@/components/patient/PatientEditModal";
 import { formatFichaCode } from "@/lib/ficha";
 import { ESPECIALIDADES_ODONTOLOGICAS, especialidadShort } from "@/lib/especialidades";
 
-interface Patient {
-  id: string;
-  numero_ficha: number;
-  nombres: string;
-  apellidos: string;
-  telefono?: string;
-  numero_documento?: string;
-  especialidad?: string | null;
-  created_at: string;
-}
+type EstadoFilter = "activos" | "inactivos" | "todos";
 
 export default function PacientesPage() {
-  const [patients, setPatients] = useState<Patient[]>([]);
+  const router = useRouter();
+  const { user } = useAuth();
+  const isAdmin = user?.rol === "ADMIN";
+
+  const [patients, setPatients] = useState<PatientAdmin[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [especialidadFilter, setEspecialidadFilter] = useState("");
+  const [estadoFilter, setEstadoFilter] = useState<EstadoFilter>("activos");
   const [specialtyOptions, setSpecialtyOptions] = useState<string[]>([
     ...ESPECIALIDADES_ODONTOLOGICAS,
   ]);
+  const [menuId, setMenuId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<PatientAdmin | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     apiFetch<{ items: string[] }>("/api/config/especialidades")
@@ -42,16 +63,49 @@ export default function PacientesPage() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
+  const load = async () => {
     setLoading(true);
-    const qs = especialidadFilter
-      ? `?especialidad=${encodeURIComponent(especialidadFilter)}`
-      : "";
-    apiFetch<Patient[]>(`/api/patients${qs}`)
-      .then((data) => setPatients(data))
-      .catch(() => setPatients([]))
-      .finally(() => setLoading(false));
-  }, [especialidadFilter]);
+    const params = new URLSearchParams();
+    params.set("estado", estadoFilter);
+    if (especialidadFilter) params.set("especialidad", especialidadFilter);
+    try {
+      const data = await apiFetch<PatientAdmin[]>(`/api/patients?${params.toString()}`);
+      setPatients(data);
+    } catch {
+      setPatients([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [especialidadFilter, estadoFilter]);
+
+  useEffect(() => {
+    if (!menuId) return;
+    const onDoc = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuId(null);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuId(null);
+    };
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuId]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(null), 3500);
+    return () => window.clearTimeout(t);
+  }, [toast]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return patients;
@@ -63,7 +117,82 @@ export default function PacientesPage() {
     );
   }, [search, patients]);
 
-  const hasFilters = Boolean(search.trim() || especialidadFilter);
+  const hasFilters = Boolean(search.trim() || especialidadFilter || estadoFilter !== "activos");
+
+  const showMsg = (type: "ok" | "err", text: string) => setToast({ type, text });
+
+  const openEdit = async (p: PatientAdmin) => {
+    setMenuId(null);
+    setBusyId(p.id);
+    try {
+      const full = await apiFetch<PatientAdmin>(`/api/patients/${p.id}`);
+      setEditing(full);
+    } catch (err) {
+      showMsg(
+        "err",
+        err instanceof ApiError ? err.message : "No se pudo cargar el paciente."
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deactivate = async (p: PatientAdmin) => {
+    setMenuId(null);
+    const ok = window.confirm(
+      `¿Dar de baja a ${p.nombres} ${p.apellidos} (${formatFichaCode(p.numero_ficha)})?\n\nLa ficha clínica se conserva y podrás reactivarlo desde «Inactivos».`
+    );
+    if (!ok) return;
+    setBusyId(p.id);
+    try {
+      await apiFetch(`/api/patients/${p.id}/deactivate`, { method: "POST" });
+      showMsg("ok", "Paciente dado de baja.");
+      await load();
+    } catch (err) {
+      showMsg("err", err instanceof ApiError ? err.message : "No se pudo dar de baja.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const reactivate = async (p: PatientAdmin) => {
+    setMenuId(null);
+    setBusyId(p.id);
+    try {
+      await apiFetch(`/api/patients/${p.id}/reactivate`, { method: "POST" });
+      showMsg("ok", "Paciente reactivado.");
+      await load();
+    } catch (err) {
+      showMsg("err", err instanceof ApiError ? err.message : "No se pudo reactivar.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deletePermanent = async (p: PatientAdmin) => {
+    setMenuId(null);
+    const code = formatFichaCode(p.numero_ficha);
+    const typed = window.prompt(
+      `ELIMINACIÓN PERMANENTE\n\nSe borrará la ficha clínica, evoluciones, citas y archivos de ${p.nombres} ${p.apellidos}.\nLos pagos de caja se conservan sin vínculo al paciente.\n\nEscribe ${code} para confirmar:`
+    );
+    if (!typed || typed.trim().toUpperCase() !== code.toUpperCase()) {
+      if (typed !== null) showMsg("err", "Confirmación incorrecta. No se eliminó nada.");
+      return;
+    }
+    setBusyId(p.id);
+    try {
+      await apiFetch(`/api/patients/${p.id}?permanent=true`, { method: "DELETE" });
+      showMsg("ok", "Paciente eliminado permanentemente.");
+      await load();
+    } catch (err) {
+      showMsg(
+        "err",
+        err instanceof ApiError ? err.message : "No se pudo eliminar el paciente."
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -89,7 +218,7 @@ export default function PacientesPage() {
             {filtered.length === 1 ? "paciente" : "pacientes"}
             {hasFilters
               ? " encontrados"
-              : " registrados · selecciona uno para abrir su ficha clínica"}
+              : " registrados · administra o abre su ficha clínica"}
           </p>
         </div>
         <Link href="/pacientes/nuevo">
@@ -97,7 +226,20 @@ export default function PacientesPage() {
         </Link>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      {toast && (
+        <p
+          role="status"
+          className={`rounded-lg border px-3 py-2 text-sm ${
+            toast.type === "ok"
+              ? "border-success-200 bg-success-50 text-success-800"
+              : "border-danger-200 bg-danger-50 text-danger-700"
+          }`}
+        >
+          {toast.text}
+        </p>
+      )}
+
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
@@ -108,22 +250,36 @@ export default function PacientesPage() {
             className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
           />
         </div>
-        <label className="flex w-full shrink-0 items-center gap-2 sm:w-72">
-          <Stethoscope className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-          <select
-            value={especialidadFilter}
-            onChange={(e) => setEspecialidadFilter(e.target.value)}
-            aria-label="Filtrar por especialidad"
-            className="w-full rounded-lg border border-slate-300 bg-white py-2.5 px-3 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
-          >
-            <option value="">Todas las especialidades</option>
-            {specialtyOptions.map((esp) => (
-              <option key={esp} value={esp}>
-                {esp}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <label className="flex w-full shrink-0 items-center gap-2 sm:w-44">
+            <select
+              value={estadoFilter}
+              onChange={(e) => setEstadoFilter(e.target.value as EstadoFilter)}
+              aria-label="Filtrar por estado"
+              className="w-full rounded-lg border border-slate-300 bg-white py-2.5 px-3 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+            >
+              <option value="activos">Activos</option>
+              <option value="inactivos">Inactivos</option>
+              <option value="todos">Todos</option>
+            </select>
+          </label>
+          <label className="flex w-full shrink-0 items-center gap-2 sm:w-72">
+            <Stethoscope className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+            <select
+              value={especialidadFilter}
+              onChange={(e) => setEspecialidadFilter(e.target.value)}
+              aria-label="Filtrar por especialidad"
+              className="w-full rounded-lg border border-slate-300 bg-white py-2.5 px-3 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+            >
+              <option value="">Todas las especialidades</option>
+              {specialtyOptions.map((esp) => (
+                <option key={esp} value={esp}>
+                  {esp}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       {filtered.length === 0 ? (
@@ -132,7 +288,7 @@ export default function PacientesPage() {
           title={hasFilters ? "No se encontraron pacientes" : "Sin pacientes aún"}
           description={
             hasFilters
-              ? "Prueba con otro término o cambia el filtro de especialidad"
+              ? "Prueba con otro término o cambia los filtros de estado/especialidad"
               : "Crea tu primer paciente para empezar a usar la Ficha Clínica."
           }
           action={
@@ -147,31 +303,133 @@ export default function PacientesPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((p) => {
             const initials = `${p.nombres[0] || ""}${p.apellidos[0] || ""}`.toUpperCase();
+            const inactive = p.activo === false;
+            const menuOpen = menuId === p.id;
             return (
-              <Link key={p.id} href={`/pacientes/${p.id}`} className="group block">
-                <Card className="h-full transition-smooth hover:border-brand-200 hover:shadow-card-hover">
-                  <div className="flex items-start gap-3">
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700 transition-smooth group-hover:bg-brand-100">
-                      {initials}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="truncate text-sm font-semibold text-slate-800 group-hover:text-brand-700">
-                          {p.nombres} {p.apellidos}
-                        </h2>
-                        <Badge variant="brand" className="font-mono tracking-wide">
-                          {formatFichaCode(p.numero_ficha)}
-                        </Badge>
+              <Card
+                key={p.id}
+                className={`relative h-full transition-smooth hover:border-brand-200 hover:shadow-card-hover ${
+                  inactive ? "opacity-80" : ""
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <Link
+                    href={`/pacientes/${p.id}`}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700 transition-smooth hover:bg-brand-100"
+                  >
+                    {initials}
+                  </Link>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/pacientes/${p.id}`}
+                            className="truncate text-sm font-semibold text-slate-800 hover:text-brand-700"
+                          >
+                            {p.nombres} {p.apellidos}
+                          </Link>
+                          <Badge variant="brand" className="font-mono tracking-wide">
+                            {formatFichaCode(p.numero_ficha)}
+                          </Badge>
+                          {inactive && <Badge variant="neutral">Inactivo</Badge>}
+                        </div>
                       </div>
+                      <div className="relative shrink-0" ref={menuOpen ? menuRef : undefined}>
+                        <button
+                          type="button"
+                          aria-label={`Administrar ${p.nombres} ${p.apellidos}`}
+                          aria-haspopup="menu"
+                          aria-expanded={menuOpen}
+                          disabled={busyId === p.id}
+                          onClick={() => setMenuId(menuOpen ? null : p.id)}
+                          className="rounded-lg border border-slate-200 p-1.5 text-slate-500 transition-smooth hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                        {menuOpen && (
+                          <div
+                            role="menu"
+                            className="absolute right-0 z-40 mt-1 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-dropdown"
+                          >
+                            <Link
+                              role="menuitem"
+                              href={`/pacientes/${p.id}`}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-brand-50 hover:text-brand-800"
+                              onClick={() => setMenuId(null)}
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              Abrir ficha clínica
+                            </Link>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-brand-50 hover:text-brand-800"
+                              onClick={() => void openEdit(p)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Editar datos
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-brand-50 hover:text-brand-800"
+                              onClick={() => {
+                                setMenuId(null);
+                                router.push(`/agenda?nueva=1&patient_id=${p.id}`);
+                              }}
+                            >
+                              <CalendarPlus className="h-3.5 w-3.5" />
+                              Nueva cita
+                            </button>
+                            <div className="my-1 border-t border-slate-100" />
+                            {inactive ? (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-success-700 hover:bg-success-50"
+                                onClick={() => void reactivate(p)}
+                              >
+                                <UserCheck className="h-3.5 w-3.5" />
+                                Reactivar
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-warning-700 hover:bg-warning-50"
+                                onClick={() => void deactivate(p)}
+                              >
+                                <UserX className="h-3.5 w-3.5" />
+                                Dar de baja
+                              </button>
+                            )}
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-danger-700 hover:bg-danger-50"
+                                onClick={() => void deletePermanent(p)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Eliminar permanente
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <Link href={`/pacientes/${p.id}`} className="mt-1.5 block">
                       {p.especialidad ? (
-                        <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-brand-700">
+                        <p className="flex items-center gap-1.5 text-xs font-medium text-brand-700">
                           <Stethoscope className="h-3.5 w-3.5 shrink-0" aria-hidden />
                           <span className="truncate" title={p.especialidad}>
                             {especialidadShort(p.especialidad)}
                           </span>
                         </p>
                       ) : (
-                        <p className="mt-1.5 text-xs text-slate-400">Sin especialidad asignada</p>
+                        <p className="text-xs text-slate-400">Sin especialidad asignada</p>
                       )}
                       <ul className="mt-3 space-y-1.5 text-sm text-slate-500">
                         <li className="flex items-center gap-2">
@@ -183,26 +441,53 @@ export default function PacientesPage() {
                           <span>{p.telefono || "Sin teléfono"}</span>
                         </li>
                       </ul>
-                      <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-                        <span className="text-help text-slate-400">
-                          {new Date(p.created_at).toLocaleDateString("es-PE", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          })}
-                        </span>
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 opacity-80 transition-smooth group-hover:opacity-100">
+                    </Link>
+
+                    <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                      <span className="text-help text-slate-400">
+                        {new Date(p.created_at).toLocaleDateString("es-PE", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void openEdit(p)}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-brand-700"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Editar
+                        </button>
+                        <Link
+                          href={`/pacientes/${p.id}`}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-700"
+                        >
                           <FileText className="h-3.5 w-3.5" />
-                          Abrir ficha clínica
-                        </span>
+                          Ficha
+                        </Link>
                       </div>
                     </div>
                   </div>
-                </Card>
-              </Link>
+                </div>
+              </Card>
             );
           })}
         </div>
+      )}
+
+      {editing && (
+        <PatientEditModal
+          patient={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(updated) => {
+            setPatients((prev) =>
+              prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x))
+            );
+            showMsg("ok", "Datos del paciente actualizados.");
+          }}
+        />
       )}
     </PageContainer>
   );

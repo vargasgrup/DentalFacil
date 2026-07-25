@@ -23,6 +23,7 @@ class PatientBase(BaseModel):
     es_migrado: bool = False
     fecha_ingreso_clinica: Optional[date] = None
     resumen_historia_previa: Optional[str] = Field(default=None, max_length=5000)
+    activo: bool = True
 
 
 class PatientCreate(PatientBase):
@@ -76,6 +77,7 @@ class PatientUpdate(BaseModel):
     es_migrado: Optional[bool] = None
     fecha_ingreso_clinica: Optional[date] = None
     resumen_historia_previa: Optional[str] = Field(default=None, max_length=5000)
+    activo: Optional[bool] = None
 
 
 class PatientOut(PatientBase):
@@ -94,5 +96,6 @@ class PatientSearchResult(BaseModel):
     telefono: Optional[str] = None
     numero_documento: Optional[str] = None
     especialidad: Optional[str] = None
+    activo: bool = True
 
     model_config = {"from_attributes": True}

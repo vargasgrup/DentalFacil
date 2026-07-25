@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -16,6 +17,7 @@ import {
   ZoomIn,
   ZoomOut,
   ScanSearch,
+  Loader2,
 } from "lucide-react";
 
 const MIN_ZOOM = 0.05;
@@ -27,7 +29,6 @@ export interface DigitizedDocumentViewerProps {
   title: string;
   subtitle?: string;
   src: string;
-  /** image | pdf */
   kind: "image" | "pdf";
   onClose: () => void;
   onDownload?: () => void;
@@ -70,8 +71,8 @@ function ToolBtn({
 }
 
 /**
- * Digitized document viewer.
- * Zoom uses real layout width/height (not CSS scale) so large images fit and center correctly.
+ * Digitized document viewer — zoom via real pixel size (not CSS scale),
+ * always measures stage before fitting, handles cached images.
  */
 export function DigitizedDocumentViewer({
   title,
@@ -84,6 +85,8 @@ export function DigitizedDocumentViewer({
 }: DigitizedDocumentViewerProps) {
   const shellRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+
   const [zoom, setZoom] = useState(1);
   const [fitZoom, setFitZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
@@ -91,36 +94,96 @@ export function DigitizedDocumentViewer({
   const [dragging, setDragging] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [natural, setNatural] = useState({ w: 0, h: 0 });
-  const [ready, setReady] = useState(false);
   const [fitMode, setFitMode] = useState(true);
-  const dragOrigin = useRef<{ x: number; y: number; ox: number; oy: number } | null>(
-    null
-  );
-  const rotationRef = useRef(rotation);
-  const fitModeRef = useRef(fitMode);
+  const [loading, setLoading] = useState(kind === "image");
+
+  const dragOrigin = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const rotationRef = useRef(0);
+  const fitModeRef = useRef(true);
+  const naturalRef = useRef({ w: 0, h: 0 });
   rotationRef.current = rotation;
   fitModeRef.current = fitMode;
+  naturalRef.current = natural;
 
-  const computeFitZoom = useCallback((natW: number, natH: number, rot: number) => {
+  const measureFitZoom = useCallback((natW: number, natH: number, rot: number) => {
     const stage = stageRef.current;
     if (!stage || natW <= 0 || natH <= 0) return 1;
-    const sw = Math.max(40, stage.clientWidth - STAGE_PAD);
-    const sh = Math.max(40, stage.clientHeight - STAGE_PAD);
+    const sw = Math.max(1, stage.clientWidth - STAGE_PAD);
+    const sh = Math.max(1, stage.clientHeight - STAGE_PAD);
+    if (sw < 8 || sh < 8) return 1;
     const rotated = Math.abs(rot % 180) === 90;
     const iw = rotated ? natH : natW;
     const ih = rotated ? natW : natH;
     return clampZoom(Math.min(sw / iw, sh / ih));
   }, []);
 
+  const applyMeasuredFit = useCallback(
+    (natW: number, natH: number, rot: number) => {
+      const z = kind === "pdf" ? 1 : measureFitZoom(natW, natH, rot);
+      setFitZoom(z);
+      setZoom(z);
+      setOffset({ x: 0, y: 0 });
+      setFitMode(true);
+    },
+    [kind, measureFitZoom]
+  );
+
   const applyFit = useCallback(() => {
-    const rot = rotationRef.current;
-    const next =
-      kind === "pdf" ? 1 : computeFitZoom(natural.w, natural.h, rot);
-    setFitZoom(next);
-    setZoom(next);
+    const { w, h } = naturalRef.current;
+    applyMeasuredFit(w, h, rotationRef.current);
+  }, [applyMeasuredFit]);
+
+  const ingestImageSize = useCallback(
+    (w: number, h: number) => {
+      if (w <= 0 || h <= 0) return;
+      setNatural({ w, h });
+      naturalRef.current = { w, h };
+      setLoading(false);
+      // Measure after paint so stage has real height
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          applyMeasuredFit(w, h, rotationRef.current);
+        });
+      });
+    },
+    [applyMeasuredFit]
+  );
+
+  // Reset when source changes
+  useEffect(() => {
+    setNatural({ w: 0, h: 0 });
+    naturalRef.current = { w: 0, h: 0 };
+    setZoom(1);
+    setFitZoom(1);
+    setRotation(0);
     setOffset({ x: 0, y: 0 });
     setFitMode(true);
-  }, [computeFitZoom, kind, natural.h, natural.w]);
+    setLoading(kind === "image");
+  }, [src, kind]);
+
+  // Handle cached images (onLoad may not fire) + late decode
+  useLayoutEffect(() => {
+    if (kind !== "image") return;
+    const img = imgRef.current;
+    if (!img) return;
+
+    const tryIngest = () => {
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        ingestImageSize(img.naturalWidth, img.naturalHeight);
+      }
+    };
+
+    if (img.complete) {
+      tryIngest();
+    }
+
+    // decode() resolves for blob/object URLs even when complete is tricky
+    if (typeof img.decode === "function") {
+      img.decode().then(tryIngest).catch(() => {
+        /* onLoad / complete will cover */
+      });
+    }
+  }, [src, kind, ingestImageSize]);
 
   const zoomBy = useCallback((delta: number) => {
     setFitMode(false);
@@ -137,73 +200,46 @@ export function DigitizedDocumentViewer({
     (deg: number) => {
       setRotation((r) => {
         const next = ((r + deg) % 360 + 360) % 360;
-        if (fitModeRef.current && kind === "image" && natural.w > 0) {
-          const z = computeFitZoom(natural.w, natural.h, next);
-          setFitZoom(z);
-          setZoom(z);
-          setOffset({ x: 0, y: 0 });
+        if (fitModeRef.current && kind === "image") {
+          const { w, h } = naturalRef.current;
+          if (w > 0) applyMeasuredFit(w, h, next);
         }
         return next;
       });
     },
-    [computeFitZoom, kind, natural.h, natural.w]
+    [applyMeasuredFit, kind]
   );
 
   const toggleFullscreen = useCallback(async () => {
     const el = shellRef.current;
     if (!el) return;
     try {
-      if (!document.fullscreenElement) {
-        await el.requestFullscreen();
-      } else {
-        await document.exitFullscreen();
-      }
+      if (!document.fullscreenElement) await el.requestFullscreen();
+      else await document.exitFullscreen();
     } catch {
       setFullscreen((f) => !f);
     }
   }, []);
 
-  const refitIfNeeded = useCallback(() => {
-    if (!fitModeRef.current || kind !== "image" || natural.w <= 0) return;
-    const z = computeFitZoom(natural.w, natural.h, rotationRef.current);
-    setFitZoom(z);
-    setZoom(z);
-    setOffset({ x: 0, y: 0 });
-  }, [computeFitZoom, kind, natural.h, natural.w]);
-
-  const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
-    const w = img.naturalWidth;
-    const h = img.naturalHeight;
-    setNatural({ w, h });
-    // Wait for stage flex layout before measuring
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const z = computeFitZoom(w, h, rotationRef.current);
-        setFitZoom(z);
-        setZoom(z);
-        setOffset({ x: 0, y: 0 });
-        setFitMode(true);
-        setReady(true);
-      });
-    });
-  };
-
   useEffect(() => {
     const onFs = () => {
       setFullscreen(Boolean(document.fullscreenElement));
-      requestAnimationFrame(() => refitIfNeeded());
+      requestAnimationFrame(() => {
+        if (fitModeRef.current) applyFit();
+      });
     };
     document.addEventListener("fullscreenchange", onFs);
     return () => document.removeEventListener("fullscreenchange", onFs);
-  }, [refitIfNeeded]);
+  }, [applyFit]);
 
   useEffect(() => {
-    if (kind !== "image" || natural.w <= 0) return;
-    const onResize = () => refitIfNeeded();
+    if (kind !== "image") return;
+    const onResize = () => {
+      if (fitModeRef.current) applyFit();
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [kind, natural.w, refitIfNeeded]);
+  }, [applyFit, kind]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -284,13 +320,12 @@ export function DigitizedDocumentViewer({
 
   const zoomPct = Math.round(zoom * 100);
   const isFitActive = fitMode || Math.abs(zoom - fitZoom) < 0.01;
-
-  // Real layout size — never use CSS scale for zoom (avoids black-gap / clip bug)
-  const displayW = natural.w > 0 ? natural.w * zoom : 0;
-  const displayH = natural.h > 0 ? natural.h * zoom : 0;
+  const hasSize = natural.w > 0 && natural.h > 0;
+  const displayW = hasSize ? natural.w * zoom : undefined;
+  const displayH = hasSize ? natural.h * zoom : undefined;
   const rotated90 = Math.abs(rotation % 180) === 90;
-  const boxW = rotated90 ? displayH : displayW;
-  const boxH = rotated90 ? displayW : displayH;
+  const boxW = hasSize ? (rotated90 ? displayH! : displayW!) : undefined;
+  const boxH = hasSize ? (rotated90 ? displayW! : displayH!) : undefined;
 
   return (
     <div
@@ -307,7 +342,7 @@ export function DigitizedDocumentViewer({
         className={`relative flex w-full flex-col overflow-hidden bg-white shadow-2xl ${
           fullscreen
             ? "h-full max-h-none max-w-none rounded-none"
-            : "max-h-[94vh] max-w-6xl rounded-xl"
+            : "h-[94vh] max-h-[94vh] max-w-6xl rounded-xl"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -404,16 +439,24 @@ export function DigitizedDocumentViewer({
           </p>
         </div>
 
+        {/* Explicit height so flex children always have a measurable stage */}
         <div
           ref={stageRef}
           className={`relative min-h-0 flex-1 overflow-hidden bg-slate-950 ${
-            fullscreen ? "h-full" : "h-[min(78vh,720px)]"
-          } ${dragging ? "cursor-grabbing" : "cursor-grab"}`}
+            dragging ? "cursor-grabbing" : "cursor-grab"
+          }`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
         >
+          {loading && kind === "image" && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center text-slate-300">
+              <Loader2 className="h-7 w-7 animate-spin" aria-hidden />
+              <span className="sr-only">Cargando documento…</span>
+            </div>
+          )}
+
           {kind === "pdf" ? (
             <div
               className="absolute inset-0 flex items-center justify-center p-3"
@@ -434,26 +477,32 @@ export function DigitizedDocumentViewer({
               className="absolute inset-0 flex items-center justify-center"
               style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}
             >
-              {/* Bounding box matches visual size after rotation */}
               <div
                 className="relative flex shrink-0 items-center justify-center"
                 style={{
-                  width: boxW || undefined,
-                  height: boxH || undefined,
-                  opacity: ready ? 1 : 0,
-                  transition: dragging ? "none" : "opacity 0.12s ease",
+                  width: boxW,
+                  height: boxH,
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
+                  ref={imgRef}
                   src={src}
                   alt={title}
                   draggable={false}
-                  onLoad={onImageLoad}
+                  onLoad={(e) => {
+                    const el = e.currentTarget;
+                    ingestImageSize(el.naturalWidth, el.naturalHeight);
+                  }}
+                  onError={() => setLoading(false)}
                   className="block max-w-none select-none shadow-lg"
                   style={{
-                    width: displayW || "auto",
-                    height: displayH || "auto",
+                    // Until measured: fill stage with object-fit so something is always visible
+                    width: hasSize ? displayW : "100%",
+                    height: hasSize ? displayH : "100%",
+                    maxWidth: hasSize ? undefined : "100%",
+                    maxHeight: hasSize ? undefined : "100%",
+                    objectFit: hasSize ? undefined : "contain",
                     transform: rotation ? `rotate(${rotation}deg)` : undefined,
                     transformOrigin: "center center",
                   }}

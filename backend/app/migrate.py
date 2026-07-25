@@ -11,7 +11,7 @@ logger = get_logger('migrate')
 _migrations_ok = False
 _migrations_error: str | None = None
 
-HEAD_REVISION = "p5user_modulos"
+HEAD_REVISION = "q6hist_docs"
 
 
 def migrations_status() -> dict:

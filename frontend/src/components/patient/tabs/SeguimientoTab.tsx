@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/Input";
 import { VoiceDictation } from "@/components/VoiceDictation";
 import { DocumentActions } from "@/components/DocumentActions";
+import { DocumentosHistoricos } from "@/components/patient/DocumentosHistoricos";
 import { SpecialtySelect } from "@/components/SpecialtySelect";
 import { TreatmentAutocomplete } from "@/components/TreatmentAutocomplete";
 import { Section } from "@/components/clinical/Section";
@@ -617,6 +618,10 @@ export function SeguimientoTab({
             Configuración
           </Button>
         </div>
+      </Section>
+
+      <Section title="Documentos históricos (archivo físico)" noSave>
+        <DocumentosHistoricos patientId={patientId} />
       </Section>
     </div>
   );

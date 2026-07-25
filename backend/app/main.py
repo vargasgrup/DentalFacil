@@ -16,6 +16,7 @@ from app.routers.odontogram import router as odontogram_router
 from app.routers.periodontogram import router as periodontogram_router
 from app.routers.tooth_media import router as tooth_media_router
 from app.routers.complementary_tests import router as complementary_tests_router
+from app.routers.historical_documents import router as historical_documents_router
 from app.routers.appointments import router as appointments_router, config_router, generate_reminders_job
 from app.routers.cash import router as cash_router
 from app.routers.documents import router as documents_router
@@ -84,6 +85,13 @@ async def lifespan(app: FastAPI):
         ensure_complementary_tests_schema()
     except Exception as exc:  # noqa: BLE001
         logger.error("ensure_complementary_tests_schema FAILED: %s", exc, exc_info=True)
+        raise
+    try:
+        from app.ensure_historical_documents_schema import ensure_historical_documents_schema
+
+        ensure_historical_documents_schema()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("ensure_historical_documents_schema FAILED: %s", exc, exc_info=True)
         raise
     try:
         from app.ensure_alta_retroactiva_schema import ensure_alta_retroactiva_schema
@@ -191,6 +199,7 @@ app.include_router(odontogram_router)
 app.include_router(periodontogram_router)
 app.include_router(tooth_media_router)
 app.include_router(complementary_tests_router)
+app.include_router(historical_documents_router)
 app.include_router(audit_router)
 app.include_router(appointments_router)
 app.include_router(config_router)

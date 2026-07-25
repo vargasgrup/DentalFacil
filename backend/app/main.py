@@ -25,6 +25,8 @@ from app.routers.audit import router as audit_router
 from app.routers.whatsapp_integration import router as whatsapp_integration_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.system_maintenance import router as system_maintenance_router
+from app.routers.backup import router as backup_router
+from app.services.backup_service import is_restore_in_progress, run_scheduled_backup_job
 
 configure_logging()
 logger = get_logger("main")
@@ -109,6 +111,13 @@ async def lifespan(app: FastAPI):
         logger.error("ensure_maintenance_schema FAILED: %s", exc, exc_info=True)
         raise
     try:
+        from app.ensure_backup_schema import ensure_backup_schema
+
+        ensure_backup_schema()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("ensure_backup_schema FAILED: %s", exc, exc_info=True)
+        raise
+    try:
         from app.ensure_alta_retroactiva_schema import ensure_alta_retroactiva_schema
 
         ensure_alta_retroactiva_schema()
@@ -132,10 +141,17 @@ async def lifespan(app: FastAPI):
         id="reminders",
         next_run_time=datetime.now() + timedelta(minutes=1),
     )
+    scheduler.add_job(
+        run_scheduled_backup_job,
+        "interval",
+        minutes=10,
+        id="backups",
+        next_run_time=datetime.now() + timedelta(minutes=2),
+    )
     scheduler.start()
     _scheduler = scheduler
     app.state.scheduler = scheduler
-    logger.info("lifespan ready (scheduler reminders started)")
+    logger.info("lifespan ready (scheduler reminders+backups started)")
     yield
     scheduler.shutdown()
     _scheduler = None
@@ -224,3 +240,17 @@ app.include_router(reports_router)
 app.include_router(dashboard_router)
 app.include_router(whatsapp_integration_router)
 app.include_router(system_maintenance_router)
+app.include_router(backup_router)
+
+
+@app.middleware("http")
+async def restore_maintenance_middleware(request, call_next):
+    path = request.url.path or ""
+    if is_restore_in_progress() and not path.startswith("/api/health"):
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Sistema en mantenimiento — restaurando backup"},
+        )
+    return await call_next(request)

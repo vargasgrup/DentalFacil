@@ -11,7 +11,7 @@ logger = get_logger('migrate')
 _migrations_ok = False
 _migrations_error: str | None = None
 
-HEAD_REVISION = "q8maint_cycle"
+HEAD_REVISION = "q9backup"
 
 
 def migrations_status() -> dict:

@@ -1,0 +1,198 @@
+"""Backup & restore API (ADMIN). Bootstrap restore allowed when user_count=0."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.core.deps import get_current_user, require_roles
+from app.core.rate_limit import enforce_rate_limit
+from app.core.roles import Rol
+from app.database import get_db
+from app.models import User
+from app.services import backup_service as svc
+from fastapi import Request
+
+router = APIRouter(prefix="/api/backup", tags=["backup"])
+
+
+class BackupSettingsOut(BaseModel):
+    auto_backup_enabled: bool
+    frequency: str
+    preferred_hour: str
+    retention_count: int
+    keep_manual: bool
+    last_backup_at: datetime | None = None
+
+
+class BackupSettingsUpdate(BaseModel):
+    auto_backup_enabled: bool | None = None
+    frequency: str | None = None
+    preferred_hour: str | None = None
+    retention_count: int | None = Field(default=None, ge=1, le=100)
+
+
+class BackupHistoryOut(BaseModel):
+    id: str
+    filename: str
+    triggered_by: str
+    status: str
+    error_message: str | None = None
+    size_bytes: int | None = None
+    duration_ms: int | None = None
+    keep: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/settings", response_model=BackupSettingsOut)
+def get_settings(
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles(Rol.ADMIN)),
+):
+    _ = admin
+    row = svc.get_or_create_backup_settings(db)
+    return BackupSettingsOut(
+        auto_backup_enabled=bool(row.auto_backup_enabled),
+        frequency=row.frequency,
+        preferred_hour=row.preferred_hour,
+        retention_count=int(row.retention_count or 10),
+        keep_manual=bool(row.keep_manual),
+        last_backup_at=row.last_backup_at,
+    )
+
+
+@router.patch("/settings", response_model=BackupSettingsOut)
+def patch_settings(
+    payload: BackupSettingsUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles(Rol.ADMIN)),
+):
+    _ = admin
+    row = svc.get_or_create_backup_settings(db)
+    data = payload.model_dump(exclude_unset=True)
+    if "frequency" in data and data["frequency"] not in ("daily", "every_12h", "weekly"):
+        raise HTTPException(status_code=400, detail="Frecuencia inválida")
+    for k, v in data.items():
+        setattr(row, k, v)
+    db.commit()
+    db.refresh(row)
+    return BackupSettingsOut(
+        auto_backup_enabled=bool(row.auto_backup_enabled),
+        frequency=row.frequency,
+        preferred_hour=row.preferred_hour,
+        retention_count=int(row.retention_count or 10),
+        keep_manual=bool(row.keep_manual),
+        last_backup_at=row.last_backup_at,
+    )
+
+
+@router.post("/generate", response_model=BackupHistoryOut)
+def generate_backup(
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles(Rol.ADMIN)),
+):
+    row = svc.create_backup(db, triggered_by="manual", user_id=admin.id, keep=True)
+    return BackupHistoryOut.model_validate(row)
+
+
+@router.get("/history", response_model=list[BackupHistoryOut])
+def history(
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles(Rol.ADMIN)),
+):
+    _ = admin
+    return [BackupHistoryOut.model_validate(r) for r in svc.list_history(db)]
+
+
+@router.get("/{backup_id}/download")
+def download(
+    backup_id: str,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles(Rol.ADMIN)),
+):
+    _ = admin
+    row = svc.get_history(db, backup_id)
+    from pathlib import Path
+
+    path = Path(row.abs_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Archivo de backup no encontrado en disco")
+    return FileResponse(path, filename=row.filename, media_type="application/zip")
+
+
+@router.delete("/{backup_id}", status_code=204)
+def delete_backup(
+    backup_id: str,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles(Rol.ADMIN)),
+):
+    svc.delete_backup(db, backup_id, user_id=admin.id)
+
+
+@router.post("/validate")
+async def validate_backup(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles(Rol.ADMIN)),
+):
+    _ = db
+    _ = admin
+    data = await file.read()
+    result = svc.validate_backup_bytes(data)
+    return {
+        "ok": result.ok,
+        "manifest": result.manifest,
+        "warnings": result.warnings,
+        "errors": result.errors,
+    }
+
+
+@router.post("/restore")
+async def restore_backup(
+    request: Request,
+    file: UploadFile = File(...),
+    confirm_token: str = Form(...),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles(Rol.ADMIN)),
+):
+    _ = request
+    data = await file.read()
+    return svc.restore_backup(
+        db,
+        data,
+        confirm_token=confirm_token,
+        user_id=admin.id,
+    )
+
+
+@router.post("/restore-bootstrap")
+async def restore_bootstrap(
+    request: Request,
+    file: UploadFile = File(...),
+    confirm_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Allowed only on empty installs (wizard) — no ADMIN yet."""
+    enforce_rate_limit(request, limit_per_minute=3, scope="backup-restore-bootstrap")
+    count = int(db.execute(text("SELECT COUNT(*) FROM users")).scalar() or 0)
+    if count > 0:
+        raise HTTPException(
+            status_code=403,
+            detail="La instalación ya tiene usuarios. Use Restaurar desde Configuración (ADMIN).",
+        )
+    data = await file.read()
+    return svc.restore_backup(
+        db,
+        data,
+        confirm_token=confirm_token,
+        user_id=None,
+        allow_empty_bootstrap=True,
+    )

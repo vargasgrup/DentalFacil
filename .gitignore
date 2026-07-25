@@ -42,3 +42,7 @@ backend/tests/_testdata/
 backend/app/assets/uploads/*
 !backend/app/assets/uploads/.gitkeep
 
+# Local backups (sensitive clinical data)
+backend/app/backups/
+**/backups/*.zip
+

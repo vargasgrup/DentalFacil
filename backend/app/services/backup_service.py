@@ -1,0 +1,639 @@
+"""Consistent SQLite backup + restore packages (zip with DB + uploads)."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import sqlite3
+import threading
+import time
+import zipfile
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, BinaryIO
+from zoneinfo import ZoneInfo
+
+from fastapi import HTTPException, status
+from sqlalchemy import inspect, text
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.logging_config import get_logger
+from app.migrate import HEAD_REVISION
+from app.models import BackupHistory, BackupSettings, User
+from app.models.ids import BACKUP_SETTINGS_ID, new_uuid
+from app.services.audit import log_audit
+
+logger = get_logger("backup_service")
+
+CLINIC_TZ = ZoneInfo("America/Lima")
+BACKUP_FORMAT_VERSION = "1.0"
+CONFIRM_TOKEN = "CONFIRMAR"
+
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_BACKUP_DIR = _BACKEND_ROOT / "app" / "backups"
+_CLINIC_UPLOADS = Path(__file__).resolve().parents[1] / "assets" / "uploads"
+
+_restore_lock = threading.Lock()
+_restoring = False
+
+
+def is_restore_in_progress() -> bool:
+    return _restoring
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _slug(text: str) -> str:
+    s = re.sub(r"[^a-zA-Z0-9]+", "-", (text or "clinica").strip().lower()).strip("-")
+    return (s or "clinica")[:40]
+
+
+def get_backup_dir() -> Path:
+    raw = (os.environ.get("BACKUP_DIRECTORY") or "").strip()
+    path = Path(raw) if raw else _DEFAULT_BACKUP_DIR
+    if not path.is_absolute():
+        path = _BACKEND_ROOT / path
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def resolve_sqlite_path() -> Path:
+    if not settings.is_sqlite:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "El respaldo completo está disponible para instalaciones SQLite locales. "
+                "Esta instancia usa otro motor de base de datos."
+            ),
+        )
+    from sqlalchemy.engine.url import make_url
+
+    db = make_url(settings.DATABASE_URL).database
+    if not db or db == ":memory:":
+        raise HTTPException(status_code=400, detail="Ruta de base de datos inválida")
+    path = Path(db)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    return path.resolve()
+
+
+def _upload_roots() -> dict[str, Path]:
+    tooth = Path(
+        os.environ.get("TOOTH_MEDIA_ROOT")
+        or str(_BACKEND_ROOT / "data" / "tooth_media")
+    )
+    comp = Path(
+        os.environ.get("COMPLEMENTARY_TESTS_ROOT")
+        or str(_BACKEND_ROOT / "data" / "complementary_tests")
+    )
+    hist = Path(
+        os.environ.get("HISTORICAL_DOCUMENTS_ROOT")
+        or str(_BACKEND_ROOT / "data" / "historical_documents")
+    )
+    return {
+        "tooth_media": tooth,
+        "complementary_tests": comp,
+        "historical_documents": hist,
+        "clinic_uploads": _CLINIC_UPLOADS,
+    }
+
+
+def get_or_create_backup_settings(db: Session) -> BackupSettings:
+    row = db.get(BackupSettings, BACKUP_SETTINGS_ID)
+    if row:
+        return row
+    row = BackupSettings(id=BACKUP_SETTINGS_ID)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _integrity_check(db_path: Path) -> None:
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute("PRAGMA integrity_check").fetchone()
+        if not row or str(row[0]).lower() != "ok":
+            raise HTTPException(
+                status_code=500,
+                detail=f"La base de datos no pasó integrity_check: {row}",
+            )
+    finally:
+        conn.close()
+
+
+def _snapshot_sqlite(src: Path, dest: Path) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        dest.unlink()
+    src_conn = sqlite3.connect(str(src))
+    try:
+        dst_conn = sqlite3.connect(str(dest))
+        try:
+            src_conn.backup(dst_conn)
+        finally:
+            dst_conn.close()
+    finally:
+        src_conn.close()
+
+
+def _row_counts(db: Session) -> dict[str, int]:
+    insp = inspect(db.bind)
+    out: dict[str, int] = {}
+    for table in insp.get_table_names():
+        try:
+            out[table] = int(db.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar() or 0)
+        except Exception:  # noqa: BLE001
+            out[table] = -1
+    return out
+
+
+def _copy_tree_into_zip(zf: zipfile.ZipFile, root: Path, arc_prefix: str) -> tuple[int, int]:
+    count = 0
+    size = 0
+    if not root.exists():
+        return 0, 0
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root).as_posix()
+        arc = f"{arc_prefix}/{rel}"
+        zf.write(path, arcname=arc)
+        count += 1
+        size += path.stat().st_size
+    return count, size
+
+
+def create_backup(
+    db: Session,
+    *,
+    triggered_by: str,
+    user_id: str | None = None,
+    keep: bool = False,
+) -> BackupHistory:
+    if is_restore_in_progress():
+        raise HTTPException(status_code=503, detail="Sistema en mantenimiento — restaurando backup")
+
+    t0 = time.perf_counter()
+    settings_row = get_or_create_backup_settings(db)
+    db_path = resolve_sqlite_path()
+    if not db_path.exists():
+        raise HTTPException(status_code=500, detail="No se encontró el archivo de base de datos")
+
+    _integrity_check(db_path)
+
+    clinic_name = settings.CLINIC_NAME or settings.APP_NAME or "clinica"
+    stamp = datetime.now(CLINIC_TZ).strftime("%Y%m%d_%H%M%S")
+    filename = f"dentalsimple_backup_{_slug(clinic_name)}_{stamp}.zip"
+    out_path = get_backup_dir() / filename
+
+    tmp_db = get_backup_dir() / f"_snap_{new_uuid()}.db"
+    history = BackupHistory(
+        id=new_uuid(),
+        filename=filename,
+        abs_path=str(out_path),
+        triggered_by=triggered_by,
+        status="error",
+        keep=keep or triggered_by == "manual",
+    )
+    db.add(history)
+    db.commit()
+
+    try:
+        _snapshot_sqlite(db_path, tmp_db)
+        rows = _row_counts(db)
+        file_count = 0
+        files_size = 0
+        with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.write(tmp_db, arcname="database/clinica.db")
+            for key, root in _upload_roots().items():
+                c, s = _copy_tree_into_zip(zf, root, f"uploads/{key}")
+                file_count += c
+                files_size += s
+            manifest = {
+                "app_name": settings.APP_NAME,
+                "backup_format_version": BACKUP_FORMAT_VERSION,
+                "created_at": datetime.now(CLINIC_TZ).isoformat(),
+                "source_head_revision": HEAD_REVISION,
+                "source_db_engine": "sqlite",
+                "tables_included": len(rows),
+                "row_counts": rows,
+                "uploads_file_count": file_count,
+                "uploads_total_size_bytes": files_size,
+                "db_sha256": _sha256_file(tmp_db),
+                "generated_by": triggered_by,
+                "app_instance_id": BACKUP_SETTINGS_ID,
+            }
+            zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+
+        history.status = "success"
+        history.size_bytes = out_path.stat().st_size
+        history.duration_ms = int((time.perf_counter() - t0) * 1000)
+        history.error_message = None
+        settings_row.last_backup_at = _utcnow()
+        db.commit()
+        db.refresh(history)
+
+        log_audit(
+            db,
+            patient_id=None,
+            entity_type="system",
+            entity_id="backup",
+            action="generate",
+            user_id=user_id,
+            detail={"filename": filename, "triggered_by": triggered_by, "size": history.size_bytes},
+        )
+        db.commit()
+        apply_retention(db)
+        logger.info("backup ok %s (%s bytes)", filename, history.size_bytes)
+        return history
+    except Exception as exc:  # noqa: BLE001
+        history.status = "error"
+        history.error_message = str(exc)[:2000]
+        history.duration_ms = int((time.perf_counter() - t0) * 1000)
+        db.commit()
+        logger.error("backup failed: %s", exc, exc_info=True)
+        if out_path.exists():
+            try:
+                out_path.unlink()
+            except OSError:
+                pass
+        raise HTTPException(status_code=500, detail=f"Error al generar backup: {exc}") from exc
+    finally:
+        if tmp_db.exists():
+            try:
+                tmp_db.unlink()
+            except OSError:
+                pass
+
+
+def apply_retention(db: Session) -> None:
+    cfg = get_or_create_backup_settings(db)
+    keep_n = max(1, int(cfg.retention_count or 10))
+    autos = (
+        db.query(BackupHistory)
+        .filter(
+            BackupHistory.triggered_by == "scheduled",
+            BackupHistory.status == "success",
+            BackupHistory.keep.is_(False),
+        )
+        .order_by(BackupHistory.created_at.desc())
+        .all()
+    )
+    for row in autos[keep_n:]:
+        try:
+            Path(row.abs_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+        db.delete(row)
+    db.commit()
+
+
+def list_history(db: Session, limit: int = 50) -> list[BackupHistory]:
+    return (
+        db.query(BackupHistory)
+        .order_by(BackupHistory.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+def get_history(db: Session, backup_id: str) -> BackupHistory:
+    row = db.get(BackupHistory, backup_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Backup no encontrado")
+    return row
+
+
+def delete_backup(db: Session, backup_id: str, *, user_id: str | None = None) -> None:
+    row = get_history(db, backup_id)
+    try:
+        Path(row.abs_path).unlink(missing_ok=True)
+    except OSError:
+        pass
+    db.delete(row)
+    log_audit(
+        db,
+        patient_id=None,
+        entity_type="system",
+        entity_id="backup",
+        action="delete",
+        user_id=user_id,
+        detail={"filename": row.filename},
+    )
+    db.commit()
+
+
+@dataclass
+class ValidationResult:
+    ok: bool
+    manifest: dict[str, Any]
+    warnings: list[str]
+    errors: list[str]
+
+
+def _safe_extract_member(zf: zipfile.ZipFile, member: str, dest: Path) -> Path:
+    info = zf.getinfo(member)
+    # Path traversal guard
+    target = (dest / info.filename).resolve()
+    if not str(target).startswith(str(dest.resolve())):
+        raise HTTPException(status_code=400, detail="El zip contiene rutas no permitidas")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with zf.open(info) as src, target.open("wb") as out:
+        shutil.copyfileobj(src, out)
+    return target
+
+
+def _alembic_revision_order() -> list[str]:
+    """Linear revision chain from alembic/versions (oldest → newest)."""
+    versions_dir = _BACKEND_ROOT / "alembic" / "versions"
+    if not versions_dir.is_dir():
+        return [HEAD_REVISION]
+    by_rev: dict[str, str | None] = {}
+    for path in versions_dir.glob("*.py"):
+        text_src = path.read_text(encoding="utf-8", errors="ignore")
+        rev_m = re.search(r'^revision\s*[:=]\s*["\']([^"\']+)["\']', text_src, re.M)
+        down_m = re.search(r'^down_revision\s*[:=]\s*([^\n]+)', text_src, re.M)
+        if not rev_m:
+            continue
+        rev = rev_m.group(1)
+        down_raw = (down_m.group(1).strip() if down_m else "None")
+        if down_raw in ("None", "none", ""):
+            by_rev[rev] = None
+        else:
+            dm = re.search(r'["\']([^"\']+)["\']', down_raw)
+            by_rev[rev] = dm.group(1) if dm else None
+    children = {v: k for k, v in by_rev.items() if v is not None}
+    roots = [r for r, d in by_rev.items() if d is None]
+    order: list[str] = []
+    cur = roots[0] if roots else HEAD_REVISION
+    seen: set[str] = set()
+    while cur and cur not in seen:
+        order.append(cur)
+        seen.add(cur)
+        cur = children.get(cur)  # type: ignore[assignment]
+    if HEAD_REVISION not in order:
+        order.append(HEAD_REVISION)
+    return order
+
+
+def validate_backup_bytes(data: bytes) -> ValidationResult:
+    warnings: list[str] = []
+    errors: list[str] = []
+    manifest: dict[str, Any] = {}
+    max_mb = int(os.environ.get("BACKUP_MAX_UPLOAD_MB") or "512")
+    if len(data) > max_mb * 1024 * 1024:
+        errors.append(f"El archivo supera el máximo de {max_mb} MB")
+        return ValidationResult(False, {}, warnings, errors)
+
+    import io
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            names = set(zf.namelist())
+            if "manifest.json" not in names:
+                errors.append("Falta manifest.json")
+            if "database/clinica.db" not in names:
+                errors.append("Falta database/clinica.db")
+            if errors:
+                return ValidationResult(False, {}, warnings, errors)
+            manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+            if manifest.get("backup_format_version") != BACKUP_FORMAT_VERSION:
+                warnings.append("Versión de formato de backup distinta; se intentará de todos modos")
+            src_rev = str(manifest.get("source_head_revision") or "")
+            if src_rev and src_rev != HEAD_REVISION:
+                order = _alembic_revision_order()
+                if src_rev in order and HEAD_REVISION in order:
+                    if order.index(src_rev) > order.index(HEAD_REVISION):
+                        errors.append(
+                            f"El backup es de una versión más nueva ({src_rev}) que esta "
+                            f"instalación ({HEAD_REVISION}). Actualice DentalSimple antes de restaurar."
+                        )
+                    else:
+                        warnings.append(
+                            f"Revisión de origen ({src_rev}) es anterior a esta instalación "
+                            f"({HEAD_REVISION}). Alembic puede aplicar migraciones pendientes."
+                        )
+                else:
+                    warnings.append(
+                        f"Revisión de origen ({src_rev}) difiere de esta instalación ({HEAD_REVISION}). "
+                        "Actualice el sistema destino si la restauración falla."
+                    )
+            # Hash check
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as td:
+                td_path = Path(td)
+                db_member = "database/clinica.db"
+                extracted = td_path / "clinica.db"
+                with zf.open(db_member) as src, extracted.open("wb") as out:
+                    shutil.copyfileobj(src, out)
+                digest = _sha256_file(extracted)
+                expected = str(manifest.get("db_sha256") or "")
+                if expected and digest != expected:
+                    errors.append("El hash SHA-256 de la base no coincide con el manifest")
+                else:
+                    try:
+                        _integrity_check(extracted)
+                    except HTTPException as exc:
+                        errors.append(str(exc.detail))
+    except zipfile.BadZipFile:
+        errors.append("Archivo ZIP inválido o corrupto")
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"No se pudo validar el paquete: {exc}")
+
+    return ValidationResult(ok=not errors, manifest=manifest, warnings=warnings, errors=errors)
+
+
+def _replace_tree(src_dir: Path, dest_dir: Path) -> int:
+    if dest_dir.exists():
+        shutil.rmtree(dest_dir, ignore_errors=True)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    count = 0
+    if not src_dir.exists():
+        return 0
+    for path in src_dir.rglob("*"):
+        if path.is_file():
+            rel = path.relative_to(src_dir)
+            target = dest_dir / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+            count += 1
+    return count
+
+
+def restore_backup(
+    db: Session,
+    data: bytes,
+    *,
+    confirm_token: str,
+    user_id: str | None = None,
+    allow_empty_bootstrap: bool = False,
+) -> dict[str, Any]:
+    global _restoring
+    if (confirm_token or "").strip().upper() != CONFIRM_TOKEN:
+        raise HTTPException(
+            status_code=400,
+            detail='Debe escribir CONFIRMAR para continuar con la restauración',
+        )
+
+    user_count = int(db.execute(text("SELECT COUNT(*) FROM users")).scalar() or 0)
+    if user_count > 0 and not allow_empty_bootstrap and not user_id:
+        raise HTTPException(status_code=401, detail="Se requiere autenticación de administrador")
+
+    validation = validate_backup_bytes(data)
+    if not validation.ok:
+        raise HTTPException(status_code=400, detail="; ".join(validation.errors))
+
+    if not _restore_lock.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail="Ya hay una restauración en curso")
+
+    report: dict[str, Any] = {"ok": False, "warnings": list(validation.warnings)}
+    import io
+    import tempfile
+
+    try:
+        # Safety backup BEFORE maintenance mode (create_backup rejects when restoring)
+        try:
+            if resolve_sqlite_path().exists() and user_count > 0:
+                create_backup(db, triggered_by="pre_restore_safety", user_id=user_id, keep=True)
+        except Exception as exc:  # noqa: BLE001
+            report["warnings"].append(f"No se pudo crear backup de seguridad previo: {exc}")
+
+        _restoring = True
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                for name in zf.namelist():
+                    if name.endswith("/"):
+                        continue
+                    _safe_extract_member(zf, name, td_path)
+
+            snap = td_path / "database" / "clinica.db"
+            if not snap.exists():
+                raise HTTPException(status_code=400, detail="El paquete no incluye database/clinica.db")
+            _integrity_check(snap)
+
+            live = resolve_sqlite_path()
+            # Dispose engine connections before replacing file
+            from app.database import engine
+
+            engine.dispose()
+            live.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(snap, live)
+
+            uploads_root = td_path / "uploads"
+            restored_files = 0
+            for key, dest in _upload_roots().items():
+                restored_files += _replace_tree(uploads_root / key, dest)
+
+            # Re-check and bump token versions after reconnect
+            engine.dispose()
+            from app.database import SessionLocal
+
+            with SessionLocal() as s2:
+                try:
+                    s2.execute(text("UPDATE users SET token_version = COALESCE(token_version, 0) + 1"))
+                    s2.commit()
+                except Exception:  # noqa: BLE001
+                    s2.rollback()
+                rows = _row_counts(s2)
+                log_audit(
+                    s2,
+                    patient_id=None,
+                    entity_type="system",
+                    entity_id="backup",
+                    action="restore",
+                    user_id=user_id,
+                    detail={"tables": len(rows), "files": restored_files},
+                )
+                s2.commit()
+
+            report.update(
+                {
+                    "ok": True,
+                    "tables_restored": len(rows),
+                    "row_counts": rows,
+                    "files_restored": restored_files,
+                    "source_head_revision": validation.manifest.get("source_head_revision"),
+                    "message": (
+                        "Restauración completada. Cierre sesión e inicie de nuevo "
+                        "con un usuario del backup."
+                    ),
+                }
+            )
+            logger.info("restore ok tables=%s files=%s", len(rows), restored_files)
+            return report
+    finally:
+        _restoring = False
+        _restore_lock.release()
+
+
+def should_run_scheduled(cfg: BackupSettings, now: datetime | None = None) -> bool:
+    if not cfg.auto_backup_enabled:
+        return False
+    now = now or datetime.now(CLINIC_TZ)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=CLINIC_TZ)
+    else:
+        now = now.astimezone(CLINIC_TZ)
+
+    try:
+        pref_h, pref_m = (cfg.preferred_hour or "22:00").split(":")
+        preferred = now.replace(hour=int(pref_h), minute=int(pref_m), second=0, microsecond=0)
+    except Exception:  # noqa: BLE001
+        preferred = now.replace(hour=22, minute=0, second=0, microsecond=0)
+
+    last = cfg.last_backup_at
+    if last is not None:
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        last_local = last.astimezone(CLINIC_TZ)
+    else:
+        last_local = None
+
+    freq = (cfg.frequency or "daily").lower()
+    if freq == "every_12h":
+        if last_local and (now - last_local) < timedelta(hours=12):
+            return False
+        return True
+    if freq == "weekly":
+        if last_local and (now - last_local) < timedelta(days=7):
+            return False
+        # run on/after preferred hour once per week window
+        return now >= preferred or last_local is None
+    # daily
+    if last_local and last_local.date() == now.date():
+        return False
+    return now >= preferred
+
+
+def run_scheduled_backup_job() -> None:
+    """APScheduler entrypoint — check settings and create backup if due."""
+    if is_restore_in_progress():
+        return
+    from app.database import SessionLocal
+
+    try:
+        with SessionLocal() as db:
+            cfg = get_or_create_backup_settings(db)
+            if should_run_scheduled(cfg):
+                create_backup(db, triggered_by="scheduled")
+    except Exception as exc:  # noqa: BLE001
+        logger.error("scheduled backup job failed: %s", exc, exc_info=True)

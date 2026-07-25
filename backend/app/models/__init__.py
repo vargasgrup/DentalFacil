@@ -15,6 +15,7 @@ from app.models.appointment import Appointment, AppointmentReminder
 from app.models.cash import CashSession, CashTransaction
 from app.models.document import DocumentGenerated
 from app.models.clinic_settings import ClinicSettings
+from app.models.backup import BackupSettings, BackupHistory
 
 __all__ = [
     "User",
@@ -36,4 +37,6 @@ __all__ = [
     "CashTransaction",
     "DocumentGenerated",
     "ClinicSettings",
+    "BackupSettings",
+    "BackupHistory",
 ]

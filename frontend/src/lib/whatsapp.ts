@@ -92,47 +92,21 @@ export function openWhatsAppChat(
 }
 
 /**
- * @deprecated Prefer `documentSender.sendDocument`.
+ * @deprecated Removed — use `documentSender.sendDocument` for PDFs.
+ * Opening wa.me for PDF documents is forbidden by product rules.
  */
 export async function downloadAndOpenWhatsApp(
-  url: string,
-  telefono: string | undefined | null,
-  mensaje: string,
-  onSent?: () => Promise<void>,
-  filenameHint?: string
+  _url: string,
+  _telefono: string | undefined | null,
+  _mensaje: string,
+  _onSent?: () => Promise<void>,
+  _filenameHint?: string
 ): Promise<{ success: boolean; error?: string }> {
-  try {
-    const token = getToken();
-    const resp = await fetch(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!resp.ok) throw new Error("No se pudo descargar el documento");
-    const blob = await resp.blob();
-
-    const blobUrl = URL.createObjectURL(blob);
-    const a = window.document.createElement("a");
-    a.href = blobUrl;
-    a.download = filenameHint || "documento.pdf";
-    window.document.body.appendChild(a);
-    a.click();
-    window.document.body.removeChild(a);
-    URL.revokeObjectURL(blobUrl);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, error: "Error al descargar: " + msg };
-  }
-
-  const opened = openWhatsAppChat(telefono, sanitizeWhatsAppText(mensaje));
-  if (!opened.success) return opened;
-
-  if (onSent) {
-    try {
-      await onSent();
-    } catch {
-      /* ignore */
-    }
-  }
-  return { success: true };
+  return {
+    success: false,
+    error:
+      "Este método está deshabilitado. Usa el envío nativo de documentos (Cloud API / Web Share).",
+  };
 }
 
 export async function openWhatsAppText(

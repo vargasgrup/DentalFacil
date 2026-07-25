@@ -47,6 +47,7 @@ interface Patient {
   apellidos: string;
   telefono?: string;
   numero_documento?: string;
+  activo?: boolean;
 }
 
 interface Doctor {
@@ -103,6 +104,10 @@ function AgendaPageInner() {
     if (pid) {
       apiFetch<Patient>(`/api/patients/${pid}`)
         .then((p) => {
+          if (p.activo === false) {
+            setError("Este paciente está dado de baja. Reactívalo antes de agendar.");
+            return;
+          }
           setSelectedPatient({
             id: p.id,
             numero_ficha: p.numero_ficha,
@@ -116,7 +121,9 @@ function AgendaPageInner() {
           setShowNew(true);
           setView("day");
         })
-        .catch(() => {});
+        .catch(() => {
+          setError("No se pudo cargar el paciente para agendar.");
+        });
       return;
     }
 

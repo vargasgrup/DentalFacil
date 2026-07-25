@@ -98,6 +98,15 @@ export function FichaHeader({ patient, onBack, onPatientUpdated }: FichaHeaderPr
 
       {msg && <p className="mt-2 text-sm text-slate-500">{msg}</p>}
 
+      {inactive && (
+        <p
+          role="status"
+          className="mt-2 rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 text-sm text-warning-800"
+        >
+          Paciente inactivo. No se pueden agendar citas ni registrar cobros hasta reactivarlo.
+        </p>
+      )}
+
       {patient.es_migrado && (
         <p className="mt-2 inline-flex items-center rounded-lg border border-slate-200 bg-surface-subtle px-3 py-1.5 text-sm text-slate-700">
           <span aria-hidden className="mr-1.5">

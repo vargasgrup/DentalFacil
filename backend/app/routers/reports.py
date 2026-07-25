@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user
+from app.core.deps import require_module
 from app.database import get_db
 from app.models import User
 from app.services.pdf_generator import generate_pdf
@@ -54,7 +54,7 @@ def report_resumen(
     start: datetime = Query(...),
     end: datetime = Query(...),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("reportes")),
 ):
     """KPIs consolidados Agenda + Evolución + Caja para el dashboard de reportes."""
     return build_resumen(db, start, end)
@@ -67,7 +67,7 @@ def report_caja(
     fmt: Optional[str] = Query(None, regex="^(80mm|A5|A4)$"),
     csv_export: bool = Query(False),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("reportes")),
 ):
     payload = build_caja_report(db, start, end)
     if csv_export:
@@ -83,7 +83,7 @@ def report_pacientes(
     fmt: Optional[str] = Query(None, regex="^(80mm|A5|A4)$"),
     csv_export: bool = Query(False),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("reportes")),
 ):
     """Pacientes atendidos: citas + evolución + cobros de caja en el período."""
     payload = build_pacientes_report(db, start, end, doctor_id)
@@ -99,7 +99,7 @@ def report_tratamientos(
     fmt: Optional[str] = Query(None, regex="^(80mm|A5|A4)$"),
     csv_export: bool = Query(False),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("reportes")),
 ):
     payload = build_tratamientos_report(db, start, end)
     if csv_export:

@@ -41,6 +41,7 @@ export default function PacientesPage() {
 
   const [patients, setPatients] = useState<PatientAdmin[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
   const [especialidadFilter, setEspecialidadFilter] = useState("");
   const [estadoFilter, setEstadoFilter] = useState<EstadoFilter>("activos");
@@ -65,14 +66,20 @@ export default function PacientesPage() {
 
   const load = async () => {
     setLoading(true);
+    setLoadError("");
     const params = new URLSearchParams();
     params.set("estado", estadoFilter);
     if (especialidadFilter) params.set("especialidad", especialidadFilter);
     try {
       const data = await apiFetch<PatientAdmin[]>(`/api/patients?${params.toString()}`);
       setPatients(data);
-    } catch {
+    } catch (err) {
       setPatients([]);
+      setLoadError(
+        err instanceof ApiError
+          ? err.message
+          : "No se pudieron cargar los pacientes. Revisa la conexión e intenta de nuevo."
+      );
     } finally {
       setLoading(false);
     }
@@ -239,6 +246,18 @@ export default function PacientesPage() {
         </p>
       )}
 
+      {loadError && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700"
+        >
+          <span>{loadError}</span>
+          <Button type="button" variant="secondary" onClick={() => void load()}>
+            Reintentar
+          </Button>
+        </div>
+      )}
+
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -373,9 +392,14 @@ export default function PacientesPage() {
                             <button
                               type="button"
                               role="menuitem"
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-brand-50 hover:text-brand-800"
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-brand-50 hover:text-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                              disabled={inactive}
                               onClick={() => {
                                 setMenuId(null);
+                                if (inactive) {
+                                  showMsg("err", "Reactiva al paciente antes de agendar una cita.");
+                                  return;
+                                }
                                 router.push(`/agenda?nueva=1&patient_id=${p.id}`);
                               }}
                             >

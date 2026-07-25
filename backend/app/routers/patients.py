@@ -360,12 +360,35 @@ def deactivate_patient(
     user: User = Depends(get_current_user),
 ):
     """Baja lógica: oculta al paciente de la lista activa conservando la historia clínica."""
+    from datetime import datetime, timezone
+
     p = db.get(Patient, patient_id)
     if not p:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
     if not p.activo:
         return p
     p.activo = False
+
+    # Cancel future scheduled appointments + pending reminders for this patient
+    now = datetime.now(timezone.utc)
+    future_apts = (
+        db.query(Appointment)
+        .filter(
+            Appointment.patient_id == patient_id,
+            Appointment.estado == "programada",
+            Appointment.fecha_hora >= now,
+        )
+        .all()
+    )
+    apt_ids = [a.id for a in future_apts]
+    for apt in future_apts:
+        apt.estado = "cancelada"
+    if apt_ids:
+        db.query(AppointmentReminder).filter(
+            AppointmentReminder.appointment_id.in_(apt_ids),
+            AppointmentReminder.estado == "pendiente",
+        ).delete(synchronize_session=False)
+
     log_audit(
         db,
         patient_id=p.id,
@@ -373,7 +396,10 @@ def deactivate_patient(
         entity_id=p.id,
         action="deactivate",
         user_id=user.id,
-        detail={"numero_ficha": p.numero_ficha},
+        detail={
+            "numero_ficha": p.numero_ficha,
+            "citas_canceladas": len(apt_ids),
+        },
     )
     db.commit()
     db.refresh(p)
@@ -438,18 +464,7 @@ def delete_patient(
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
 
     if not permanent:
-        if p.activo:
-            p.activo = False
-            log_audit(
-                db,
-                patient_id=p.id,
-                entity_type="patient",
-                entity_id=p.id,
-                action="deactivate",
-                user_id=user.id,
-                detail={"via": "delete", "numero_ficha": p.numero_ficha},
-            )
-            db.commit()
+        deactivate_patient(patient_id=patient_id, db=db, user=user)
         return None
 
     if user.rol != Rol.ADMIN.value:
@@ -484,10 +499,24 @@ def delete_patient(
     db.query(DocumentGenerated).filter(DocumentGenerated.patient_id == patient_id).delete(
         synchronize_session=False
     )
+    # Preserve accounting rows but detach patient + evolution FKs before deleting clinical rows
+    evo_ids = [
+        row[0]
+        for row in db.query(ClinicalEvolutionEntry.id)
+        .filter(ClinicalEvolutionEntry.patient_id == patient_id)
+        .all()
+    ]
     db.query(CashTransaction).filter(CashTransaction.patient_id == patient_id).update(
-        {CashTransaction.patient_id: None},
+        {CashTransaction.patient_id: None, CashTransaction.evolution_entry_id: None},
         synchronize_session=False,
     )
+    if evo_ids:
+        db.query(CashTransaction).filter(
+            CashTransaction.evolution_entry_id.in_(evo_ids)
+        ).update(
+            {CashTransaction.evolution_entry_id: None},
+            synchronize_session=False,
+        )
     db.query(ClinicalAuditLog).filter(ClinicalAuditLog.patient_id == patient_id).delete(
         synchronize_session=False
     )

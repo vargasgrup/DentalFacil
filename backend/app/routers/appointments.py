@@ -6,13 +6,14 @@ from fastapi.responses import FileResponse
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user, require_roles
+from app.core.deps import get_current_user, require_module, require_roles
 from app.core.roles import Rol
 from app.database import SessionLocal, get_db
 from app.db_prefetch import prefetch_patients, prefetch_users
 from app.logging_config import get_logger
 from app.models import Appointment, AppointmentReminder, Patient, User, ClinicSettings
 from app.models.ids import CLINIC_SETTINGS_ID
+from app.services.patient_access import get_active_patient_or_404
 from app.schemas.appointment import (
     AppointmentCreate,
     AppointmentOut,
@@ -31,6 +32,7 @@ from app.services.clinic_profile import (
     ensure_uploads_dir,
     get_clinic_profile,
 )
+from app.services.patient_access import get_active_patient_or_404
 from app.services.reminder_messages import (
     DEFAULT_REMINDER_TEMPLATE,
     build_reminder_message,
@@ -165,8 +167,7 @@ def create_appointment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not db.get(Patient, payload.patient_id):
-        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    get_active_patient_or_404(db, payload.patient_id)
     _assert_within_clinic_hours(db, payload.fecha_hora)
     fecha_utc = _as_utc(payload.fecha_hora)
     if _check_overlap(db, payload.doctor_id, fecha_utc, payload.duracion_minutos):
@@ -196,6 +197,7 @@ def update_appointment(
     apt = db.get(Appointment, appointment_id)
     if not apt:
         raise HTTPException(status_code=404, detail="Cita no encontrada")
+    get_active_patient_or_404(db, apt.patient_id)
     if payload.fecha_hora or payload.duracion_minutos:
         new_time = _as_utc(payload.fecha_hora) if payload.fecha_hora else _as_utc(apt.fecha_hora)
         new_dur = payload.duracion_minutos or apt.duracion_minutos
@@ -223,6 +225,9 @@ def delete_appointment(
     apt = db.get(Appointment, appointment_id)
     if not apt:
         raise HTTPException(status_code=404, detail="Cita no encontrada")
+    db.query(AppointmentReminder).filter(
+        AppointmentReminder.appointment_id == appointment_id
+    ).delete(synchronize_session=False)
     db.delete(apt)
     db.commit()
 
@@ -334,7 +339,7 @@ def get_reminder_config_api(
 def update_reminder_config_api(
     payload: ReminderConfigUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("configuracion")),
 ):
     cfg = save_reminder_config(
         db,
@@ -623,14 +628,12 @@ def generate_reminders_job():
         for apt in appts:
             existing = existing_by_apt.get(apt.id)
             patient = patients.get(apt.patient_id)
-            if existing:
-                if patient:
-                    existing.mensaje_sugerido = build_reminder_message(
-                        db, apt, patient, template
-                    )
+            if not patient or patient.activo is False:
                 continue
-
-            if not patient:
+            if existing:
+                existing.mensaje_sugerido = build_reminder_message(
+                    db, apt, patient, template
+                )
                 continue
 
             mensaje = build_reminder_message(db, apt, patient, template)

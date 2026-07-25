@@ -101,7 +101,13 @@ function validateFile(file: File): string | null {
   return null;
 }
 
-export function DocumentosHistoricos({ patientId }: { patientId: string }) {
+export function DocumentosHistoricos({
+  patientId,
+  readOnly = false,
+}: {
+  patientId: string;
+  readOnly?: boolean;
+}) {
   const [items, setItems] = useState<HistoricalDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -403,6 +409,7 @@ export function DocumentosHistoricos({ patientId }: { patientId: string }) {
         </p>
       )}
 
+      {!readOnly && (
       <div className="rounded-xl border border-slate-200 bg-surface-subtle p-4">
         <h3 className="mb-3 text-sm font-semibold text-slate-800">
           Agregar documento histórico
@@ -524,6 +531,7 @@ export function DocumentosHistoricos({ patientId }: { patientId: string }) {
           />
         </div>
       </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -637,6 +645,7 @@ export function DocumentosHistoricos({ patientId }: { patientId: string }) {
                   >
                     Descargar
                   </Button>
+                  {!readOnly && (
                   <button
                     type="button"
                     onClick={() => void onDelete(item)}
@@ -645,6 +654,7 @@ export function DocumentosHistoricos({ patientId }: { patientId: string }) {
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
+                  )}
                 </div>
               </div>
             </li>

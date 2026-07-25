@@ -7,9 +7,11 @@ from app.models import (
     CashTransaction,
     ClinicalEvolutionEntry,
     ClinicalRecord,
-    Patient,
+    OdontogramSnapshot,
     User,
 )
+from app.services.patient_access import get_active_patient_or_404, get_patient_or_404
+
 from app.schemas.clinical import (
     ClinicalEvolutionEntryCreate,
     ClinicalEvolutionEntryOut,
@@ -25,10 +27,13 @@ from app.odontogram.plans import normalize_plans
 router = APIRouter(prefix="/api/clinical", tags=["clinical"])
 
 
-def _get_or_create_record(db: Session, patient_id: str) -> ClinicalRecord:
-    patient = db.get(Patient, patient_id)
-    if not patient:
-        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+def _get_or_create_record(
+    db: Session, patient_id: str, *, require_active: bool = False
+) -> ClinicalRecord:
+    if require_active:
+        get_active_patient_or_404(db, patient_id)
+    else:
+        get_patient_or_404(db, patient_id)
     record = db.query(ClinicalRecord).filter(ClinicalRecord.patient_id == patient_id).first()
     if not record:
         record = ClinicalRecord(patient_id=patient_id)
@@ -105,7 +110,7 @@ def update_record(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    record = _get_or_create_record(db, patient_id)
+    record = _get_or_create_record(db, patient_id, require_active=True)
     data = payload.model_dump(exclude_unset=True)
     if "plan_tratamiento" in data and data["plan_tratamiento"] is not None:
         from app.services.plan_evolution_sync import sync_active_plan_to_evolution
@@ -151,7 +156,7 @@ def update_consentimiento(
     user: User = Depends(get_current_user),
 ):
     from datetime import datetime, timezone
-    record = _get_or_create_record(db, patient_id)
+    record = _get_or_create_record(db, patient_id, require_active=True)
     record.consentimiento_firmado = payload.firmado
     record.consentimiento_fecha = datetime.now(timezone.utc) if payload.firmado else None
     if payload.firma_odontologo is not None:
@@ -201,7 +206,7 @@ def create_evolution(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _get_or_create_record(db, patient_id)  # ensure patient + record exist
+    _get_or_create_record(db, patient_id, require_active=True)
     cantidad = float(payload.cantidad or 1) or 1.0
     unit = float(payload.costo_unitario or 0)
     costo = float(payload.costo) if payload.costo is not None else cantidad * unit
@@ -242,6 +247,7 @@ def update_evolution(
     entry = db.get(ClinicalEvolutionEntry, entry_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Entrada no encontrada")
+    get_active_patient_or_404(db, entry.patient_id)
     data = payload.model_dump(exclude_unset=True)
     # Bloquear backdating / cambio de origen aunque el cliente envíe campos extras
     data.pop("fecha", None)
@@ -281,6 +287,14 @@ def delete_evolution(
     entry = db.get(ClinicalEvolutionEntry, entry_id)
     if not entry or entry.patient_id != patient_id:
         raise HTTPException(status_code=404, detail="Entrada no encontrada")
+    get_active_patient_or_404(db, patient_id)
+    # Preserve cash/odontogram history: clear FKs before deleting evolution
+    db.query(CashTransaction).filter(
+        CashTransaction.evolution_entry_id == entry_id
+    ).update({CashTransaction.evolution_entry_id: None}, synchronize_session=False)
+    db.query(OdontogramSnapshot).filter(
+        OdontogramSnapshot.evolution_entry_id == entry_id
+    ).update({OdontogramSnapshot.evolution_entry_id: None}, synchronize_session=False)
     db.delete(entry)
     db.commit()
 
@@ -355,8 +369,7 @@ def payment_targets(
     user: User = Depends(get_current_user),
 ):
     """Open plan/evolución lines with saldo — for payment allocation UI."""
-    if not db.get(Patient, patient_id):
-        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    get_patient_or_404(db, patient_id)
     from app.services.payment_allocation import list_payment_targets
 
     targets = list_payment_targets(db, patient_id)

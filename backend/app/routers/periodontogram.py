@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models import Patient, User
 from app.models.periodontogram import PeriodontogramEntry
 from app.services.audit import log_audit
+from app.services.patient_access import get_active_patient_or_404
 
 router = APIRouter(prefix="/api/periodontogram", tags=["periodontogram"])
 
@@ -73,8 +74,7 @@ def upsert_perio(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not db.get(Patient, patient_id):
-        raise HTTPException(404, "Paciente no encontrado")
+    get_active_patient_or_404(db, patient_id)
     denticion = payload.denticion if payload.denticion in ("permanente", "temporal", "mixta") else "permanente"
     row = (
         db.query(PeriodontogramEntry)

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_module
 from app.database import get_db
 from app.db_prefetch import prefetch_patients
 from app.models import CashSession, CashTransaction, Patient, User
@@ -14,6 +14,7 @@ from app.schemas.cash import (
     CashTransactionCreate,
     CashTransactionOut,
 )
+from app.services.patient_access import get_active_patient_or_404
 
 router = APIRouter(prefix="/api/cash", tags=["cash"])
 
@@ -236,7 +237,7 @@ def get_current_session(
 def open_session(
     payload: CashSessionOpen,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("caja")),
 ):
     if _get_open_session(db):
         raise HTTPException(status_code=400, detail="Ya hay una caja abierta")
@@ -254,7 +255,7 @@ def open_session(
 @router.post("/session/close", response_model=CashCloseSummary)
 def close_session(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("caja")),
 ):
     session = _get_open_session(db)
     if not session:
@@ -296,7 +297,7 @@ def close_session(
 @router.get("/transactions", response_model=list[CashTransactionOut])
 def list_transactions(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("caja")),
 ):
     session = _get_open_session(db)
     if not session:
@@ -354,12 +355,12 @@ def _ensure_open_session(db: Session, user: User) -> CashSession:
 def create_transaction(
     payload: CashTransactionCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("caja")),
 ):
     if payload.tipo not in ("ingreso", "egreso"):
         raise HTTPException(status_code=400, detail="Tipo debe ser 'ingreso' o 'egreso'")
-    if payload.patient_id and not db.get(Patient, payload.patient_id):
-        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    if payload.patient_id:
+        get_active_patient_or_404(db, payload.patient_id)
     if float(payload.monto) <= 0:
         raise HTTPException(status_code=400, detail="El monto debe ser mayor a cero")
 

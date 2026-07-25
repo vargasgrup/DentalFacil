@@ -62,7 +62,14 @@ def _make_engine():
         )
     except Exception as exc:  # noqa: BLE001
         logger.error(f"[dentalfacil] ERROR create_engine: {exc}")
+        if settings.is_production:
+            raise RuntimeError(
+                f"No se pudo abrir DATABASE_URL en producción: {exc}"
+            ) from exc
         fallback = "sqlite:///./data/clinica_fallback.db"
+        logger.warning(
+            "[dentalfacil] Using local SQLite fallback DB (dev only): %s", fallback
+        )
         _ensure_sqlite_parent(fallback)
         return create_engine(
             fallback,

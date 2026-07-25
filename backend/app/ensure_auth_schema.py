@@ -31,7 +31,10 @@ def ensure_auth_schema() -> None:
     if settings.is_sqlite:
         try:
             _ensure_sqlite_user_columns()
-            logger.info("[dentalfacil] auth schema (SQLite): user columns ensured")
+            from app.models.revoked_token import RevokedToken
+
+            RevokedToken.__table__.create(bind=engine, checkfirst=True)
+            logger.info("[dentalfacil] auth schema (SQLite): user columns + revoked_tokens ensured")
         except Exception as exc:  # noqa: BLE001
             logger.warning("[dentalfacil] SQLite auth column ensure skipped: %s", exc)
         return

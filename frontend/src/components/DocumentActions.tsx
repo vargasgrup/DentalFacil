@@ -199,7 +199,6 @@ export function DocumentActions({
       });
     } catch {
       setPreviewError("No se pudo cargar la previsualización");
-      alert("Error al previsualizar el documento");
     } finally {
       setBusy(null);
     }
@@ -211,6 +210,7 @@ export function DocumentActions({
 
   const handlePrint = async (fromPreview?: boolean) => {
     setBusy("print");
+    setSendHint(null);
     try {
       let blob: Blob;
       if (fromPreview && previewBlob) {
@@ -223,7 +223,7 @@ export function DocumentActions({
       await printPdfBlob(blob, { title: label, formatHint: format });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error al imprimir el documento";
-      alert(msg);
+      setSendHint(msg);
     } finally {
       setBusy(null);
     }
@@ -231,6 +231,7 @@ export function DocumentActions({
 
   const handleDownload = async () => {
     setBusy("download");
+    setSendHint(null);
     try {
       await prepareFetch();
       const { blob, filename } = await fetchPdfBlob(fullUrl);
@@ -243,7 +244,7 @@ export function DocumentActions({
       document.body.removeChild(a);
       URL.revokeObjectURL(blobUrl);
     } catch {
-      alert("Error al descargar el documento");
+      setSendHint("Error al descargar el documento");
     } finally {
       setBusy(null);
     }
@@ -272,12 +273,14 @@ export function DocumentActions({
           setSendHint("Enviado automáticamente al WhatsApp del paciente (Cloud API).");
         } else if (result.strategy === "web_share") {
           setSendHint("Elige WhatsApp en el selector del sistema (PDF adjunto).");
+        } else {
+          setSendHint(null);
         }
-      } else {
-        alert(result.error || "Error al enviar");
+      } else if (result.error) {
+        setSendHint(result.error);
       }
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Error al enviar");
+      setSendHint(err instanceof Error ? err.message : "Error al enviar");
     } finally {
       setBusy(null);
     }

@@ -19,6 +19,7 @@ from app.odontogram.conditions import (
     normalize_condition,
 )
 from app.services.audit import log_audit
+from app.services.patient_access import get_active_patient_or_404, get_patient_or_404
 
 router = APIRouter(prefix="/api/odontogram", tags=["odontogram"])
 
@@ -261,8 +262,7 @@ def create_snapshot(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not db.get(Patient, patient_id):
-        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    get_active_patient_or_404(db, patient_id)
     denticion = payload.denticion if payload.denticion in ("permanente", "temporal") else "permanente"
     origen = payload.origen if payload.origen in ("tiempo_real", "migracion") else "tiempo_real"
     default_label = (
@@ -403,8 +403,7 @@ def upsert_entry(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not db.get(Patient, patient_id):
-        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    get_active_patient_or_404(db, patient_id)
 
     denticion = payload.denticion if payload.denticion in ("permanente", "temporal") else "permanente"
     condicion = _store_estado(payload.estado)
@@ -474,6 +473,7 @@ def clear_odontogram(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    get_active_patient_or_404(db, patient_id)
     q = db.query(OdontogramEntry).filter(
         OdontogramEntry.patient_id == patient_id,
         OdontogramEntry.denticion == denticion,
@@ -517,6 +517,7 @@ def delete_entry(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    get_active_patient_or_404(db, patient_id)
     entry = (
         db.query(OdontogramEntry)
         .filter(

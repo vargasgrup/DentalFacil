@@ -296,6 +296,10 @@ const [patient, setPatient] = useState<Patient | null>(null);
   };
 
   const saveRecord = async () => {
+    if (patient?.activo === false) {
+      setError("Paciente inactivo. Reactívalo antes de editar la ficha clínica.");
+      return;
+    }
     setRecordSaved("saving");
     setError("");
     const odontoText = buildOdontoText(habitos, odonNotes);
@@ -385,6 +389,10 @@ const [patient, setPatient] = useState<Patient | null>(null);
 
   const addEvolution = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (patient?.activo === false) {
+      setError("Paciente inactivo. Reactívalo antes de registrar evolución.");
+      return;
+    }
     try {
       const cantidad = Math.max(1, parseFloat(newEvo.cantidad) || 1);
       const costo_unitario = parseFloat(newEvo.costo_unitario) || 0;
@@ -438,6 +446,10 @@ const [patient, setPatient] = useState<Patient | null>(null);
     e.preventDefault();
     setError("");
     setPayError("");
+    if (patient?.activo === false) {
+      setPayError("Paciente inactivo. Reactívalo antes de registrar cobros.");
+      return;
+    }
     const monto = parseFloat(payMonto);
     if (!Number.isFinite(monto) || monto <= 0) {
       setPayError("Ingresa un monto válido mayor a cero.");

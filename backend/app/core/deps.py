@@ -49,3 +49,18 @@ def require_roles(*roles: Rol):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes")
         return user
     return checker
+
+
+def require_module(module: str):
+    """Enforce module ACL stored on the user (mirrors frontend canAccessModule)."""
+    from app.core.modules import user_can_access
+
+    def checker(user: User = Depends(get_current_user)) -> User:
+        if not user_can_access(user.rol, getattr(user, "modulos_acceso", None), module):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Sin acceso al módulo '{module}'",
+            )
+        return user
+
+    return checker

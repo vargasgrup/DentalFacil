@@ -335,15 +335,17 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                 <p className="truncate text-sm font-medium text-slate-700">{user?.nombre}</p>
                 <p className="truncate text-xs text-slate-400">{user?.email}</p>
               </div>
-              <Link
-                href="/configuracion"
-                role="menuitem"
-                onClick={() => setUserOpen(false)}
-                className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 transition-smooth hover:bg-slate-50"
-              >
-                <Settings className="h-4 w-4 text-slate-400" />
-                Configuración
-              </Link>
+              {canAccessModule(user, "configuracion") && (
+                <Link
+                  href="/configuracion"
+                  role="menuitem"
+                  onClick={() => setUserOpen(false)}
+                  className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 transition-smooth hover:bg-slate-50"
+                >
+                  <Settings className="h-4 w-4 text-slate-400" />
+                  Configuración
+                </Link>
+              )}
               <button
                 type="button"
                 role="menuitem"

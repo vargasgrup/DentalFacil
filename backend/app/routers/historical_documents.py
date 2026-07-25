@@ -17,6 +17,7 @@ from app.database import get_db
 from app.models import Patient, User
 from app.models.historical_documents import HistoricalDocument
 from app.services.audit import log_audit
+from app.services.patient_access import get_active_patient_or_404
 
 router = APIRouter(prefix="/api/historical-documents", tags=["historical-documents"])
 
@@ -231,8 +232,7 @@ async def upload_document(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not db.get(Patient, patient_id):
-        raise HTTPException(404, "Paciente no encontrado")
+    get_active_patient_or_404(db, patient_id)
     if tipo not in TIPOS:
         raise HTTPException(400, "Tipo de documento inválido")
     src = (source or "upload").strip().lower()

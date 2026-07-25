@@ -13,6 +13,8 @@ import { MoneyCard } from "@/components/clinical/MoneyCard";
 import { formatDateTime } from "@/lib/datetime";
 import { especialidadShort } from "@/lib/especialidades";
 import { normalizeEstado, type TreatmentPlans } from "@/lib/treatmentPlans";
+import { useAuth } from "@/lib/auth";
+import { canAccessModule } from "@/lib/roles";
 import { FIELD_CLASS } from "../constants";
 import type {
   ClinicalRecord,
@@ -109,6 +111,8 @@ export function SeguimientoTab({
   saveRecord,
   onNavigate,
 }: SeguimientoTabProps) {
+  const { user } = useAuth();
+  const inactive = patient.activo === false;
   return (
     <div
       id="ficha-panel-seguimiento"
@@ -122,6 +126,8 @@ export function SeguimientoTab({
           <Button
             variant="secondary"
             onClick={() => setShowEvoForm(!showEvoForm)}
+            disabled={inactive}
+            title={inactive ? "Paciente inactivo — solo lectura" : undefined}
             icon={!showEvoForm ? <Plus className="h-4 w-4" /> : undefined}
           >
             {showEvoForm ? "Cancelar" : "Nueva entrada"}
@@ -413,6 +419,8 @@ export function SeguimientoTab({
             <Button
               variant="secondary"
               onClick={openPaymentForm}
+              disabled={inactive}
+              title={inactive ? "Paciente inactivo — solo lectura" : undefined}
               icon={!showPayment ? <Plus className="h-4 w-4" /> : undefined}
             >
               {showPayment ? "Cancelar" : "Registrar pago"}
@@ -608,20 +616,26 @@ export function SeguimientoTab({
           </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button variant="ghost" onClick={() => onNavigate("/reportes")}>
-            Ir a Reportes
-          </Button>
-          <Button variant="ghost" onClick={() => onNavigate("/caja")}>
-            Ir a Caja
-          </Button>
-          <Button variant="ghost" onClick={() => onNavigate("/configuracion")}>
-            Configuración
-          </Button>
+          {canAccessModule(user, "reportes") && (
+            <Button variant="ghost" onClick={() => onNavigate("/reportes")}>
+              Ir a Reportes
+            </Button>
+          )}
+          {canAccessModule(user, "caja") && (
+            <Button variant="ghost" onClick={() => onNavigate("/caja")}>
+              Ir a Caja
+            </Button>
+          )}
+          {canAccessModule(user, "configuracion") && (
+            <Button variant="ghost" onClick={() => onNavigate("/configuracion")}>
+              Configuración
+            </Button>
+          )}
         </div>
       </Section>
 
       <Section title="Documentos históricos (archivo físico)" noSave>
-        <DocumentosHistoricos patientId={patientId} />
+        <DocumentosHistoricos patientId={patientId} readOnly={inactive} />
       </Section>
     </div>
   );

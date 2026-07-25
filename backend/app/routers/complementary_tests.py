@@ -17,6 +17,7 @@ from app.database import get_db
 from app.models import Patient, User
 from app.models.complementary_tests import ComplementaryTestFile
 from app.services.audit import log_audit
+from app.services.patient_access import get_active_patient_or_404
 
 router = APIRouter(prefix="/api/complementary-tests", tags=["complementary-tests"])
 
@@ -194,8 +195,7 @@ async def upload_file(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not db.get(Patient, patient_id):
-        raise HTTPException(404, "Paciente no encontrado")
+    get_active_patient_or_404(db, patient_id)
     if categoria not in CATEGORIAS:
         raise HTTPException(400, "Categoría inválida")
     allowed_sub = CATEGORIAS[categoria]

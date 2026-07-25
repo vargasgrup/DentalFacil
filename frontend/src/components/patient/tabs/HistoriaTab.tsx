@@ -55,6 +55,7 @@ export function HistoriaTab({
   recordSaved,
   onAgendarCita,
 }: HistoriaTabProps) {
+  const inactive = patient.activo === false;
   return (
     <div
       id="ficha-panel-historia"
@@ -73,6 +74,8 @@ export function HistoriaTab({
           <Button
             variant="secondary"
             onClick={onAgendarCita}
+            disabled={inactive}
+            title={inactive ? "Reactiva al paciente antes de agendar" : undefined}
             icon={<Calendar className="h-4 w-4" />}
           >
             Agendar cita

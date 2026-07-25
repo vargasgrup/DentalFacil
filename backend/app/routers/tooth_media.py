@@ -17,6 +17,7 @@ from app.database import get_db
 from app.models import Patient, User
 from app.models.periodontogram import ToothMedia
 from app.services.audit import log_audit
+from app.services.patient_access import get_active_patient_or_404
 
 router = APIRouter(prefix="/api/tooth-media", tags=["tooth-media"])
 
@@ -78,8 +79,7 @@ async def upload_media(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not db.get(Patient, patient_id):
-        raise HTTPException(404, "Paciente no encontrado")
+    get_active_patient_or_404(db, patient_id)
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(400, "Solo se permiten imágenes")
 

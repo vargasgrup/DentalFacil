@@ -204,8 +204,8 @@ docker compose up --build
 | Activación | `DATABASE_URL=sqlite:///./data/clinica.db` | `DATABASE_URL=postgresql+psycopg://...` |
 | Config runtime | `check_same_thread=False` | `connect_timeout=10` + `sslmode=require` para Railway |
 | Pragmas | `journal_mode=WAL`, `foreign_keys=ON` | Nativos |
-| Bootstrap | `Base.metadata.create_all()` + seed `clinic_settings` + `alembic stamp q9backup` | `alembic upgrade head` |
-| HEAD_REVISION | `q9backup` | Igual |
+| Bootstrap | `Base.metadata.create_all()` + seed `clinic_settings` + `alembic stamp q10pwd_reset` | `alembic upgrade head` |
+| HEAD_REVISION | `q10pwd_reset` | Igual |
 | Réplicas máx | **1** | Múltiples |
 | Fallback | Si create_engine falla → `sqlite:///./data/clinica_fallback.db` | — |
 
@@ -860,10 +860,10 @@ erDiagram
 
 | Atributo | Valor |
 |---|---|
-| HEAD_REVISION | `q9backup` |
+| HEAD_REVISION | `q10pwd_reset` |
 | Config | `backend/alembic.ini` |
 | Batch mode | `render_as_batch=True` (para SQLite) |
-| Greenfield SQLite | `create_all()` + seed `clinic_settings` (08:00-20:00) + `stamp q9backup` |
+| Greenfield SQLite | `create_all()` + seed `clinic_settings` (08:00-20:00) + `stamp q10pwd_reset` |
 | Recuperación Postgres | Stamps incrementales: `f1030bfb1b16`, `c9f2a1b3d4e5`, `e2b3c4d5e6f7` |
 
 ---
@@ -1239,12 +1239,18 @@ apiBlob(url): Blob                 // descarga binaria (imágenes)
 | POST | `/api/auth/refresh` | Público | Refresh → nuevo access |
 | POST | `/api/auth/logout` | Autenticado | Revoca JTIs |
 | POST | `/api/auth/change-password` | Autenticado | Cambia pass → bump token_version |
+| POST | `/api/auth/forgot-password` | Público (RL) | Solicita código/enlace de recuperación |
+| POST | `/api/auth/validate-reset` | Público (RL) | Valida token o código+email |
+| POST | `/api/auth/reset-password` | Público (RL) | Aplica nueva contraseña con token/código |
+| GET | `/api/auth/password-reset-requests` | ADMIN | Códigos pendientes (escritorio sin SMTP) |
 | GET | `/api/users/me` | Autenticado | Usuario actual |
 | GET | `/api/users/doctors` | Autenticado | Doctores activos |
 | GET | `/api/users` | ADMIN | Lista usuarios |
 | POST | `/api/users` | ADMIN | Crear usuario |
 | PATCH | `/api/users/{id}` | ADMIN | Actualizar usuario |
 | POST | `/api/users/{id}/reset-password` | ADMIN | Resetear pass → bump token_version |
+
+Documentación operativa: `docs/RECUPERACION_Y_RESCATE_PASSWORD.md`. Rescate proveedor: `docs/VENDOR_ADMIN_RESCUE.md`.
 
 ### 11.2 Patients (1 router)
 
@@ -1393,6 +1399,17 @@ apiBlob(url): Blob                 // descarga binaria (imágenes)
 | POST | `/api/backup/restore-bootstrap` | Público si `users=0` | Migración en PC nueva |
 
 Detalle operativo: `docs/BACKUP_RESTORE.md`.
+
+### 11.14 Vendor ops (mantenimiento + rescate ADMIN)
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/api/system/maintenance/status` | Autenticado | Estado ciclo 12 meses |
+| POST | `/api/system/maintenance/reset` | Clave proveedor | Renovar ciclo |
+| POST | `/api/system/vendor/list-admins` | Clave proveedor | Listar ADMIN (rescate) |
+| POST | `/api/system/vendor/rescue-admin-password` | Clave proveedor + `RESCATAR` | Reset ADMIN sin login |
+
+UI oculta: `/ops/nk-svc`. Docs: `MANTENIMIENTO_PREVENTIVO.md`, `VENDOR_ADMIN_RESCUE.md`, `RECUPERACION_Y_RESCATE_PASSWORD.md`.
 
 ---
 
@@ -1592,7 +1609,7 @@ Detalle operativo: `docs/BACKUP_RESTORE.md`.
 | **WAL** | Write-Ahead Logging — modo SQLite para concurrencia |
 | **FDI** | Numeración dental: 11-48 permanentes, 51-85 temporales |
 | **MDVLO** | Superficies dentales: Mesial, Distal, Vestibular, Lingual, Oclusal |
-| **q9backup** | HEAD_REVISION Alembic actual (backup_settings / backup_history) |
+| **q10pwd_reset** | HEAD_REVISION Alembic actual (password_reset_tokens; encadena q9backup) |
 | **wa.me** | URL WhatsApp Web para abrir chat con mensaje predefinido |
 | **Cloud API** | WhatsApp Business API v17.0 (Meta) — opcional |
 | **Singleton** | Patrón: una sola fila en clinic_settings con ID fijo |

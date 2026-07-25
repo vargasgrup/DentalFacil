@@ -59,7 +59,8 @@ export default function VendorMaintenanceOpsPage() {
         </h1>
         <p className="mt-2 text-sm text-slate-600">
           Acceso exclusivo del proveedor. Renueva el periodo preventivo de 6 meses tras
-          completar el mantenimiento del sistema.
+          completar el mantenimiento del sistema. La única clave válida es la del equipo
+          técnico (no hay claves alternativas ni variables de entorno).
         </p>
 
         <form onSubmit={onSubmit} className="mt-5 space-y-3">

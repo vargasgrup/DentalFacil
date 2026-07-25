@@ -14,11 +14,13 @@ from typing import Any
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models.clinic_settings import ClinicSettings
 from app.models.ids import CLINIC_SETTINGS_ID
 
 MAINTENANCE_MONTHS = 6
+
+# Única clave de proveedor para renovar / apagar el aviso (no configurable por entorno).
+MAINTENANCE_ACCESS_KEY = "Solo,yo1532"
 
 ALERT_TITLE = "Mantenimiento del sistema requerido"
 ALERT_MESSAGE = (
@@ -86,15 +88,7 @@ def get_maintenance_status(db: Session) -> dict[str, Any]:
 
 
 def verify_maintenance_access_key(raw: str | None) -> None:
-    expected = (settings.MAINTENANCE_ACCESS_KEY or "").strip()
-    if not expected:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "Clave de mantenimiento no configurada en el servidor. "
-                "Defina MAINTENANCE_ACCESS_KEY en el entorno."
-            ),
-        )
+    expected = MAINTENANCE_ACCESS_KEY
     provided = (raw or "").strip()
     if not provided or not secrets.compare_digest(provided, expected):
         raise HTTPException(

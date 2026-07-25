@@ -1,4 +1,4 @@
-"""Preventive maintenance cycle (6 months) — vendor key reset."""
+"""Preventive maintenance cycle (6 months) — fixed vendor key reset."""
 
 from __future__ import annotations
 
@@ -6,23 +6,22 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
+from app.services.maintenance_cycle import MAINTENANCE_ACCESS_KEY
+
 
 def test_maintenance_status_requires_auth(client: TestClient):
     r = client.get("/api/system/maintenance/status")
     assert r.status_code == 401
 
 
+def test_fixed_vendor_key_is_solo_yo1532():
+    assert MAINTENANCE_ACCESS_KEY == "Solo,yo1532"
+
+
 def test_maintenance_cycle_status_and_vendor_reset(
     client: TestClient,
     admin_headers: dict[str, str],
-    monkeypatch,
 ):
-    monkeypatch.setenv("MAINTENANCE_ACCESS_KEY", "vendor-secret-key-32chars-min!!")
-    # Reload settings that read env at import — patch service settings object
-    from app.config import settings
-
-    monkeypatch.setattr(settings, "MAINTENANCE_ACCESS_KEY", "vendor-secret-key-32chars-min!!")
-
     st = client.get("/api/system/maintenance/status", headers=admin_headers)
     assert st.status_code == 200, st.text
     body = st.json()
@@ -30,7 +29,6 @@ def test_maintenance_cycle_status_and_vendor_reset(
     assert body["months"] == 6
     assert body["due_at"]
 
-    # Force overdue by backdating cycle start
     from app.database import SessionLocal
     from app.models.clinic_settings import ClinicSettings
     from app.models.ids import CLINIC_SETTINGS_ID
@@ -52,17 +50,17 @@ def test_maintenance_cycle_status_and_vendor_reset(
     )
     assert bad.status_code == 403
 
-    # Clinic ADMIN JWT alone cannot reset without key
+    # Clinic ADMIN JWT alone cannot reset without the fixed vendor key
     admin_only = client.post(
         "/api/system/maintenance/reset",
         headers=admin_headers,
-        json={"access_key": "wrong-key-xxxxxxxx"},
+        json={"access_key": "otra-clave"},
     )
     assert admin_only.status_code == 403
 
     ok = client.post(
         "/api/system/maintenance/reset",
-        json={"access_key": "vendor-secret-key-32chars-min!!"},
+        json={"access_key": "Solo,yo1532"},
     )
     assert ok.status_code == 200, ok.text
     assert ok.json()["maintenance_required"] is False

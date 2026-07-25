@@ -105,7 +105,14 @@ def validate_backup_directory(raw: str, *, create: bool = True) -> Path:
     return path
 
 
-def get_backup_dir(db: Session | None = None) -> Path:
+def _default_backup_dir(*, create: bool = True) -> Path:
+    path = _DEFAULT_BACKUP_DIR
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    return path.resolve()
+
+
+def get_backup_dir(db: Session | None = None, *, create: bool = True) -> Path:
     """
     Priority: backup_settings.backup_directory → env BACKUP_DIRECTORY → default app/backups.
     """
@@ -116,15 +123,34 @@ def get_backup_dir(db: Session | None = None) -> Path:
     if not configured:
         configured = (os.environ.get("BACKUP_DIRECTORY") or "").strip()
     if configured:
-        return validate_backup_directory(configured, create=True)
-    path = _DEFAULT_BACKUP_DIR
-    path.mkdir(parents=True, exist_ok=True)
-    return path.resolve()
+        return validate_backup_directory(configured, create=create)
+    return _default_backup_dir(create=create)
+
+
+def resolve_effective_backup_dir_safe(db: Session | None = None) -> str:
+    """Best-effort path for UI/settings GET — never raises (avoids blanking the panel)."""
+    try:
+        return str(get_backup_dir(db, create=False))
+    except HTTPException:
+        pass
+    except OSError:
+        pass
+    try:
+        configured = ""
+        if db is not None:
+            row = get_or_create_backup_settings(db)
+            configured = (getattr(row, "backup_directory", None) or "").strip()
+        if not configured:
+            configured = (os.environ.get("BACKUP_DIRECTORY") or "").strip()
+        if configured:
+            return str(expand_backup_path(configured))
+    except Exception:  # noqa: BLE001
+        pass
+    return str(_DEFAULT_BACKUP_DIR.resolve())
 
 
 def settings_public_dict(row: BackupSettings, db: Session) -> dict[str, Any]:
     configured = (getattr(row, "backup_directory", None) or "").strip()
-    effective = str(get_backup_dir(db))
     return {
         "auto_backup_enabled": bool(row.auto_backup_enabled),
         "frequency": row.frequency,
@@ -132,7 +158,7 @@ def settings_public_dict(row: BackupSettings, db: Session) -> dict[str, Any]:
         "retention_count": int(row.retention_count or 10),
         "keep_manual": bool(row.keep_manual),
         "backup_directory": configured,
-        "effective_backup_directory": effective,
+        "effective_backup_directory": resolve_effective_backup_dir_safe(db),
         "last_backup_at": row.last_backup_at,
     }
 
@@ -168,13 +194,41 @@ def _upload_roots() -> dict[str, Path]:
     }
 
 
+def ensure_backup_ready() -> None:
+    """Apply missing backup tables/columns (e.g. backup_directory) before ORM access."""
+    from app.ensure_backup_schema import ensure_backup_schema
+
+    ensure_backup_schema()
+
+
 def get_or_create_backup_settings(db: Session) -> BackupSettings:
-    row = db.get(BackupSettings, BACKUP_SETTINGS_ID)
+    from sqlalchemy.exc import OperationalError, ProgrammingError
+
+    ensure_backup_ready()
+    try:
+        row = db.get(BackupSettings, BACKUP_SETTINGS_ID)
+    except (OperationalError, ProgrammingError) as exc:
+        # Stale process / alembic stamped head without column — heal and retry once
+        logger.warning("backup_settings read failed (%s); repairing schema", exc)
+        db.rollback()
+        ensure_backup_ready()
+        row = db.get(BackupSettings, BACKUP_SETTINGS_ID)
     if row:
         return row
     row = BackupSettings(id=BACKUP_SETTINGS_ID)
     db.add(row)
-    db.commit()
+    try:
+        db.commit()
+    except (OperationalError, ProgrammingError) as exc:
+        logger.warning("backup_settings insert failed (%s); repairing schema", exc)
+        db.rollback()
+        ensure_backup_ready()
+        row = db.get(BackupSettings, BACKUP_SETTINGS_ID)
+        if row:
+            return row
+        row = BackupSettings(id=BACKUP_SETTINGS_ID)
+        db.add(row)
+        db.commit()
     db.refresh(row)
     return row
 
@@ -367,12 +421,26 @@ def apply_retention(db: Session) -> None:
 
 
 def list_history(db: Session, limit: int = 50) -> list[BackupHistory]:
-    return (
-        db.query(BackupHistory)
-        .order_by(BackupHistory.created_at.desc())
-        .limit(limit)
-        .all()
-    )
+    from sqlalchemy.exc import OperationalError, ProgrammingError
+
+    ensure_backup_ready()
+    try:
+        return (
+            db.query(BackupHistory)
+            .order_by(BackupHistory.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+    except (OperationalError, ProgrammingError) as exc:
+        logger.warning("backup_history read failed (%s); repairing schema", exc)
+        db.rollback()
+        ensure_backup_ready()
+        return (
+            db.query(BackupHistory)
+            .order_by(BackupHistory.created_at.desc())
+            .limit(limit)
+            .all()
+        )
 
 
 def get_history(db: Session, backup_id: str) -> BackupHistory:

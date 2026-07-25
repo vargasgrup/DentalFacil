@@ -201,13 +201,23 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     let msg = res.statusText || "Error en la solicitud";
-    try {
-      const body = await res.json();
-      msg = formatApiDetail(body.detail ?? body.message, msg);
-    } catch {
-      if (res.status >= 500) {
-        msg = "Error del servidor. Espera unos segundos e intenta de nuevo.";
+    const rawBody = await res.text().catch(() => "");
+    if (rawBody) {
+      try {
+        const body = JSON.parse(rawBody) as { detail?: unknown; message?: unknown };
+        msg = formatApiDetail(body.detail ?? body.message, msg);
+      } catch {
+        if (res.status >= 500) {
+          msg =
+            rawBody.length < 300 && !rawBody.trimStart().startsWith("<")
+              ? rawBody
+              : "Error del servidor. Espera unos segundos e intenta de nuevo.";
+        } else if (rawBody.length < 300 && !rawBody.trimStart().startsWith("<")) {
+          msg = rawBody;
+        }
       }
+    } else if (res.status >= 500) {
+      msg = "Error del servidor. Espera unos segundos e intenta de nuevo.";
     }
 
     // Solo rutas ya autenticadas hablan de "sesión expirada"

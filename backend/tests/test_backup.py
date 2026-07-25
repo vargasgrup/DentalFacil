@@ -175,3 +175,66 @@ def test_backup_settings_rejects_unwritable_directory(
         json={"backup_directory": str(blocker)},
     )
     assert r.status_code == 400
+
+
+def test_backup_settings_heals_missing_directory_column(
+    client: TestClient,
+    admin_headers: dict[str, str],
+):
+    """Clinics stamped at head without q11 must still load settings (no 500)."""
+    from sqlalchemy import text
+
+    from app.database import engine
+
+    with engine.begin() as conn:
+        # Simulate pre-q11 schema: drop column if present (SQLite rebuild)
+        cols = {
+            str(r[1])
+            for r in conn.execute(text("PRAGMA table_info(backup_settings)")).fetchall()
+        }
+        if "backup_directory" in cols:
+            conn.execute(text("ALTER TABLE backup_settings RENAME TO backup_settings_old"))
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE backup_settings (
+                        id VARCHAR(36) PRIMARY KEY,
+                        auto_backup_enabled BOOLEAN NOT NULL DEFAULT 0,
+                        frequency VARCHAR(20) NOT NULL DEFAULT 'daily',
+                        preferred_hour VARCHAR(5) NOT NULL DEFAULT '22:00',
+                        retention_count INTEGER NOT NULL DEFAULT 10,
+                        keep_manual BOOLEAN NOT NULL DEFAULT 1,
+                        last_backup_at DATETIME,
+                        updated_at DATETIME
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO backup_settings (
+                        id, auto_backup_enabled, frequency, preferred_hour,
+                        retention_count, keep_manual, last_backup_at, updated_at
+                    )
+                    SELECT id, auto_backup_enabled, frequency, preferred_hour,
+                           retention_count, keep_manual, last_backup_at, updated_at
+                    FROM backup_settings_old
+                    """
+                )
+            )
+            conn.execute(text("DROP TABLE backup_settings_old"))
+
+    r = client.get("/api/backup/settings", headers=admin_headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "effective_backup_directory" in body
+    assert "backup_directory" in body
+
+    # Column must exist again
+    with engine.connect() as conn:
+        cols = {
+            str(r[1])
+            for r in conn.execute(text("PRAGMA table_info(backup_settings)")).fetchall()
+        }
+    assert "backup_directory" in cols

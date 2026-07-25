@@ -83,23 +83,30 @@ export function BackupMigrationPanel() {
   const load = useCallback(async () => {
     setLoading(true);
     setErr("");
+    const errors: string[] = [];
     try {
-      const [s, h] = await Promise.all([
-        apiFetch<BackupSettings>("/api/backup/settings"),
-        apiFetch<BackupRow[]>("/api/backup/history"),
-      ]);
+      const s = await apiFetch<BackupSettings>("/api/backup/settings");
       setSettings(s);
-      setHistory(h);
       setAutoEnabled(s.auto_backup_enabled);
       setFrequency(s.frequency);
       setPreferredHour(s.preferred_hour);
       setRetention(s.retention_count);
       setBackupDirectory(s.backup_directory || "");
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "No se pudo cargar respaldos");
-    } finally {
-      setLoading(false);
+      errors.push(
+        e instanceof Error ? e.message : "No se pudo cargar la configuración de respaldo"
+      );
     }
+    try {
+      const h = await apiFetch<BackupRow[]>("/api/backup/history");
+      setHistory(h);
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : "No se pudo cargar el historial");
+    }
+    if (errors.length) {
+      setErr(errors.join(" · "));
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -367,17 +374,18 @@ export function BackupMigrationPanel() {
             />
           </label>
           <p className="text-help text-slate-500">
-            Ruta absoluta donde se guardarán los backups manuales y automáticos. Ejemplos:{" "}
+            Ruta absoluta donde se guardarán los backups manuales y automáticos. Preferible un disco
+            externo o carpeta fuera de Program Files, por ejemplo{" "}
             <code className="rounded bg-slate-100 px-1">D:\Backups\DentalSimple</code>
             {" · "}
             <code className="rounded bg-slate-100 px-1">
               %LOCALAPPDATA%\DentalSimple\backups
             </code>
-            . Deje vacío para usar la carpeta predeterminada del sistema
+            . Deje vacío para usar la carpeta predeterminada
             {settings?.effective_backup_directory
               ? ` (ahora: ${settings.effective_backup_directory})`
               : ""}
-            . No use Program Files.
+            .
           </p>
         </div>
         <Button type="submit" variant="secondary" loading={saving}>

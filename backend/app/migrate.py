@@ -89,9 +89,30 @@ def run_migrations_blocking(retries: int = 3) -> bool:
 
                 ready, _ = schema_ready()
                 if ready:
+                    # Stamp head only after ensuring additive schema (e.g. backup_directory)
+                    try:
+                        from app.ensure_backup_schema import ensure_backup_schema
+
+                        ensure_backup_schema()
+                    except Exception as ensure_exc:  # noqa: BLE001
+                        logger.warning(
+                            "[dentalfacil] ensure_backup_schema after stamp note: %s",
+                            ensure_exc,
+                        )
                     command.stamp(Config("alembic.ini"), HEAD_REVISION)
                 else:
                     return _sqlite_bootstrap()
+            else:
+                # Successful upgrade — still ensure additive columns for older installs
+                try:
+                    from app.ensure_backup_schema import ensure_backup_schema
+
+                    ensure_backup_schema()
+                except Exception as ensure_exc:  # noqa: BLE001
+                    logger.warning(
+                        "[dentalfacil] ensure_backup_schema after upgrade note: %s",
+                        ensure_exc,
+                    )
             _migrations_ok = True
             _migrations_error = None
             return True

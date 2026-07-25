@@ -1,4 +1,4 @@
-"""Ensure backup_settings / backup_history tables exist."""
+"""Ensure backup_settings / backup_history tables exist and stay current."""
 
 from __future__ import annotations
 
@@ -10,12 +10,27 @@ from app.logging_config import get_logger
 logger = get_logger("ensure_backup_schema")
 
 
+def _column_names(conn, table: str) -> set[str]:
+    """Read columns using the same connection (avoids SQLite cross-conn visibility gaps)."""
+    dialect = conn.engine.dialect.name
+    if dialect == "sqlite":
+        rows = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+        # PRAGMA: cid, name, type, notnull, dflt_value, pk
+        return {str(r[1]) for r in rows}
+    insp = inspect(conn)
+    if table not in insp.get_table_names():
+        return set()
+    return {c["name"] for c in insp.get_columns(table)}
+
+
 def ensure_backup_schema() -> None:
-    insp = inspect(engine)
-    tables = set(insp.get_table_names())
+    """Idempotent. Safe to call on startup and before backup API reads/writes."""
     dialect = engine.dialect.name
 
     with engine.begin() as conn:
+        insp = inspect(conn)
+        tables = set(insp.get_table_names())
+
         if "backup_settings" not in tables:
             if dialect == "sqlite":
                 conn.execute(
@@ -96,22 +111,19 @@ def ensure_backup_schema() -> None:
                 )
             logger.info("[dentalfacil] created backup_history")
 
-        # Column added after initial table — keep installs current without full migrate
-        insp = inspect(engine)
-        if "backup_settings" in insp.get_table_names():
-            cols = {c["name"] for c in insp.get_columns("backup_settings")}
-            if "backup_directory" not in cols:
-                if dialect == "sqlite":
-                    conn.execute(
-                        text(
-                            "ALTER TABLE backup_settings ADD COLUMN backup_directory VARCHAR(500)"
-                        )
+        cols = _column_names(conn, "backup_settings")
+        if cols and "backup_directory" not in cols:
+            if dialect == "sqlite":
+                conn.execute(
+                    text(
+                        "ALTER TABLE backup_settings ADD COLUMN backup_directory VARCHAR(500)"
                     )
-                else:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE backup_settings "
-                            "ADD COLUMN IF NOT EXISTS backup_directory VARCHAR(500)"
-                        )
+                )
+            else:
+                conn.execute(
+                    text(
+                        "ALTER TABLE backup_settings "
+                        "ADD COLUMN IF NOT EXISTS backup_directory VARCHAR(500)"
                     )
-                logger.info("[dentalfacil] added backup_settings.backup_directory")
+                )
+            logger.info("[dentalfacil] added backup_settings.backup_directory")

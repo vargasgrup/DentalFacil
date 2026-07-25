@@ -62,8 +62,29 @@ def get_settings(
     admin: User = Depends(require_roles(Rol.ADMIN)),
 ):
     _ = admin
-    row = svc.get_or_create_backup_settings(db)
-    return BackupSettingsOut(**svc.settings_public_dict(row, db))
+    try:
+        row = svc.get_or_create_backup_settings(db)
+        return BackupSettingsOut(**svc.settings_public_dict(row, db))
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        # Last-resort heal for clinics that stamped Alembic head without backup_directory
+        from app.logging_config import get_logger
+
+        get_logger("backup_router").warning("GET /settings failed (%s); healing", exc)
+        svc.ensure_backup_ready()
+        db.rollback()
+        try:
+            row = svc.get_or_create_backup_settings(db)
+            return BackupSettingsOut(**svc.settings_public_dict(row, db))
+        except Exception as retry_exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "No se pudo cargar la configuración de respaldo. "
+                    f"Reinicie DentalSimple. ({retry_exc})"
+                ),
+            ) from retry_exc
 
 
 @router.patch("/settings", response_model=BackupSettingsOut)

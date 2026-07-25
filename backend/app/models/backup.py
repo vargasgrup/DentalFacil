@@ -20,6 +20,8 @@ class BackupSettings(Base):
     preferred_hour: Mapped[str] = mapped_column(String(5), default="22:00", nullable=False)
     retention_count: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
     keep_manual: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Absolute or env-expanded path for zip output (desktop). Empty = default / BACKUP_DIRECTORY env.
+    backup_directory: Mapped[str | None] = mapped_column(String(500), nullable=True)
     last_backup_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

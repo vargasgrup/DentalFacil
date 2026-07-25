@@ -126,3 +126,52 @@ def test_backup_restore_succeeds_on_windows_paths(
     assert body.get("restart_required") is True
     # Hot apply or same-process pending apply both count as success on Windows
     assert body.get("db_applied") is True or body.get("files_restored") is not None
+
+
+def test_backup_settings_custom_directory(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    tmp_path: Path,
+):
+    custom = tmp_path / "clinic_backups"
+    r = client.patch(
+        "/api/backup/settings",
+        headers=admin_headers,
+        json={"backup_directory": str(custom)},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert Path(body["backup_directory"]) == custom.resolve()
+    assert Path(body["effective_backup_directory"]) == custom.resolve()
+    assert custom.is_dir()
+
+    gen = client.post("/api/backup/generate", headers=admin_headers)
+    assert gen.status_code == 200, gen.text
+    zips = list(custom.glob("*.zip"))
+    assert len(zips) >= 1
+
+    # Clear custom path → falls back to env/default
+    cleared = client.patch(
+        "/api/backup/settings",
+        headers=admin_headers,
+        json={"backup_directory": ""},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["backup_directory"] == ""
+    assert cleared.json()["effective_backup_directory"]
+
+
+def test_backup_settings_rejects_unwritable_directory(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    tmp_path: Path,
+):
+    # File path (not a directory) — mkdir/write probe must fail
+    blocker = tmp_path / "not_a_dir"
+    blocker.write_text("x", encoding="utf-8")
+    r = client.patch(
+        "/api/backup/settings",
+        headers=admin_headers,
+        json={"backup_directory": str(blocker)},
+    )
+    assert r.status_code == 400

@@ -62,11 +62,79 @@ def _slug(text: str) -> str:
     return (s or "clinica")[:40]
 
 
-def get_backup_dir() -> Path:
-    raw = (os.environ.get("BACKUP_DIRECTORY") or "").strip()
-    path = resolve_under_backend(raw) if raw else _DEFAULT_BACKUP_DIR
-    path.mkdir(parents=True, exist_ok=True)
+def expand_backup_path(raw: str) -> Path:
+    """Expand %LOCALAPPDATA% / ~ and normalize for Windows desktop paths."""
+    expanded = os.path.expandvars(os.path.expanduser((raw or "").strip()))
+    return Path(expanded)
+
+
+def validate_backup_directory(raw: str, *, create: bool = True) -> Path:
+    """
+    Resolve and optionally create a writable backup folder.
+    Absolute paths preferred (e.g. D:\\Backups\\DentalSimple).
+    Relative paths are anchored under the backend package root.
+    """
+    text = (raw or "").strip()
+    if not text:
+        path = _DEFAULT_BACKUP_DIR
+    else:
+        path = expand_backup_path(text)
+        if not path.is_absolute():
+            path = resolve_under_backend(path)
+        # Block obvious junk
+        if str(path) in (".", "..") or any(p == ".." for p in path.parts):
+            raise HTTPException(
+                status_code=400,
+                detail="Ruta de backup no permitida",
+            )
+    path = path.resolve()
+    if create:
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            probe = path / f".nk_backup_write_{new_uuid()[:8]}"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"No se puede usar la carpeta de backup «{path}». "
+                    f"Compruebe que existe, es escribible y no está bajo Program Files. ({exc})"
+                ),
+            ) from exc
     return path
+
+
+def get_backup_dir(db: Session | None = None) -> Path:
+    """
+    Priority: backup_settings.backup_directory → env BACKUP_DIRECTORY → default app/backups.
+    """
+    configured = ""
+    if db is not None:
+        row = get_or_create_backup_settings(db)
+        configured = (getattr(row, "backup_directory", None) or "").strip()
+    if not configured:
+        configured = (os.environ.get("BACKUP_DIRECTORY") or "").strip()
+    if configured:
+        return validate_backup_directory(configured, create=True)
+    path = _DEFAULT_BACKUP_DIR
+    path.mkdir(parents=True, exist_ok=True)
+    return path.resolve()
+
+
+def settings_public_dict(row: BackupSettings, db: Session) -> dict[str, Any]:
+    configured = (getattr(row, "backup_directory", None) or "").strip()
+    effective = str(get_backup_dir(db))
+    return {
+        "auto_backup_enabled": bool(row.auto_backup_enabled),
+        "frequency": row.frequency,
+        "preferred_hour": row.preferred_hour,
+        "retention_count": int(row.retention_count or 10),
+        "keep_manual": bool(row.keep_manual),
+        "backup_directory": configured,
+        "effective_backup_directory": effective,
+        "last_backup_at": row.last_backup_at,
+    }
 
 
 def resolve_sqlite_path() -> Path:
@@ -195,9 +263,8 @@ def create_backup(
     clinic_name = settings.CLINIC_NAME or settings.APP_NAME or "clinica"
     stamp = datetime.now(CLINIC_TZ).strftime("%Y%m%d_%H%M%S")
     filename = f"dentalsimple_backup_{_slug(clinic_name)}_{stamp}.zip"
-    out_path = get_backup_dir() / filename
-
-    tmp_db = get_backup_dir() / f"_snap_{new_uuid()}.db"
+    out_path = get_backup_dir(db) / filename
+    tmp_db = get_backup_dir(db) / f"_snap_{new_uuid()}.db"
     history = BackupHistory(
         id=new_uuid(),
         filename=filename,

@@ -27,6 +27,8 @@ class BackupSettingsOut(BaseModel):
     preferred_hour: str
     retention_count: int
     keep_manual: bool
+    backup_directory: str = ""
+    effective_backup_directory: str = ""
     last_backup_at: datetime | None = None
 
 
@@ -35,6 +37,8 @@ class BackupSettingsUpdate(BaseModel):
     frequency: str | None = None
     preferred_hour: str | None = None
     retention_count: int | None = Field(default=None, ge=1, le=100)
+    # Empty string clears custom path (use default / env)
+    backup_directory: str | None = Field(default=None, max_length=500)
 
 
 class BackupHistoryOut(BaseModel):
@@ -59,14 +63,7 @@ def get_settings(
 ):
     _ = admin
     row = svc.get_or_create_backup_settings(db)
-    return BackupSettingsOut(
-        auto_backup_enabled=bool(row.auto_backup_enabled),
-        frequency=row.frequency,
-        preferred_hour=row.preferred_hour,
-        retention_count=int(row.retention_count or 10),
-        keep_manual=bool(row.keep_manual),
-        last_backup_at=row.last_backup_at,
-    )
+    return BackupSettingsOut(**svc.settings_public_dict(row, db))
 
 
 @router.patch("/settings", response_model=BackupSettingsOut)
@@ -80,18 +77,21 @@ def patch_settings(
     data = payload.model_dump(exclude_unset=True)
     if "frequency" in data and data["frequency"] not in ("daily", "every_12h", "weekly"):
         raise HTTPException(status_code=400, detail="Frecuencia inválida")
+    if "backup_directory" in data:
+        raw = data["backup_directory"]
+        if raw is None:
+            pass
+        elif not str(raw).strip():
+            data["backup_directory"] = None
+        else:
+            # Validate writability before persisting
+            resolved = svc.validate_backup_directory(str(raw), create=True)
+            data["backup_directory"] = str(resolved)
     for k, v in data.items():
         setattr(row, k, v)
     db.commit()
     db.refresh(row)
-    return BackupSettingsOut(
-        auto_backup_enabled=bool(row.auto_backup_enabled),
-        frequency=row.frequency,
-        preferred_hour=row.preferred_hour,
-        retention_count=int(row.retention_count or 10),
-        keep_manual=bool(row.keep_manual),
-        last_backup_at=row.last_backup_at,
-    )
+    return BackupSettingsOut(**svc.settings_public_dict(row, db))
 
 
 @router.post("/generate", response_model=BackupHistoryOut)

@@ -29,7 +29,8 @@ def ensure_backup_schema() -> None:
                             retention_count INTEGER NOT NULL DEFAULT 10,
                             keep_manual BOOLEAN NOT NULL DEFAULT 1,
                             last_backup_at DATETIME,
-                            updated_at DATETIME
+                            updated_at DATETIME,
+                            backup_directory VARCHAR(500)
                         )
                         """
                     )
@@ -46,7 +47,8 @@ def ensure_backup_schema() -> None:
                             retention_count INTEGER NOT NULL DEFAULT 10,
                             keep_manual BOOLEAN NOT NULL DEFAULT TRUE,
                             last_backup_at TIMESTAMPTZ,
-                            updated_at TIMESTAMPTZ
+                            updated_at TIMESTAMPTZ,
+                            backup_directory VARCHAR(500)
                         )
                         """
                     )
@@ -93,3 +95,23 @@ def ensure_backup_schema() -> None:
                     )
                 )
             logger.info("[dentalfacil] created backup_history")
+
+        # Column added after initial table — keep installs current without full migrate
+        insp = inspect(engine)
+        if "backup_settings" in insp.get_table_names():
+            cols = {c["name"] for c in insp.get_columns("backup_settings")}
+            if "backup_directory" not in cols:
+                if dialect == "sqlite":
+                    conn.execute(
+                        text(
+                            "ALTER TABLE backup_settings ADD COLUMN backup_directory VARCHAR(500)"
+                        )
+                    )
+                else:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE backup_settings "
+                            "ADD COLUMN IF NOT EXISTS backup_directory VARCHAR(500)"
+                        )
+                    )
+                logger.info("[dentalfacil] added backup_settings.backup_directory")

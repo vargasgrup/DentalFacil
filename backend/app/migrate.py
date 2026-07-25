@@ -11,7 +11,7 @@ logger = get_logger('migrate')
 _migrations_ok = False
 _migrations_error: str | None = None
 
-HEAD_REVISION = "q10pwd_reset"
+HEAD_REVISION = "q11backup_dir"
 
 
 def migrations_status() -> dict:

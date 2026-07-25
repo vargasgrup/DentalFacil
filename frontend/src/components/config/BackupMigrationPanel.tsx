@@ -22,6 +22,8 @@ interface BackupSettings {
   preferred_hour: string;
   retention_count: number;
   keep_manual: boolean;
+  backup_directory: string;
+  effective_backup_directory: string;
   last_backup_at: string | null;
 }
 
@@ -70,6 +72,7 @@ export function BackupMigrationPanel() {
   const [frequency, setFrequency] = useState("daily");
   const [preferredHour, setPreferredHour] = useState("22:00");
   const [retention, setRetention] = useState(10);
+  const [backupDirectory, setBackupDirectory] = useState("");
 
   const [validateFile, setValidateFile] = useState<File | null>(null);
   const [validation, setValidation] = useState<ValidateResult | null>(null);
@@ -91,6 +94,7 @@ export function BackupMigrationPanel() {
       setFrequency(s.frequency);
       setPreferredHour(s.preferred_hour);
       setRetention(s.retention_count);
+      setBackupDirectory(s.backup_directory || "");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "No se pudo cargar respaldos");
     } finally {
@@ -115,9 +119,11 @@ export function BackupMigrationPanel() {
           frequency,
           preferred_hour: preferredHour,
           retention_count: retention,
+          backup_directory: backupDirectory.trim(),
         }),
       });
       setSettings(s);
+      setBackupDirectory(s.backup_directory || "");
       setMsg("Configuración de respaldo guardada.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error al guardar");
@@ -268,7 +274,7 @@ export function BackupMigrationPanel() {
       )}
 
       {settings && (
-        <div className="mb-5 grid gap-3 sm:grid-cols-3">
+        <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-lg border border-slate-200 bg-surface-subtle px-3 py-2">
             <p className="text-help text-slate-500">Último backup</p>
             <p className="text-sm font-medium text-slate-800">
@@ -287,6 +293,15 @@ export function BackupMigrationPanel() {
             <p className="text-help text-slate-500">Retención automáticos</p>
             <p className="text-sm font-medium text-slate-800">
               Últimos {settings.retention_count}
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-surface-subtle px-3 py-2 sm:col-span-2 lg:col-span-1">
+            <p className="text-help text-slate-500">Carpeta de almacenamiento</p>
+            <p
+              className="truncate text-sm font-medium text-slate-800"
+              title={settings.effective_backup_directory}
+            >
+              {settings.effective_backup_directory || "Predeterminada"}
             </p>
           </div>
         </div>
@@ -335,6 +350,35 @@ export function BackupMigrationPanel() {
               onChange={(e) => setRetention(Number(e.target.value) || 10)}
             />
           </label>
+        </div>
+        <div className="space-y-1.5">
+          <label className="block text-sm">
+            <span className="mb-1 block text-slate-600">
+              Carpeta de almacenamiento (escritorio)
+            </span>
+            <input
+              type="text"
+              spellCheck={false}
+              autoComplete="off"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-[13px]"
+              placeholder="D:\Backups\DentalSimple"
+              value={backupDirectory}
+              onChange={(e) => setBackupDirectory(e.target.value)}
+            />
+          </label>
+          <p className="text-help text-slate-500">
+            Ruta absoluta donde se guardarán los backups manuales y automáticos. Ejemplos:{" "}
+            <code className="rounded bg-slate-100 px-1">D:\Backups\DentalSimple</code>
+            {" · "}
+            <code className="rounded bg-slate-100 px-1">
+              %LOCALAPPDATA%\DentalSimple\backups
+            </code>
+            . Deje vacío para usar la carpeta predeterminada del sistema
+            {settings?.effective_backup_directory
+              ? ` (ahora: ${settings.effective_backup_directory})`
+              : ""}
+            . No use Program Files.
+          </p>
         </div>
         <Button type="submit" variant="secondary" loading={saving}>
           Guardar configuración

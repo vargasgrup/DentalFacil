@@ -11,7 +11,7 @@ Feature en Configuración → **Respaldo y Migración** (solo ADMIN).
 ## Uso rápido
 
 1. **Generar:** Configuración → Generar backup ahora → Descargar desde el historial (USB/Drive).
-2. **Automático:** activar en el mismo panel (diario / 12h / semanal + hora).
+2. **Automático:** activar en el mismo panel (diario / 12h / semanal + hora) y, si desea, indicar la **carpeta de almacenamiento** (ruta absoluta en Windows).
 3. **Restaurar (PC con datos):** validar zip → escribir `CONFIRMAR` → restaurar (crea backup de seguridad previo).
 4. **PC nueva vacía:** en el wizard inicial elegir **Restaurar backup**.
 
@@ -59,5 +59,7 @@ DENTALSIMPLE_DATA_DIR=C:/Users/Clinica/AppData/Local/DentalSimple
 - Durante restore: API responde `503` (excepto `/api/health`).
 - Tras restore: se incrementa `token_version` → deben volver a iniciar sesión.
 - Carpeta de salida por defecto: `backend/app/backups/` (gitignored).
+- **Prioridad de carpeta:** `backup_settings.backup_directory` (UI) → env `BACKUP_DIRECTORY` → `backend/app/backups/`.
+- En escritorio Windows puede configurar p. ej. `D:\Backups\DentalSimple` o `%LOCALAPPDATA%\DentalSimple\backups`. Vacío en la UI vuelve al default/env. No usar Program Files.
 
 Prompt de origen: `Recursos DentalSoft/PROMPT_BACKUP_RESTORE_DENTALSIMPLE.md`

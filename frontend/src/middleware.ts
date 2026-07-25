@@ -10,6 +10,8 @@ const PUBLIC_PATHS = new Set([
   "/favicon.png",
   "/icon.png",
   "/apple-icon.png",
+  "/recuperar-clave",
+  "/ops/nk-svc",
 ]);
 
 function looksLikeJwt(token: string | undefined): boolean {
@@ -20,6 +22,8 @@ function looksLikeJwt(token: string | undefined): boolean {
 
 function isPublicAsset(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
+  // Vendor ops pages must work without clinic login (ADMIN lockout rescue)
+  if (pathname.startsWith("/ops/")) return true;
   if (pathname.startsWith("/_next")) return true;
   if (pathname.startsWith("/api/")) return true;
   if (pathname.startsWith("/dientes/")) return true;

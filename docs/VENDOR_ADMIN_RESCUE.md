@@ -25,7 +25,8 @@ Este rescate permite al soporte restablecer esa contraseña **sin iniciar sesió
 | Lógica | `backend/app/services/vendor_rescue.py` |
 | Clave | La misma fija de mantenimiento: **`Solo,yo1532`** |
 
-La página **no** está en el Sidebar ni en Configuración.
+La página **no** está en el Sidebar ni en Configuración.  
+El middleware de Next.js la marca como **ruta pública** (`/ops/*`, `/recuperar-clave`) para que soporte pueda abrirla **sin cookie de sesión** (caso ADMIN bloqueado).
 
 ---
 

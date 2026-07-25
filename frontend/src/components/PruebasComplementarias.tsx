@@ -5,6 +5,7 @@ import { Eye, Trash2, Upload } from "lucide-react";
 import { apiFetch, apiUpload, apiFetchBlob, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { Button } from "@/components/ui/Button";
+import { DigitizedDocumentViewer } from "@/components/DigitizedDocumentViewer";
 
 type Categoria = "radiografia" | "fotografia_clinica" | "laboratorio";
 
@@ -137,15 +138,6 @@ export function PruebasComplementarias({ patientId }: { patientId: string }) {
     return () => {
       if (viewer?.src) URL.revokeObjectURL(viewer.src);
     };
-  }, [viewer]);
-
-  useEffect(() => {
-    if (!viewer) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeViewer();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
   }, [viewer]);
 
   const byCategory = useMemo(() => {
@@ -359,52 +351,13 @@ export function PruebasComplementarias({ patientId }: { patientId: string }) {
       ))}
 
       {viewer && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Vista de ${viewer.item.filename}`}
-          onClick={closeViewer}
-        >
-          <div
-            className="relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-2.5">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900">
-                  {subtypeLabel(viewer.item.categoria, viewer.item.subtipo)}
-                </p>
-                <p className="truncate text-xs text-slate-500">
-                  {viewer.item.filename}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeViewer}
-                className="shrink-0 rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
-              >
-                Cerrar
-              </button>
-            </div>
-            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-slate-950 p-3">
-              {isPdf(viewer.item) ? (
-                <iframe
-                  title={viewer.item.filename}
-                  src={viewer.src}
-                  className="h-[80vh] w-full rounded bg-white"
-                />
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={viewer.src}
-                  alt={viewer.item.filename}
-                  className="max-h-[80vh] max-w-full object-contain"
-                />
-              )}
-            </div>
-          </div>
-        </div>
+        <DigitizedDocumentViewer
+          title={subtypeLabel(viewer.item.categoria, viewer.item.subtipo)}
+          subtitle={viewer.item.filename}
+          src={viewer.src}
+          kind={isPdf(viewer.item) ? "pdf" : "image"}
+          onClose={closeViewer}
+        />
       )}
     </div>
   );

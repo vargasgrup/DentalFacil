@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, apiFetchBlob, getToken } from "@/lib/api";
+import { DigitizedDocumentViewer } from "@/components/DigitizedDocumentViewer";
 
 interface MediaItem {
   id: string;
@@ -60,15 +61,6 @@ export function ToothAttachments({
     return () => {
       if (viewer?.src) URL.revokeObjectURL(viewer.src);
     };
-  }, [viewer]);
-
-  useEffect(() => {
-    if (!viewer) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeViewer();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
   }, [viewer]);
 
   const closeViewer = () => {
@@ -189,43 +181,13 @@ export function ToothAttachments({
       )}
 
       {viewer && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Vista de ${viewer.item.filename}`}
-          onClick={closeViewer}
-        >
-          <div
-            className="relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-2.5">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900">
-                  {TIPO_LABEL[viewer.item.tipo] || viewer.item.tipo} — pieza{" "}
-                  {viewer.item.pieza_fdi}
-                </p>
-                <p className="truncate text-xs text-slate-500">{viewer.item.filename}</p>
-              </div>
-              <button
-                type="button"
-                onClick={closeViewer}
-                className="shrink-0 rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
-              >
-                Cerrar
-              </button>
-            </div>
-            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-slate-950 p-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={viewer.src}
-                alt={viewer.item.filename}
-                className="max-h-[80vh] max-w-full object-contain"
-              />
-            </div>
-          </div>
-        </div>
+        <DigitizedDocumentViewer
+          title={`${TIPO_LABEL[viewer.item.tipo] || viewer.item.tipo} — pieza ${viewer.item.pieza_fdi}`}
+          subtitle={viewer.item.filename}
+          src={viewer.src}
+          kind="image"
+          onClose={closeViewer}
+        />
       )}
     </div>
   );

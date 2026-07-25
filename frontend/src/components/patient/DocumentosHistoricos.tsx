@@ -15,6 +15,7 @@ import {
 import { apiFetch, apiFetchBlob, apiUpload, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { Button } from "@/components/ui/Button";
+import { DigitizedDocumentViewer } from "@/components/DigitizedDocumentViewer";
 
 interface HistoricalDoc {
   id: string;
@@ -152,15 +153,6 @@ export function DocumentosHistoricos({ patientId }: { patientId: string }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!viewer) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeViewer();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [viewer]);
 
   // Lazy thumbnails for images
   useEffect(() => {
@@ -712,68 +704,18 @@ export function DocumentosHistoricos({ patientId }: { patientId: string }) {
       )}
 
       {viewer && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Vista de ${viewer.item.titulo}`}
-          onClick={closeViewer}
-        >
-          <div
-            className="relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-2.5">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900">
-                  {viewer.item.titulo}
-                </p>
-                <p className="truncate text-xs text-slate-500">
-                  {viewer.item.tipo_label}
-                  {viewer.item.document_date
-                    ? ` · ${formatDocDate(viewer.item.document_date)}`
-                    : ""}
-                  {" · "}
-                  {viewer.item.filename}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="!px-3 !py-1.5 text-xs"
-                  icon={<Download className="h-3.5 w-3.5" />}
-                  onClick={() => void downloadItem(viewer.item)}
-                >
-                  Descargar
-                </Button>
-                <button
-                  type="button"
-                  onClick={closeViewer}
-                  className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
-                >
-                  Cerrar
-                </button>
-              </div>
-            </div>
-            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-slate-950 p-3">
-              {isPdf(viewer.item) ? (
-                <iframe
-                  title={viewer.item.filename}
-                  src={viewer.src}
-                  className="h-[80vh] w-full rounded bg-white"
-                />
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={viewer.src}
-                  alt={viewer.item.titulo}
-                  className="max-h-[80vh] max-w-full object-contain"
-                />
-              )}
-            </div>
-          </div>
-        </div>
+        <DigitizedDocumentViewer
+          title={viewer.item.titulo}
+          subtitle={`${viewer.item.tipo_label}${
+            viewer.item.document_date
+              ? ` · ${formatDocDate(viewer.item.document_date)}`
+              : ""
+          } · ${viewer.item.filename}`}
+          src={viewer.src}
+          kind={isPdf(viewer.item) ? "pdf" : "image"}
+          onClose={closeViewer}
+          onDownload={() => void downloadItem(viewer.item)}
+        />
       )}
     </div>
   );

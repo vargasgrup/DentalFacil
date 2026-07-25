@@ -1,7 +1,7 @@
-"""Vendor maintenance cycle — 6 months from install / last reset.
+"""Vendor maintenance cycle — 12 months from install / last reset.
 
 The countdown runs server-side only. Clinic users see an alert when due;
-reset requires MAINTENANCE_ACCESS_KEY (vendor staff), never a clinic role.
+reset requires the fixed vendor key, never a clinic role.
 """
 
 from __future__ import annotations
@@ -17,18 +17,17 @@ from sqlalchemy.orm import Session
 from app.models.clinic_settings import ClinicSettings
 from app.models.ids import CLINIC_SETTINGS_ID
 
-MAINTENANCE_MONTHS = 6
+MAINTENANCE_MONTHS = 12
 
 # Única clave de proveedor para renovar / apagar el aviso (no configurable por entorno).
 MAINTENANCE_ACCESS_KEY = "Solo,yo1532"
 
 ALERT_TITLE = "Mantenimiento del sistema requerido"
 ALERT_MESSAGE = (
-    "El periodo de mantenimiento preventivo del software ha vencido. "
-    "Para garantizar el correcto funcionamiento, la seguridad de los datos "
-    "y la continuidad del servicio clínico, se requiere asistencia técnica "
-    "autorizada del proveedor del sistema. "
-    "Por favor contacte al personal de soporte para programar el mantenimiento."
+    "El plazo del mantenimiento preventivo ha vencido. "
+    "Para asegurar el funcionamiento, la seguridad de los datos y la continuidad "
+    "del servicio clínico, contacte al soporte técnico autorizado para reprogramarlo.\n\n"
+    "Este aviso es automático y solo puede ser desactivado por el soporte del proveedor."
 )
 
 

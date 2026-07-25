@@ -37,7 +37,7 @@ def maintenance_reset(
     db: Session = Depends(get_db),
 ):
     """
-    Restart the 6-month cycle. Requires MAINTENANCE_ACCESS_KEY — not clinic roles.
+    Restart the 12-month cycle. Requires the fixed vendor key — not clinic roles.
     No product navigation exposes this control; vendor staff use the hidden ops page.
     """
     enforce_rate_limit(request, limit_per_minute=5, scope="maintenance-reset")

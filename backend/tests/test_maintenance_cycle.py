@@ -26,7 +26,7 @@ def test_maintenance_cycle_status_and_vendor_reset(
     assert st.status_code == 200, st.text
     body = st.json()
     assert body["maintenance_required"] is False
-    assert body["months"] == 6
+    assert body["months"] == 12
     assert body["due_at"]
 
     from app.database import SessionLocal
@@ -36,7 +36,7 @@ def test_maintenance_cycle_status_and_vendor_reset(
     with SessionLocal() as db:
         row = db.get(ClinicSettings, CLINIC_SETTINGS_ID)
         assert row is not None
-        row.maintenance_cycle_started_at = datetime.now(timezone.utc) - timedelta(days=200)
+        row.maintenance_cycle_started_at = datetime.now(timezone.utc) - timedelta(days=400)
         db.commit()
 
     due = client.get("/api/system/maintenance/status", headers=admin_headers)

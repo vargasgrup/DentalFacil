@@ -20,7 +20,7 @@ function ackKey(dueAt: string | undefined): string {
 }
 
 /**
- * Background 6-month preventive cycle alert.
+ * Background 12-month preventive cycle alert.
  * No config/menu entry — only surfaces when maintenance is due.
  */
 export function MaintenanceAlert() {
@@ -93,12 +93,11 @@ export function MaintenanceAlert() {
             <h2 id="maint-title" className="text-lg font-semibold text-slate-900">
               {status.title || "Mantenimiento del sistema requerido"}
             </h2>
-            <p id="maint-desc" className="text-sm leading-relaxed text-slate-600">
+            <p
+              id="maint-desc"
+              className="whitespace-pre-line text-sm leading-relaxed text-slate-600"
+            >
               {status.message}
-            </p>
-            <p className="text-help text-slate-400">
-              Este aviso es automático. El personal clínico no puede desactivarlo; solo el
-              soporte técnico autorizado del proveedor puede renovar el ciclo preventivo.
             </p>
           </div>
         </div>

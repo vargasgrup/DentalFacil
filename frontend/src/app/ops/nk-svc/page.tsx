@@ -2,7 +2,7 @@
 
 /**
  * Hidden vendor ops page — not linked from Sidebar, Config, or any product nav.
- * Only vendor staff with MAINTENANCE_ACCESS_KEY can reset the 6-month cycle.
+ * Only vendor staff with the fixed access key can reset the 12-month cycle.
  * Path is intentionally non-discoverable for clinic users.
  */
 
@@ -58,7 +58,7 @@ export default function VendorMaintenanceOpsPage() {
           Ciclo de mantenimiento
         </h1>
         <p className="mt-2 text-sm text-slate-600">
-          Acceso exclusivo del proveedor. Renueva el periodo preventivo de 6 meses tras
+          Acceso exclusivo del proveedor. Renueva el periodo preventivo de 12 meses tras
           completar el mantenimiento del sistema. La única clave válida es la del equipo
           técnico (no hay claves alternativas ni variables de entorno).
         </p>
@@ -99,7 +99,7 @@ export default function VendorMaintenanceOpsPage() {
             </p>
           )}
           <Button type="submit" loading={busy} className="w-full">
-            Renovar ciclo (6 meses)
+            Renovar ciclo (12 meses)
           </Button>
         </form>
       </div>

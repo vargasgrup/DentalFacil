@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,8 @@ from app.models import (
     Patient,
     User,
 )
+
+CLINIC_TZ = ZoneInfo("America/Lima")
 
 
 def _money(v: float) -> str:
@@ -44,13 +47,25 @@ def _doctor_name(db: Session, doctor_id: str | None) -> str:
     return u.nombre if u else "—"
 
 
+def _to_clinic(dt: datetime) -> datetime:
+    """Normalize stored UTC/naive timestamps to America/Lima for display."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(CLINIC_TZ)
+
+
 def _fmt_dt(dt: datetime | None) -> tuple[str, str]:
     if not dt:
         return "—", "—"
     try:
-        return dt.strftime("%d/%m/%Y"), dt.strftime("%H:%M")
+        local = _to_clinic(dt)
+        return local.strftime("%d/%m/%Y"), local.strftime("%H:%M")
     except Exception:
         return "—", "—"
+
+
+def _fmt_range_date(dt: datetime) -> str:
+    return _to_clinic(dt).strftime("%d/%m/%Y")
 
 
 @dataclass
@@ -117,8 +132,8 @@ def build_caja_report(db: Session, start: datetime, end: datetime) -> ReportPayl
 
     return ReportPayload(
         title="Reporte de Caja",
-        fecha_inicio=start.strftime("%d/%m/%Y"),
-        fecha_fin=end.strftime("%d/%m/%Y"),
+        fecha_inicio=_fmt_range_date(start),
+        fecha_fin=_fmt_range_date(end),
         summary={
             "Total ingresos": _money(total_ingresos),
             "Total egresos": _money(total_egresos),
@@ -259,8 +274,8 @@ def build_pacientes_report(
 
     return ReportPayload(
         title="Pacientes atendidos",
-        fecha_inicio=start.strftime("%d/%m/%Y"),
-        fecha_fin=end.strftime("%d/%m/%Y"),
+        fecha_inicio=_fmt_range_date(start),
+        fecha_fin=_fmt_range_date(end),
         summary={
             "Pacientes únicos": str(len(patient_ids)),
             "Atenciones": str(len(unique_events)),
@@ -349,8 +364,8 @@ def build_tratamientos_report(
 
     return ReportPayload(
         title="Tratamientos / Evolución",
-        fecha_inicio=start.strftime("%d/%m/%Y"),
-        fecha_fin=end.strftime("%d/%m/%Y"),
+        fecha_inicio=_fmt_range_date(start),
+        fecha_fin=_fmt_range_date(end),
         summary={
             "Atenciones": str(len(entries)),
             "Costo total": _money(total_costo),
@@ -375,8 +390,8 @@ def build_resumen(db: Session, start: datetime, end: datetime) -> dict[str, Any]
     pac = build_pacientes_report(db, start, end)
     trat = build_tratamientos_report(db, start, end)
     return {
-        "fecha_inicio": start.strftime("%d/%m/%Y"),
-        "fecha_fin": end.strftime("%d/%m/%Y"),
+        "fecha_inicio": _fmt_range_date(start),
+        "fecha_fin": _fmt_range_date(end),
         "caja": caja.meta or {},
         "pacientes": pac.meta or {},
         "tratamientos": trat.meta or {},

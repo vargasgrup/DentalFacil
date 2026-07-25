@@ -34,7 +34,12 @@ def ensure_auth_schema() -> None:
             from app.models.revoked_token import RevokedToken
 
             RevokedToken.__table__.create(bind=engine, checkfirst=True)
-            logger.info("[dentalfacil] auth schema (SQLite): user columns + revoked_tokens ensured")
+            from app.models.password_reset import PasswordResetToken
+
+            PasswordResetToken.__table__.create(bind=engine, checkfirst=True)
+            logger.info(
+                "[dentalfacil] auth schema (SQLite): user columns + revoked_tokens + password_reset_tokens ensured"
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("[dentalfacil] SQLite auth column ensure skipped: %s", exc)
         return
@@ -64,6 +69,27 @@ def ensure_auth_schema() -> None:
         """
         CREATE INDEX IF NOT EXISTS ix_revoked_tokens_user_id
         ON revoked_tokens (user_id)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id VARCHAR(36) PRIMARY KEY,
+            user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token_hash VARCHAR(64) NOT NULL UNIQUE,
+            code_hash VARCHAR(64) NOT NULL,
+            code_plain VARCHAR(12) NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
+            used_at TIMESTAMPTZ,
+            email_sent BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_password_reset_tokens_user_id
+        ON password_reset_tokens (user_id)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_password_reset_tokens_code_hash
+        ON password_reset_tokens (code_hash)
         """,
     ]
     with engine.begin() as conn:

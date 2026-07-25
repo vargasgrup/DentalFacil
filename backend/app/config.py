@@ -63,6 +63,19 @@ class Settings(BaseSettings):
     # Rate limiting (auth endpoints)
     RATE_LIMIT_LOGIN_PER_MINUTE: int = 10
     RATE_LIMIT_SETUP_PER_MINUTE: int = 3
+    RATE_LIMIT_FORGOT_PASSWORD_PER_MINUTE: int = 5
+
+    # Password recovery (SMTP and/or Resend)
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+    SMTP_TLS: bool = True
+    RESEND_API_KEY: str = ""
+    PASSWORD_RESET_EXPIRE_MINUTES: int = 60
+    # Local air-gapped only: return code in API response (never enable on public Railway)
+    PASSWORD_RESET_INLINE_CODE: bool = False
 
     # App
     APP_NAME: str = "M&D Odontología Especializada"

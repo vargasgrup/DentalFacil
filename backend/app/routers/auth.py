@@ -4,7 +4,11 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_roles
-from app.core.rate_limit import enforce_login_rate_limit, enforce_setup_rate_limit
+from app.core.rate_limit import (
+    enforce_login_rate_limit,
+    enforce_rate_limit,
+    enforce_setup_rate_limit,
+)
 from app.core.roles import MAX_ADMINS, VALID_ROLES, Rol
 from app.core.modules import (
     modules_from_storage,
@@ -24,18 +28,25 @@ from app.core.security import (
 from app.database import get_db
 from app.models import User
 from app.schemas.user import (
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     LoginRequest,
     LogoutRequest,
     PasswordChange,
     PasswordReset,
     RefreshRequest,
+    ResetPasswordWithTokenRequest,
     SetupRequest,
     SetupStatus,
     TokenResponse,
     UserCreate,
     UserOut,
     UserUpdate,
+    ValidateResetRequest,
+    ValidateResetResponse,
 )
+from app.services import password_reset as pwd_reset
+from app.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -178,6 +189,82 @@ def change_password(
     user.password_hash = hash_password(payload.new_password)
     _bump_token_version(user)
     db.commit()
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+def forgot_password(
+    request: Request,
+    payload: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    enforce_rate_limit(
+        request,
+        limit_per_minute=settings.RATE_LIMIT_FORGOT_PASSWORD_PER_MINUTE,
+        scope="forgot-password",
+    )
+    result = pwd_reset.issue_reset_for_email(db, str(payload.email))
+    # Generic message — do not reveal whether the email exists
+    message = (
+        "Si el correo está registrado, recibirá un código para restablecer su contraseña. "
+        "Revise su bandeja de entrada. Si no llega el correo, un administrador puede "
+        "verle el código en Configuración → Usuarios."
+    )
+    if result.issued and result.delivery == "admin" and not result.email_sent:
+        message = (
+            "Solicitud registrada. Un administrador verá el código en "
+            "Configuración → Usuarios y podrá indicárselo, o restablecer su clave directamente."
+        )
+    return ForgotPasswordResponse(
+        ok=True,
+        message=message,
+        delivery=result.delivery if result.issued else "none",
+        reset_code=result.reset_code,
+    )
+
+
+@router.post("/validate-reset", response_model=ValidateResetResponse)
+def validate_reset_token(
+    request: Request,
+    payload: ValidateResetRequest,
+    db: Session = Depends(get_db),
+):
+    enforce_rate_limit(request, limit_per_minute=20, scope="validate-reset")
+    data = pwd_reset.validate_reset(
+        db,
+        token=payload.token,
+        code=payload.code,
+        email=str(payload.email) if payload.email else None,
+    )
+    return ValidateResetResponse(**data)
+
+
+@router.post("/reset-password", status_code=204)
+def reset_password_with_token(
+    request: Request,
+    payload: ResetPasswordWithTokenRequest,
+    db: Session = Depends(get_db),
+):
+    enforce_rate_limit(request, limit_per_minute=10, scope="reset-password")
+    try:
+        pwd_reset.consume_reset(
+            db,
+            new_password=payload.new_password,
+            token=payload.token,
+            code=payload.code,
+            email=str(payload.email) if payload.email else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return None
+
+
+@router.get("/password-reset-requests")
+def list_password_reset_requests(
+    admin: User = Depends(require_roles(Rol.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    _ = admin
+    return pwd_reset.list_active_requests(db)
 
 
 def _count_admins(db: Session, *, exclude_id: str | None = None) -> int:

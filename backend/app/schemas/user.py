@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.core.modules import ALL_MODULES, normalize_modules
 
@@ -85,6 +85,48 @@ class LogoutRequest(BaseModel):
 
 class SetupStatus(BaseModel):
     needs_setup: bool
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    ok: bool = True
+    message: str
+    delivery: str = "none"  # email | admin | none
+    # Present only when PASSWORD_RESET_INLINE_CODE=true (local installs)
+    reset_code: str | None = None
+
+
+class ValidateResetRequest(BaseModel):
+    token: str | None = None
+    code: str | None = None
+    email: EmailStr | None = None
+
+
+class ValidateResetResponse(BaseModel):
+    valid: bool
+    email: str | None = None
+    nombre: str | None = None
+
+
+class ResetPasswordWithTokenRequest(BaseModel):
+    new_password: str = Field(..., min_length=6)
+    confirm_password: str = Field(..., min_length=6)
+    token: str | None = None
+    code: str | None = None
+    email: EmailStr | None = None
+
+    @model_validator(mode="after")
+    def _passwords_match(self) -> "ResetPasswordWithTokenRequest":
+        if self.new_password != self.confirm_password:
+            raise ValueError("Las contraseñas no coinciden")
+        if not (self.token or "").strip() and not (
+            (self.code or "").strip() and self.email
+        ):
+            raise ValueError("Debe indicar el enlace (token) o el código con su correo")
+        return self
 
 
 # Re-export for docs / admin UI

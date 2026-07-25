@@ -12,6 +12,7 @@ import { SpecialtiesConfig } from "@/components/config/SpecialtiesConfig";
 import { ReminderConfigForm } from "@/components/config/ReminderConfigForm";
 import { UsersAdminPanel } from "@/components/config/UsersAdminPanel";
 import { BackupMigrationPanel } from "@/components/config/BackupMigrationPanel";
+import { PasswordResetRequestsPanel } from "@/components/config/PasswordResetRequestsPanel";
 import { emptyClinic, type ClinicProfile, type User } from "@/components/config/types";
 import {
   APP_MODULES,
@@ -557,6 +558,8 @@ export default function ConfiguracionPage() {
           onChangeModulos={changeModulos}
         />
       )}
+
+      {isAdmin && <PasswordResetRequestsPanel />}
 
       {isAdmin && <BackupMigrationPanel />}
     </PageContainer>

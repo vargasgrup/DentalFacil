@@ -16,6 +16,7 @@ from app.models.cash import CashSession, CashTransaction
 from app.models.document import DocumentGenerated
 from app.models.clinic_settings import ClinicSettings
 from app.models.backup import BackupSettings, BackupHistory
+from app.models.password_reset import PasswordResetToken
 
 __all__ = [
     "User",
@@ -39,4 +40,5 @@ __all__ = [
     "ClinicSettings",
     "BackupSettings",
     "BackupHistory",
+    "PasswordResetToken",
 ]

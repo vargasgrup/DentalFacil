@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { BrandLogo } from "@/components/BrandLogo";
+import { AboutVendorModal } from "@/components/auth/AboutVendorModal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/Input";
 import { AlertCircle, ArrowLeft, CheckCircle2, Upload } from "lucide-react";
@@ -31,6 +32,7 @@ export default function LoginPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [inlineCode, setInlineCode] = useState<string | null>(null);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -506,15 +508,13 @@ export default function LoginPage() {
         <button
           type="button"
           className="text-brand-600 underline underline-offset-2 transition-smooth hover:text-brand-700"
-          onClick={() =>
-            alert(
-              "M&D Odontología Especializada v1.0.0 — Sistema de Gestión Clínica Odontológica"
-            )
-          }
+          onClick={() => setAboutOpen(true)}
         >
           Acerca de
         </button>
       </footer>
+
+      <AboutVendorModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   );
 }

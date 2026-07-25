@@ -72,7 +72,11 @@ export function isMarked(estado: string | null | undefined) {
   return Boolean(estado && estado !== "sano");
 }
 
-export function useOdontogramPatient(patientId: string) {
+export function useOdontogramPatient(
+  patientId: string,
+  options?: { readOnly?: boolean }
+) {
+  const readOnly = Boolean(options?.readOnly);
   const [denticion, setDenticion] = useState<Denticion>("permanente");
   const [tool, setTool] = useState<string>("caries");
   const [entries, setEntries] = useState<Record<string, OdontogramEntry>>({});
@@ -125,6 +129,7 @@ export function useOdontogramPatient(patientId: string) {
     superficies: Record<SurfaceKey, string | null>,
     notas?: string | null
   ): Promise<OdontogramEntry | null> => {
+    if (readOnly) return null;
     setSaving(true);
     const storeDent =
       denticion === "mixta" ? denticionOfPieza(pieza) : denticion;
@@ -155,6 +160,7 @@ export function useOdontogramPatient(patientId: string) {
   };
 
   const clearAll = async () => {
+    if (readOnly) return;
     if (
       !window.confirm(
         `¿Limpiar el odontograma (${denticion === "permanente" ? "Adulto" : "Niño"}) de este paciente?`
@@ -191,6 +197,7 @@ export function useOdontogramPatient(patientId: string) {
   }, [patientId, denticion]);
 
   const saveSnapshot = async (label?: string) => {
+    if (readOnly) return null;
     setSaving(true);
     try {
       return await apiFetch<OdontogramSnapshot>(`/api/odontogram/${patientId}/snapshots`, {
@@ -219,6 +226,7 @@ export function useOdontogramPatient(patientId: string) {
     entries,
     loading,
     saving,
+    readOnly,
     load,
     persist,
     clearAll,

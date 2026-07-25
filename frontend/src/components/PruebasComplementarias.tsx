@@ -93,7 +93,13 @@ async function fetchBlobUrl(url: string, contentType?: string): Promise<string> 
   return URL.createObjectURL(typed);
 }
 
-export function PruebasComplementarias({ patientId }: { patientId: string }) {
+export function PruebasComplementarias({
+  patientId,
+  readOnly = false,
+}: {
+  patientId: string;
+  readOnly?: boolean;
+}) {
   const [items, setItems] = useState<ComplementaryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -262,7 +268,8 @@ export function PruebasComplementarias({ patientId }: { patientId: string }) {
                 onChange={(e) =>
                   setSubtipos((prev) => ({ ...prev, [cat.id]: e.target.value }))
                 }
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+                disabled={readOnly}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:opacity-60"
               >
                 {cat.subtypes.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -281,9 +288,11 @@ export function PruebasComplementarias({ patientId }: { patientId: string }) {
                   setNotas((prev) => ({ ...prev, [cat.id]: e.target.value }))
                 }
                 placeholder="Referencia clínica breve"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+                disabled={readOnly}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:opacity-60"
               />
             </label>
+            {!readOnly && (
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">
               <Upload className="h-4 w-4" aria-hidden />
               {uploadingCat === cat.id ? "Subiendo…" : "Cargar archivo"}
@@ -298,6 +307,7 @@ export function PruebasComplementarias({ patientId }: { patientId: string }) {
                 }}
               />
             </label>
+            )}
           </div>
 
           {byCategory[cat.id].length === 0 ? (
@@ -334,6 +344,7 @@ export function PruebasComplementarias({ patientId }: { patientId: string }) {
                     >
                       {loadingId === item.id ? "Cargando…" : "Visualizar"}
                     </Button>
+                    {!readOnly && (
                     <button
                       type="button"
                       onClick={() => void onDelete(item)}
@@ -342,6 +353,7 @@ export function PruebasComplementarias({ patientId }: { patientId: string }) {
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
+                    )}
                   </div>
                 </li>
               ))}

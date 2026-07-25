@@ -66,6 +66,7 @@ export function EvaluacionTab({
   updateItem,
   registerPlanItemInEvolution,
 }: EvaluacionTabProps) {
+  const inactive = patient.activo === false;
   return (
     <div
       id="ficha-panel-evaluacion"
@@ -74,6 +75,14 @@ export function EvaluacionTab({
       className="space-y-5"
     >
       <Section title="Odontograma" noSave>
+        {inactive && (
+          <p
+            role="status"
+            className="mb-3 rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 text-sm text-warning-800"
+          >
+            Paciente inactivo — odontograma en solo lectura.
+          </p>
+        )}
         {patient.es_migrado && hasOdontogramSnapshot === false && (
           <p className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
             Este es el estado inicial registrado al momento de la migración (no se
@@ -86,10 +95,19 @@ export function EvaluacionTab({
             Paciente migrado: el odontograma incluye el estado histórico de migración.
           </p>
         )}
-        <Odontograma patientId={patientId} onProposeTreatment={addPlanFromOdontogram} />
+        <Odontograma
+          patientId={patientId}
+          readOnly={inactive}
+          onProposeTreatment={inactive ? undefined : addPlanFromOdontogram}
+        />
       </Section>
 
-      <Section title="Diagnóstico" onSave={saveRecord} saveState={recordSaved}>
+      <Section
+        title="Diagnóstico"
+        onSave={inactive ? undefined : saveRecord}
+        saveState={recordSaved}
+        noSave={inactive}
+      >
         <textarea
           value={recordForm.diagnostico || ""}
           onChange={(e) =>
@@ -98,10 +116,17 @@ export function EvaluacionTab({
           rows={4}
           className={FIELD_CLASS}
           placeholder="Escribe el diagnóstico clínico..."
+          disabled={inactive}
+          readOnly={inactive}
         />
       </Section>
 
-      <Section title="Plan de tratamiento" onSave={saveRecord} saveState={recordSaved}>
+      <Section
+        title="Plan de tratamiento"
+        onSave={inactive ? undefined : saveRecord}
+        saveState={recordSaved}
+        noSave={inactive}
+      >
         <p className="mb-3 text-help text-slate-500">
           Presupuesto clínico. Al <strong className="font-medium text-slate-700">Guardar</strong>,
           cada ítem del plan activo se refleja automáticamente en{" "}
@@ -304,7 +329,12 @@ export function EvaluacionTab({
           </table>
         </div>
         <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-          <Button variant="secondary" onClick={addItemRow} icon={<Plus className="h-4 w-4" />}>
+          <Button
+            variant="secondary"
+            onClick={addItemRow}
+            disabled={inactive}
+            icon={<Plus className="h-4 w-4" />}
+          >
             Agregar fila
           </Button>
           <div className="min-w-[220px] rounded-lg bg-surface-subtle px-4 py-3 text-sm">
@@ -339,7 +369,12 @@ export function EvaluacionTab({
         </p>
       </Section>
 
-      <Section title="Observaciones" onSave={saveRecord} saveState={recordSaved}>
+      <Section
+        title="Observaciones"
+        onSave={inactive ? undefined : saveRecord}
+        saveState={recordSaved}
+        noSave={inactive}
+      >
         <textarea
           value={recordForm.observaciones || ""}
           onChange={(e) =>
@@ -379,7 +414,8 @@ export function EvaluacionTab({
             <button
               type="button"
               onClick={toggleConsentimiento}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-smooth ${
+              disabled={inactive}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-smooth disabled:cursor-not-allowed disabled:opacity-50 ${
                 record.consentimiento_firmado
                   ? "bg-success-50 text-success-700"
                   : "bg-slate-100 text-slate-500"
@@ -417,7 +453,7 @@ export function EvaluacionTab({
       </Section>
 
       <Section title="Pruebas complementarias" noSave>
-        <PruebasComplementarias patientId={patientId} />
+        <PruebasComplementarias patientId={patientId} readOnly={inactive} />
       </Section>
     </div>
   );

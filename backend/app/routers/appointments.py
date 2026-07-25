@@ -197,7 +197,11 @@ def update_appointment(
     apt = db.get(Appointment, appointment_id)
     if not apt:
         raise HTTPException(status_code=404, detail="Cita no encontrada")
-    get_active_patient_or_404(db, apt.patient_id)
+    data = payload.model_dump(exclude_unset=True)
+    # Reschedule / reassignment requires an active patient; cancel/estado/notes do not
+    scheduling_keys = {"fecha_hora", "duracion_minutos", "doctor_id", "patient_id"}
+    if scheduling_keys & data.keys():
+        get_active_patient_or_404(db, apt.patient_id)
     if payload.fecha_hora or payload.duracion_minutos:
         new_time = _as_utc(payload.fecha_hora) if payload.fecha_hora else _as_utc(apt.fecha_hora)
         new_dur = payload.duracion_minutos or apt.duracion_minutos
@@ -206,7 +210,6 @@ def update_appointment(
             _assert_within_clinic_hours(db, payload.fecha_hora)
         if _check_overlap(db, doctor, new_time, new_dur, exclude_id=apt.id):
             raise HTTPException(status_code=409, detail="El doctor ya tiene una cita en ese horario")
-    data = payload.model_dump(exclude_unset=True)
     if "fecha_hora" in data and data["fecha_hora"] is not None:
         data["fecha_hora"] = _as_utc(data["fecha_hora"])
     for field, value in data.items():

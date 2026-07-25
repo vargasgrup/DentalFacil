@@ -10,13 +10,16 @@ import { OdontogramaAnatomico } from "./odontogram/OdontogramaAnatomico";
 export function Odontograma({
   patientId,
   onProposeTreatment,
+  readOnly = false,
 }: {
   patientId: string;
   onProposeTreatment?: (item: PlanProposalItem) => void;
+  readOnly?: boolean;
 }) {
   return (
     <OdontogramaAnatomico
       patientId={patientId}
+      readOnly={readOnly}
       onProposeTreatment={onProposeTreatment}
     />
   );

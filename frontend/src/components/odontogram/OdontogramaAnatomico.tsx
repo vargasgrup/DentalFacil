@@ -114,11 +114,13 @@ function labelCond(id: string | null | undefined) {
 export function OdontogramaAnatomico({
   patientId,
   onProposeTreatment,
+  readOnly = false,
 }: {
   patientId: string;
   onProposeTreatment?: (item: PlanProposalItem) => void;
+  readOnly?: boolean;
 }) {
-  const api = useOdontogramPatient(patientId);
+  const api = useOdontogramPatient(patientId, { readOnly });
   const {
     denticion,
     setDenticion,
@@ -548,6 +550,8 @@ export function OdontogramaAnatomico({
               >
                 {sistema === "fdi" ? "FDI" : "Universal"}
               </button>
+              {!readOnly && (
+              <>
               <button
                 type="button"
                 onClick={() => void clearAll()}
@@ -559,6 +563,7 @@ export function OdontogramaAnatomico({
                 type="button"
                 onClick={async () => {
                   const snap = await saveSnapshot();
+                  if (!snap) return;
                   alert(`Estado de cita guardado: ${snap.label}`);
                   await reloadSnapshots();
                 }}
@@ -566,6 +571,8 @@ export function OdontogramaAnatomico({
               >
                 Guardar estado de cita
               </button>
+              </>
+              )}
             </div>
 
             {/* Selector de arcada — solo móvil */}
@@ -820,10 +827,12 @@ export function OdontogramaAnatomico({
             >
               Comparar
             </button>
+            {!readOnly && (
             <button
               type="button"
               onClick={async () => {
                 const snap = await saveSnapshot();
+                if (!snap) return;
                 await reloadSnapshots();
                 alert(`Guardado: ${snap.label}`);
               }}
@@ -831,6 +840,7 @@ export function OdontogramaAnatomico({
             >
               Guardar estado de cita
             </button>
+            )}
           </div>
           {snapshots.length < 2 && (
             <p className="text-help text-amber-700">

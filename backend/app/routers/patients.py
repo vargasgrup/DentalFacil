@@ -369,19 +369,18 @@ def deactivate_patient(
         return p
     p.activo = False
 
-    # Cancel future scheduled appointments + pending reminders for this patient
+    # Cancel any remaining scheduled appointments + pending reminders
     now = datetime.now(timezone.utc)
-    future_apts = (
+    scheduled = (
         db.query(Appointment)
         .filter(
             Appointment.patient_id == patient_id,
             Appointment.estado == "programada",
-            Appointment.fecha_hora >= now,
         )
         .all()
     )
-    apt_ids = [a.id for a in future_apts]
-    for apt in future_apts:
+    apt_ids = [a.id for a in scheduled]
+    for apt in scheduled:
         apt.estado = "cancelada"
     if apt_ids:
         db.query(AppointmentReminder).filter(
@@ -399,6 +398,7 @@ def deactivate_patient(
         detail={
             "numero_ficha": p.numero_ficha,
             "citas_canceladas": len(apt_ids),
+            "as_of": now.isoformat(),
         },
     )
     db.commit()

@@ -243,7 +243,12 @@ export function HistoriaTab({
         </label>
       </Section>
 
-      <Section title="Antecedentes" onSave={saveRecord} saveState={recordSaved}>
+      <Section
+        title="Antecedentes"
+        onSave={inactive ? undefined : saveRecord}
+        saveState={recordSaved}
+        noSave={inactive}
+      >
         <div className="space-y-5">
           <div>
             <span className="mb-1 block text-label tracking-wide text-slate-700">

@@ -416,17 +416,23 @@ export function SeguimientoTab({
             )}
           </p>
           <div className="mt-3 flex justify-end">
-            <Button
-              variant="secondary"
-              onClick={openPaymentForm}
-              disabled={inactive}
-              title={inactive ? "Paciente inactivo — solo lectura" : undefined}
-              icon={!showPayment ? <Plus className="h-4 w-4" /> : undefined}
-            >
-              {showPayment ? "Cancelar" : "Registrar pago"}
-            </Button>
+            {canAccessModule(user, "caja") ? (
+              <Button
+                variant="secondary"
+                onClick={openPaymentForm}
+                disabled={inactive}
+                title={inactive ? "Paciente inactivo — solo lectura" : undefined}
+                icon={!showPayment ? <Plus className="h-4 w-4" /> : undefined}
+              >
+                {showPayment ? "Cancelar" : "Registrar pago"}
+              </Button>
+            ) : (
+              <p className="text-help text-slate-400">
+                El cobro requiere acceso al módulo Caja.
+              </p>
+            )}
           </div>
-          {showPayment && (
+          {canAccessModule(user, "caja") && showPayment && (
             <form
               onSubmit={registerPayment}
               className="mt-3 space-y-3 rounded-card border border-slate-200 bg-white p-4"

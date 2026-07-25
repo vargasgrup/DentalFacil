@@ -1,17 +1,78 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { BrandLogo } from "@/components/BrandLogo";
 import { AboutVendorModal } from "@/components/auth/AboutVendorModal";
+import { LoginField } from "@/components/auth/LoginField";
+import { LoginPremiumShell } from "@/components/auth/LoginPremiumShell";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/Input";
-import { AlertCircle, ArrowLeft, CheckCircle2, Upload } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  CheckCircle2,
+  KeyRound,
+  Lock,
+  Mail,
+  Upload,
+  UserRound,
+} from "lucide-react";
 
 type SetupMode = "new" | "restore";
 type AuthView = "login" | "forgot" | "reset";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
+
+function AlertBox({
+  tone,
+  children,
+}: {
+  tone: "error" | "success";
+  children: ReactNode;
+}) {
+  const styles =
+    tone === "error"
+      ? "border-danger-200 bg-danger-50 text-danger-700"
+      : "border-success-200 bg-success-50 text-success-800";
+  const Icon = tone === "error" ? AlertCircle : CheckCircle2;
+  return (
+    <div
+      role={tone === "error" ? "alert" : "status"}
+      className={`flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-sm ${styles}`}
+    >
+      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+      <span>{children}</span>
+    </div>
+  );
+}
+
+function FormTitle({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <header className="mb-6">
+      <h1 className="text-[1.65rem] font-bold leading-tight tracking-[-0.03em] text-slate-900 sm:text-[1.85rem]">
+        {title}
+      </h1>
+      {hint ? (
+        <p className="mt-2 text-sm leading-relaxed text-slate-500">{hint}</p>
+      ) : null}
+    </header>
+  );
+}
+
+function EmailTab() {
+  return (
+    <div className="mb-5 border-b border-slate-200" role="tablist" aria-label="Método de acceso">
+      <button
+        type="button"
+        role="tab"
+        aria-selected
+        className="-mb-px border-b-2 border-slate-900 pb-2.5 text-sm font-semibold text-slate-900"
+      >
+        Correo electrónico
+      </button>
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const { needsSetup, loading, login, setup, user } = useAuth();
@@ -54,9 +115,9 @@ export default function LoginPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-surface-muted">
+      <div className="flex min-h-screen items-center justify-center bg-[#eef2f6]">
         <div
-          className="h-9 w-9 animate-spin rounded-full border-[3px] border-slate-200 border-t-brand-600"
+          className="h-9 w-9 animate-spin rounded-full border-[3px] border-slate-200 border-t-[#55BBF9]"
           aria-label="Cargando"
         />
       </div>
@@ -68,9 +129,9 @@ export default function LoginPage() {
       window.location.assign("/dashboard");
     }
     return (
-      <div className="flex min-h-screen items-center justify-center bg-surface-muted">
+      <div className="flex min-h-screen items-center justify-center bg-[#eef2f6]">
         <div
-          className="h-9 w-9 animate-spin rounded-full border-[3px] border-slate-200 border-t-brand-600"
+          className="h-9 w-9 animate-spin rounded-full border-[3px] border-slate-200 border-t-[#55BBF9]"
           aria-label="Entrando"
         />
       </div>
@@ -202,319 +263,295 @@ export default function LoginPage() {
     }
   };
 
-  const subtitle =
+  const formTitle =
+    needsSetup && setupMode === "restore"
+      ? "Restaurar instalación"
+      : needsSetup
+        ? "Crear cuenta administrador"
+        : view === "forgot"
+          ? "Recuperar acceso"
+          : view === "reset"
+            ? "Nueva contraseña"
+            : "¡Inicia sesión en tu cuenta!";
+
+  const formHint =
     needsSetup && setupMode === "restore"
       ? "Cargue un backup para migrar esta instalación desde otra PC."
       : needsSetup
-        ? "Crea tu cuenta administrador para comenzar."
+        ? "Configure el primer administrador para comenzar."
         : view === "forgot"
           ? "Ingrese su correo para recibir un código de recuperación."
           : view === "reset"
             ? "Ingrese el código recibido y su nueva contraseña."
-            : "Accede con tu correo y contraseña al panel de M&D Odontología Especializada.";
+            : "Accede con tu correo al panel de M&D Odontología Especializada.";
+
+  const panelEyebrow = "Bienvenido a la clínica";
+  const panelTitle =
+    needsSetup
+      ? "Configure su sistema odontológico"
+      : "Inicia sesión para continuar";
+
+  const primaryCtaClass =
+    "login-cta mt-1 w-full rounded-[12px] border-0 py-3.5 text-[0.95rem] font-semibold text-white shadow-none focus:ring-[#55BBF9]";
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-surface-muted px-4 py-8">
-      <div className="w-full max-w-[440px] rounded-card border border-slate-200/80 bg-white p-8 shadow-card">
-        <div className="mb-4 flex justify-center overflow-hidden rounded-lg">
-          <BrandLogo variant="login" priority />
-        </div>
-
-        <p className="text-center text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-slate-500">
-          Sistema integral de gestión clínica odontológica
-        </p>
-
-        <p className="mt-3 mb-6 text-center text-sm leading-relaxed text-slate-600">
-          {subtitle}
-        </p>
-
-        {needsSetup && (
-          <div className="mb-4 grid grid-cols-2 gap-2">
+    <>
+      <LoginPremiumShell
+        panelEyebrow={panelEyebrow}
+        panelTitle={panelTitle}
+        footer={
+          <footer className="flex flex-col items-center gap-1.5 text-center text-[0.75rem] text-slate-500">
+            <p>© 2026 M&D Odontología Especializada · Todos los derechos reservados.</p>
             <button
               type="button"
-              onClick={() => setSetupMode("new")}
-              className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
-                setupMode === "new"
-                  ? "border-brand-600 bg-brand-50 text-brand-800"
-                  : "border-slate-300 bg-white text-slate-600"
-              }`}
+              className="font-medium text-[#2B9FD9] underline-offset-2 transition-colors hover:text-[#1c66e8] hover:underline"
+              onClick={() => setAboutOpen(true)}
             >
-              Instalación nueva
+              Acerca de
             </button>
-            <button
-              type="button"
-              onClick={() => setSetupMode("restore")}
-              className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
-                setupMode === "restore"
-                  ? "border-brand-600 bg-brand-50 text-brand-800"
-                  : "border-slate-300 bg-white text-slate-600"
-              }`}
-            >
-              Restaurar backup
-            </button>
+          </footer>
+        }
+      >
+        <div className="login-premium__form mx-auto w-full max-w-[400px]">
+          <div className="mb-5 flex justify-center lg:justify-start">
+            <BrandLogo
+              variant="login"
+              priority
+              className="!max-w-[220px] sm:!max-w-[260px]"
+            />
           </div>
-        )}
 
-        {needsSetup && setupMode === "restore" ? (
-          <form onSubmit={handleBootstrapRestore} className="flex flex-col gap-3.5">
-            <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-3 text-sm">
-              <Upload className="h-4 w-4" />
-              {restoreFile ? restoreFile.name : "Elegir archivo .zip de backup"}
-              <input
-                type="file"
-                accept=".zip,application/zip"
-                className="sr-only"
-                onChange={(e) => setRestoreFile(e.target.files?.[0] || null)}
+          <FormTitle title={formTitle} hint={formHint} />
+
+          {needsSetup && (
+            <div className="mb-5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setSetupMode("new")}
+                className={`rounded-xl border px-3 py-2.5 text-xs font-semibold transition-colors ${
+                  setupMode === "new"
+                    ? "border-[#55BBF9] bg-[#55BBF9]/10 text-slate-900"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                }`}
+              >
+                Instalación nueva
+              </button>
+              <button
+                type="button"
+                onClick={() => setSetupMode("restore")}
+                className={`rounded-xl border px-3 py-2.5 text-xs font-semibold transition-colors ${
+                  setupMode === "restore"
+                    ? "border-[#55BBF9] bg-[#55BBF9]/10 text-slate-900"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                }`}
+              >
+                Restaurar backup
+              </button>
+            </div>
+          )}
+
+          {needsSetup && setupMode === "restore" ? (
+            <form onSubmit={handleBootstrapRestore} className="flex flex-col gap-3.5">
+              <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[12px] border border-dashed border-slate-300 bg-slate-50/80 px-3 py-3.5 text-sm text-slate-700 transition-colors hover:border-[#55BBF9] hover:bg-[#55BBF9]/5">
+                <Upload className="h-4 w-4 text-slate-500" />
+                {restoreFile ? restoreFile.name : "Elegir archivo .zip de backup"}
+                <input
+                  type="file"
+                  accept=".zip,application/zip"
+                  className="sr-only"
+                  onChange={(e) => setRestoreFile(e.target.files?.[0] || null)}
+                />
+              </label>
+              <LoginField
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                placeholder="Escriba CONFIRMAR"
+                required
+                icon={<KeyRound className="h-4 w-4" strokeWidth={1.75} />}
               />
-            </label>
-            <Input
-              label="Escriba CONFIRMAR"
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
-              required
-            />
-            {error && (
-              <div
-                role="alert"
-                className="flex items-start gap-2 rounded-lg border border-danger-200 bg-danger-50 px-3.5 py-2.5 text-sm text-danger-600"
+              {error ? <AlertBox tone="error">{error}</AlertBox> : null}
+              {restoreOk ? <AlertBox tone="success">{restoreOk}</AlertBox> : null}
+              <Button
+                type="submit"
+                loading={busy}
+                disabled={!restoreFile || confirmText.trim().toUpperCase() !== "CONFIRMAR"}
+                className="mt-1 w-full rounded-[12px] py-3.5 text-[0.95rem] font-semibold"
+                variant="danger"
               >
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span>{error}</span>
-              </div>
-            )}
-            {restoreOk && (
-              <p
-                role="status"
-                className="rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-sm text-success-800"
+                Restaurar e iniciar
+              </Button>
+            </form>
+          ) : view === "forgot" ? (
+            <form onSubmit={handleForgot} className="flex flex-col gap-3.5" autoComplete="off">
+              <EmailTab />
+              <LoginField
+                id="forgot-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Correo electrónico"
+                required
+                autoFocus
+                autoComplete="email"
+                error={Boolean(error)}
+                icon={<Mail className="h-4 w-4" strokeWidth={1.75} />}
+              />
+              {error ? <AlertBox tone="error">{error}</AlertBox> : null}
+              <Button type="submit" loading={busy} className={primaryCtaClass}>
+                Enviar código de recuperación
+              </Button>
+              <button
+                type="button"
+                onClick={goLogin}
+                className="inline-flex items-center justify-center gap-1 text-sm font-medium text-[#2B9FD9] hover:text-[#1c66e8]"
               >
-                {restoreOk}
-              </p>
-            )}
-            <Button
-              type="submit"
-              loading={busy}
-              disabled={!restoreFile || confirmText.trim().toUpperCase() !== "CONFIRMAR"}
-              className="mt-1 w-full py-2.5 text-[0.95rem] font-semibold"
-              variant="danger"
-            >
-              Restaurar e iniciar
-            </Button>
-          </form>
-        ) : view === "forgot" ? (
-          <form onSubmit={handleForgot} className="flex flex-col gap-3.5" autoComplete="off">
-            <Input
-              id="forgot-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Correo electrónico*"
-              required
-              autoFocus
-              autoComplete="email"
-            />
-            {error && (
-              <div
-                role="alert"
-                className="flex items-start gap-2 rounded-lg border border-danger-200 bg-danger-50 px-3.5 py-2.5 text-sm text-danger-600"
-              >
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span>{error}</span>
-              </div>
-            )}
-            <Button
-              type="submit"
-              loading={busy}
-              className="mt-1 w-full py-2.5 text-[0.95rem] font-semibold"
-            >
-              Enviar código de recuperación
-            </Button>
-            <button
-              type="button"
-              onClick={goLogin}
-              className="inline-flex items-center justify-center gap-1 text-sm text-brand-600 underline underline-offset-2"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Volver al inicio de sesión
-            </button>
-          </form>
-        ) : view === "reset" ? (
-          <form onSubmit={handleReset} className="flex flex-col gap-3.5" autoComplete="off">
-            {info && (
-              <div
-                role="status"
-                className="flex items-start gap-2 rounded-lg border border-success-200 bg-success-50 px-3.5 py-2.5 text-sm text-success-800"
-              >
-                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span>{info}</span>
-              </div>
-            )}
-            {inlineCode && (
-              <p className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-center text-sm text-brand-900">
-                Código (modo local): <strong className="tracking-widest">{inlineCode}</strong>
-              </p>
-            )}
-            <Input
-              id="reset-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Correo electrónico*"
-              required
-              autoComplete="email"
-            />
-            <Input
-              id="reset-code"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]{6}"
-              maxLength={6}
-              value={resetCode}
-              onChange={(e) => setResetCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="Código de 6 dígitos*"
-              required
-              autoComplete="one-time-code"
-              autoFocus
-            />
-            <Input
-              id="reset-new-password"
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Nueva contraseña*"
-              required
-              minLength={6}
-              autoComplete="new-password"
-            />
-            <Input
-              id="reset-confirm-password"
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirmar contraseña*"
-              required
-              minLength={6}
-              autoComplete="new-password"
-            />
-            {error && (
-              <div
-                role="alert"
-                className="flex items-start gap-2 rounded-lg border border-danger-200 bg-danger-50 px-3.5 py-2.5 text-sm text-danger-600"
-              >
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span>{error}</span>
-              </div>
-            )}
-            <Button
-              type="submit"
-              loading={busy}
-              className="mt-1 w-full py-2.5 text-[0.95rem] font-semibold"
-            >
-              Guardar nueva contraseña
-            </Button>
-            <button
-              type="button"
-              onClick={goLogin}
-              className="inline-flex items-center justify-center gap-1 text-sm text-brand-600 underline underline-offset-2"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Volver al inicio de sesión
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3.5" autoComplete="off">
-            {needsSetup && (
-              <Input
-                id="login-nombre"
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Volver al inicio de sesión
+              </button>
+            </form>
+          ) : view === "reset" ? (
+            <form onSubmit={handleReset} className="flex flex-col gap-3.5" autoComplete="off">
+              {info ? <AlertBox tone="success">{info}</AlertBox> : null}
+              {inlineCode ? (
+                <p className="rounded-xl border border-[#55BBF9]/40 bg-[#55BBF9]/10 px-3 py-2.5 text-center text-sm text-slate-800">
+                  Código (modo local):{" "}
+                  <strong className="tracking-widest">{inlineCode}</strong>
+                </p>
+              ) : null}
+              <LoginField
+                id="reset-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Correo electrónico"
+                required
+                autoComplete="email"
+                icon={<Mail className="h-4 w-4" strokeWidth={1.75} />}
+              />
+              <LoginField
+                id="reset-code"
                 type="text"
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                placeholder="Nombre completo*"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                value={resetCode}
+                onChange={(e) => setResetCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="Código de 6 dígitos"
+                required
+                autoComplete="one-time-code"
+                autoFocus
+                icon={<KeyRound className="h-4 w-4" strokeWidth={1.75} />}
+              />
+              <LoginField
+                id="reset-new-password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Nueva contraseña"
+                required
+                minLength={6}
+                autoComplete="new-password"
+                icon={<Lock className="h-4 w-4" strokeWidth={1.75} />}
+              />
+              <LoginField
+                id="reset-confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirmar contraseña"
+                required
+                minLength={6}
+                autoComplete="new-password"
+                icon={<Lock className="h-4 w-4" strokeWidth={1.75} />}
+              />
+              {error ? <AlertBox tone="error">{error}</AlertBox> : null}
+              <Button type="submit" loading={busy} className={primaryCtaClass}>
+                Guardar nueva contraseña
+              </Button>
+              <button
+                type="button"
+                onClick={goLogin}
+                className="inline-flex items-center justify-center gap-1 text-sm font-medium text-[#2B9FD9] hover:text-[#1c66e8]"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Volver al inicio de sesión
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="flex flex-col gap-3.5" autoComplete="off">
+              {!needsSetup ? <EmailTab /> : null}
+
+              {needsSetup && (
+                <LoginField
+                  id="login-nombre"
+                  type="text"
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                  placeholder="Nombre completo"
+                  required
+                  autoComplete="off"
+                  icon={<UserRound className="h-4 w-4" strokeWidth={1.75} />}
+                />
+              )}
+
+              <LoginField
+                id="login-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Correo electrónico"
                 required
                 autoComplete="off"
+                autoFocus
+                error={Boolean(error)}
+                icon={<Mail className="h-4 w-4" strokeWidth={1.75} />}
               />
-            )}
 
-            <Input
-              id="login-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Correo electrónico*"
-              required
-              autoComplete="off"
-              autoFocus
-            />
+              <LoginField
+                id="login-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Contraseña"
+                required
+                autoComplete="new-password"
+                error={Boolean(error)}
+                icon={<Lock className="h-4 w-4" strokeWidth={1.75} />}
+              />
 
-            <Input
-              id="login-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Contraseña*"
-              required
-              autoComplete="new-password"
-            />
+              {!needsSetup && (
+                <div className="-mt-1 text-right">
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-[#2B9FD9] transition-colors hover:text-[#1c66e8]"
+                    onClick={() => {
+                      setError("");
+                      setInfo("");
+                      setView("forgot");
+                    }}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
+              )}
 
-            {!needsSetup && (
-              <div className="-mt-1 text-right">
-                <button
-                  type="button"
-                  className="text-sm text-brand-600 underline underline-offset-2 transition-smooth hover:text-brand-700"
-                  onClick={() => {
-                    setError("");
-                    setInfo("");
-                    setView("forgot");
-                  }}
-                >
-                  ¿Olvidaste tu contraseña?
-                </button>
-              </div>
-            )}
+              {info ? <AlertBox tone="success">{info}</AlertBox> : null}
+              {error ? <AlertBox tone="error">{error}</AlertBox> : null}
 
-            {info && (
-              <div
-                role="status"
-                className="flex items-start gap-2 rounded-lg border border-success-200 bg-success-50 px-3.5 py-2.5 text-sm text-success-800"
+              <Button
+                id="login-submit"
+                type="submit"
+                loading={busy}
+                className={primaryCtaClass}
               >
-                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span>{info}</span>
-              </div>
-            )}
-
-            {error && (
-              <div
-                role="alert"
-                className="flex items-start gap-2 rounded-lg border border-danger-200 bg-danger-50 px-3.5 py-2.5 text-sm text-danger-600"
-              >
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <Button
-              id="login-submit"
-              type="submit"
-              loading={busy}
-              className="mt-1 w-full py-2.5 text-[0.95rem] font-semibold"
-            >
-              {needsSetup ? "Crear cuenta" : "Iniciar sesión"}
-            </Button>
-          </form>
-        )}
-      </div>
-
-      <footer className="mt-6 flex flex-col items-center gap-1 text-center text-help text-slate-400">
-        <p>© 2026 M&D Odontología Especializada · Todos los derechos reservados.</p>
-        <button
-          type="button"
-          className="text-brand-600 underline underline-offset-2 transition-smooth hover:text-brand-700"
-          onClick={() => setAboutOpen(true)}
-        >
-          Acerca de
-        </button>
-      </footer>
+                {needsSetup ? "Crear cuenta" : "Continuar"}
+              </Button>
+            </form>
+          )}
+        </div>
+      </LoginPremiumShell>
 
       <AboutVendorModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
-    </div>
+    </>
   );
 }

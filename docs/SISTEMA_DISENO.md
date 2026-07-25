@@ -1,4 +1,4 @@
-> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_DENTALSIMPLE_v1_2026-07-23.md` como fuente única de verdad.
+> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_NK_DENTALSOFT_v1_2026-07-23.md` como fuente única de verdad.
 
 # Guía breve — Sistema de diseño MiniOS
 

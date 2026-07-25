@@ -1,4 +1,4 @@
-> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_DENTALSIMPLE_v1_2026-07-23.md` como fuente única de verdad.
+> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_NK_DENTALSOFT_v1_2026-07-23.md` como fuente única de verdad.
 
 # M&D Odontología Especializada — Sistema de Gestión Odontológica
 
@@ -26,7 +26,7 @@ Sistema simplificado y completo de gestión para **un solo centro odontológico*
 ```bash
 # 1. Clonar el repositorio
 git clone <repo-url>
-cd DentalSimple
+cd "N&K - DentalSoft"
 
 # 2. Iniciar PostgreSQL
 make db

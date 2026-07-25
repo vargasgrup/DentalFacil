@@ -1,12 +1,12 @@
-> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_DENTALSIMPLE_v1_2026-07-23.md` como fuente única de verdad.
+> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_NK_DENTALSOFT_v1_2026-07-23.md` como fuente única de verdad.
 
-# Documento Maestro Enterprise — DentalSimple (M&D Odontología Especializada)
+# Documento Maestro Enterprise — N&K - DentalSoft (M&D Odontología Especializada)
 
 | Campo | Valor |
 |-------|--------|
 | **Versión** | **v1.3** (edición auditoría) |
 | **Fecha** | 2026-07-14 |
-| **Repositorio** | `C:\PROYECTOS\DentalSimple` (`vargasgrup/DentalFacil`) |
+| **Repositorio** | `C:\PROYECTOS\N&K - DentalSoft` (`vargasgrup/DentalFacil`) |
 | **Commit de referencia** | `db0bc7b` (agenda UUID + SQLite/UUID en `8e52098`) |
 | **Clasificación** | Artefacto técnico de auditoría / trazabilidad |
 | **Audiencia** | Dueño de producto, desarrollo, QA, auditor externo |
@@ -183,7 +183,7 @@ frontend/src/{app,components,lib}
 docs/                              # este maestro, ER, Railway, specs odontograma
 MIGRATION_AUDIT_SQLITE.md
 EXCEPCIONES_ODONTOGRAMA.md
-PROMPT_MIGRACION_SQLITE_UUID_DENTALSIMPLE.md
+PROMPT_MIGRACION_SQLITE_UUID_NK_DENTALSOFT.md
 ```
 
 ### 3.2 Clasificación de artefactos
@@ -694,7 +694,7 @@ Marcadores `TODO`/`FIXME`/`HACK`: no hay uso sistemático relevante (revalidar c
 
 ### A — Diagramas y referencias
 - ER: `docs/ER_diagram.md`
-- Migración SQLite/UUID: `MIGRATION_AUDIT_SQLITE.md`, `PROMPT_MIGRACION_SQLITE_UUID_DENTALSIMPLE.md`
+- Migración SQLite/UUID: `MIGRATION_AUDIT_SQLITE.md`, `PROMPT_MIGRACION_SQLITE_UUID_NK_DENTALSOFT.md`
 - Excepciones odontograma: `EXCEPCIONES_ODONTOGRAMA.md`
 - Deploy: `docs/RAILWAY.md`
 - Producto/diseño: `PRODUCT.md`, `DESIGN.md`, `README.md`

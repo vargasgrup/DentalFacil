@@ -1,8 +1,8 @@
-> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_DENTALSIMPLE_v1_2026-07-23.md` como fuente única de verdad.
+> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_NK_DENTALSOFT_v1_2026-07-23.md` como fuente única de verdad.
 
 # Odontograma clínico con dientes realistas (PNG por FDI)
 
-Guía de implementación reutilizable para proyectos similares (**DentalSimple / M&D Odontología**, **N&K DentalSoft**, etc.).
+Guía de implementación reutilizable para proyectos similares (**N&K - DentalSoft / M&D Odontología**, **N&K DentalSoft**, etc.).
 
 **Estado actual (producción):** layout clínico clásico + sprites PNG numerados por pieza FDI.  
 **Referencia visual:** `docs/Odontograma.jpg` y `frontend/public/odontogram/Odontograma-referencia.jpg`.  
@@ -126,7 +126,7 @@ frontend/
 Ejemplo absoluto en este repo:
 
 ```
-c:\PROYECTOS\DentalSimple\frontend\public\dientes\18.png
+c:\PROYECTOS\N&K - DentalSoft\frontend\public\dientes\18.png
 ```
 
 El navegador los sirve como:

@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Design tokens — aligned to DESIGN.md (M&D Odontología / DentalSimple).
+ * Design tokens — aligned to DESIGN.md (M&D Odontología / N&K - DentalSoft).
  * Primary action = brand-600 (#1c66e8); soft highlight = brand-50 (#eef6ff).
  */
 const config: Config = {

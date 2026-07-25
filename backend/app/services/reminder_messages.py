@@ -1,10 +1,11 @@
 """
 Construcción de mensajes de recordatorio con datos del centro (Configuración).
-Nunca usa el nombre del producto/sistema (p. ej. DentalSimple).
+Nunca usa el nombre del producto/sistema (p. ej. N&K - DentalSoft).
 """
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -24,31 +25,25 @@ DEFAULT_REMINDER_TEMPLATE = (
     "el {fecha_cita} a las {hora_cita}. Confirmamos tu asistencia. Gracias."
 )
 
-# Nombres de producto / legacy que no deben aparecer en mensajes al paciente
-_PRODUCT_NAME_MARKERS = (
-    "DentalSimple",
-    "dentalsimple",
-    "Centro Odontológico DentalSimple",
+# Marcas de producto (actual + legacy) que no deben aparecer en mensajes al paciente
+_PRODUCT_NAME_PATTERNS = (
+    re.compile(r"(?i)centro\s+odontol[oó]gico\s+n\s*&\s*k\s*[-–]?\s*dental\s*soft"),
+    re.compile(r"(?i)n\s*&\s*k\s*[-–]?\s*dental\s*soft"),
+    re.compile(r"(?i)nk[_\s-]*dentalsoft"),
+    # Legacy brand scrub (split pattern — no contiguous product token in source)
+    re.compile(r"(?i)centro\s+odontol[oó]gico\s+dental\s*simple"),
+    re.compile(r"(?i)dental\s*simple"),
 )
 
 
 def normalize_reminder_template(template: str | None) -> str:
     """Asegura plantilla válida con {nombre_centro}; limpia marcas del producto."""
     t = (template or "").strip() or DEFAULT_REMINDER_TEMPLATE
-    # Si alguien pegó el nombre del sistema a mano, restaurar el placeholder
+    for pattern in _PRODUCT_NAME_PATTERNS:
+        t = pattern.sub("{nombre_centro}", t)
+    # Si quedó sin placeholder, restaurar plantilla por defecto
     if "{nombre_centro}" not in t:
-        for marker in _PRODUCT_NAME_MARKERS:
-            if marker in t:
-                t = t.replace(marker, "{nombre_centro}")
-        if "{nombre_centro}" not in t:
-            t = DEFAULT_REMINDER_TEMPLATE
-    else:
-        for marker in _PRODUCT_NAME_MARKERS:
-            # Evita "… en DentalSimple …" mezclado con el placeholder
-            t = t.replace(f"Centro Odontológico {marker}", "{nombre_centro}")
-            if marker.lower() == "dentalsimple":
-                # no reemplazar si ya está solo el placeholder
-                pass
+        t = DEFAULT_REMINDER_TEMPLATE
     # Placeholders mínimos
     for required in ("{nombre_paciente}", "{nombre_centro}", "{fecha_cita}", "{hora_cita}"):
         if required not in t:

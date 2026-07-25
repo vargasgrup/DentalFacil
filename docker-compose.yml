@@ -1,17 +1,17 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: dentalsimple-db
+    container_name: nk_dentalsoft-db
     environment:
-      POSTGRES_USER: dentalsimple
-      POSTGRES_PASSWORD: dentalsimple
-      POSTGRES_DB: dentalsimple
+      POSTGRES_USER: nk_dentalsoft
+      POSTGRES_PASSWORD: nk_dentalsoft
+      POSTGRES_DB: nk_dentalsoft
     ports:
       - "5434:5432"
     volumes:
-      - dentalsimple_pgdata:/var/lib/postgresql/data
+      - nk_dentalsoft_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dentalsimple"]
+      test: ["CMD-SHELL", "pg_isready -U nk_dentalsoft"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -20,12 +20,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: dentalsimple-backend
+    container_name: nk_dentalsoft-backend
     ports:
       - "8001:8001"
     environment:
       PORT: "8001"
-      DATABASE_URL: postgresql+psycopg://dentalsimple:dentalsimple@db:5432/dentalsimple
+      DATABASE_URL: postgresql+psycopg://nk_dentalsoft:nk_dentalsoft@db:5432/nk_dentalsoft
       JWT_SECRET: change-me-in-production-please-use-a-long-random-string
       CORS_ORIGINS: '["http://localhost:3001"]'
       CLINIC_NAME: M&D Odontología Especializada
@@ -57,7 +57,7 @@ services:
         # BACKEND_URL is used by next.config.js at build time to compile rewrites.
         # The Next.js server inside Docker can reach the 'backend' service.
         BACKEND_URL: http://backend:8001
-    container_name: dentalsimple-frontend
+    container_name: nk_dentalsoft-frontend
     environment:
       # BACKEND_URL is read by next.config.js at server startup (runtime).
       # It can reach the internal Docker 'backend' service.
@@ -69,4 +69,4 @@ services:
         condition: service_started
 
 volumes:
-  dentalsimple_pgdata:
+  nk_dentalsoft_pgdata:

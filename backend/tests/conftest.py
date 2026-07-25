@@ -1,5 +1,5 @@
 """
-Pytest fixtures for DentalSimple API integration tests (SQLite file DB).
+Pytest fixtures for N&K - DentalSoft API integration tests (SQLite file DB).
 """
 
 from __future__ import annotations

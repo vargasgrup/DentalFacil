@@ -1,4 +1,4 @@
-"""Logging estructurado (stdlib) para DentalFácil / DentalSimple.
+"""Logging estructurado (stdlib) para DentalFácil / N&K - DentalSoft.
 
 Uso:
     from app.logging_config import configure_logging, get_logger

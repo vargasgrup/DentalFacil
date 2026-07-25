@@ -1,4 +1,4 @@
-> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_DENTALSIMPLE_v1_2026-07-23.md` como fuente única de verdad.
+> ⚠️ **Documento obsoleto** — ver `docs/DOCUMENTO_MAESTRO_NK_DENTALSOFT_v1_2026-07-23.md` como fuente única de verdad.
 
 # RESUMEN EJECUTIVO GENERAL — M&D Odontología Especializada
 
@@ -64,7 +64,7 @@ Al abrir `http://localhost:3001` por primera vez, el sistema muestra el wizard d
 ## Estructura del proyecto
 
 ```
-DentalSimple/
+N&K - DentalSoft/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py              # FastAPI app + lifespan (scheduler)

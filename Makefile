@@ -19,7 +19,7 @@ makemigrations:
 	cd backend && alembic revision --autogenerate -m "$(msg)"
 
 db-shell:
-	docker compose exec db psql -U dentalsimple -d dentalsimple
+	docker compose exec db psql -U nk_dentalsoft -d nk_dentalsoft
 
 install:
 	cd backend && pip install -r requirements.txt

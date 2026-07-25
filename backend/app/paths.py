@@ -59,12 +59,18 @@ def absolute_sqlite_url(database_url: str) -> str:
 def default_data_dir() -> Path:
     """
     Writable data root for desktop installs.
-    Honors DENTALSIMPLE_DATA_DIR; on Windows falls back to %LOCALAPPDATA%\\DentalSimple.
+    Honors DENTALSIMPLE_DATA_DIR / NKDENTALSOFT_DATA_DIR.
+    On Windows: prefer %LOCALAPPDATA%\\NKDentalSoft; keep legacy DentalSimple if present.
     """
-    env = (os.environ.get("DENTALSIMPLE_DATA_DIR") or "").strip()
-    if env:
-        return Path(env).expanduser().resolve()
+    for key in ("NKDENTALSOFT_DATA_DIR", "DENTALSIMPLE_DATA_DIR"):
+        env = (os.environ.get(key) or "").strip()
+        if env:
+            return Path(env).expanduser().resolve()
     local = os.environ.get("LOCALAPPDATA")
     if local:
-        return (Path(local) / "DentalSimple").resolve()
+        legacy = (Path(local) / "DentalSimple").resolve()
+        modern = (Path(local) / "NKDentalSoft").resolve()
+        if legacy.exists() and not modern.exists():
+            return legacy
+        return modern
     return (BACKEND_ROOT / "data").resolve()

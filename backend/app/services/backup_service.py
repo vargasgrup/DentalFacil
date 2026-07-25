@@ -54,7 +54,7 @@ def is_restore_in_progress() -> bool:
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return _as_utc_aware()
 
 
 def _slug(text: str) -> str:
@@ -71,7 +71,7 @@ def expand_backup_path(raw: str) -> Path:
 def validate_backup_directory(raw: str, *, create: bool = True) -> Path:
     """
     Resolve and optionally create a writable backup folder.
-    Absolute paths preferred (e.g. D:\\Backups\\DentalSimple).
+    Absolute paths preferred (e.g. D:\\Backups\\NKDentalSoft).
     Relative paths are anchored under the backend package root.
     """
     text = (raw or "").strip()
@@ -125,8 +125,28 @@ def validate_backup_directory(raw: str, *, create: bool = True) -> Path:
 _pick_lock = threading.Lock()
 
 
+def _product_name() -> str:
+    return (getattr(settings, "PRODUCT_NAME", None) or settings.APP_NAME or "N&K Dental Soft").strip()
+
+
+def _product_slug() -> str:
+    raw = (getattr(settings, "PRODUCT_SLUG", None) or "").strip()
+    if raw:
+        return _slug(raw)
+    return _slug(_product_name())
+
+
+def _as_utc_aware(dt: datetime | None = None) -> datetime:
+    """Always persist/return timezone-aware UTC (avoids naive→local JS shifts)."""
+    if dt is None:
+        return datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _normalize_initial_dir(initial_dir: str | None) -> str:
-    """FolderBrowserDialog requires an existing SelectedPath on many Windows builds."""
+    """Folder dialogs require an existing SelectedPath on many Windows builds."""
     candidates: list[str] = []
     if initial_dir:
         try:
@@ -152,36 +172,108 @@ def _normalize_initial_dir(initial_dir: str | None) -> str:
     return str(Path.home())
 
 
+def _pick_directory_win32_shell(title: str, initial_dir: str | None) -> str | None:
+    """
+    Native SHBrowseForFolderW — no PowerShell/tkinter.
+    Works for local desktop FastAPI on the interactive Windows session.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    ole32 = ctypes.windll.ole32
+    shell32 = ctypes.windll.shell32
+    user32 = ctypes.windll.user32
+
+    class BROWSEINFOW(ctypes.Structure):
+        _fields_ = [
+            ("hwndOwner", wintypes.HWND),
+            ("pidlRoot", ctypes.c_void_p),
+            ("pszDisplayName", ctypes.c_wchar_p),
+            ("lpszTitle", ctypes.c_wchar_p),
+            ("ulFlags", wintypes.UINT),
+            ("lpfn", ctypes.c_void_p),
+            ("lParam", ctypes.c_void_p),
+            ("iImage", ctypes.c_int),
+        ]
+
+    BIF_RETURNONLYFSDIRS = 0x0001
+    BIF_NEWDIALOGSTYLE = 0x0040
+    BIF_EDITBOX = 0x0010
+    BIF_USENEWUI = BIF_NEWDIALOGSTYLE | 0x0010
+
+    _ = initial_dir  # SHBrowseForFolder has limited initial-path support
+    display = ctypes.create_unicode_buffer(1024)
+    bi = BROWSEINFOW()
+    bi.hwndOwner = user32.GetForegroundWindow() or None
+    bi.pidlRoot = None
+    bi.pszDisplayName = ctypes.cast(display, ctypes.c_wchar_p)
+    bi.lpszTitle = title
+    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_USENEWUI | BIF_EDITBOX
+    bi.lpfn = None
+    bi.lParam = None
+    bi.iImage = 0
+
+    hr = ole32.CoInitialize(None)
+    initialized = hr in (0, 1)  # S_OK, S_FALSE
+    try:
+        pidl = shell32.SHBrowseForFolderW(ctypes.byref(bi))
+        if not pidl:
+            return None
+        path_buf = ctypes.create_unicode_buffer(1024)
+        ok = shell32.SHGetPathFromIDListW(pidl, path_buf)
+        ole32.CoTaskMemFree(pidl)
+        if not ok:
+            return None
+        chosen = (path_buf.value or "").strip()
+        return chosen or None
+    finally:
+        if initialized:
+            try:
+                ole32.CoUninitialize()
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def _pick_directory_tk(title: str, initial_dir: str | None) -> str | None:
     import tkinter as tk
     from tkinter import filedialog
 
     start = _normalize_initial_dir(initial_dir)
-    root = tk.Tk()
-    root.withdraw()
-    try:
-        root.attributes("-topmost", True)
-    except tk.TclError:
-        pass
-    root.update_idletasks()
-    chosen = filedialog.askdirectory(
-        parent=root,
-        title=title,
-        initialdir=start,
-        mustexist=False,
-    )
-    root.destroy()
-    return chosen or None
+    chosen_holder: list[str | None] = []
+
+    def _run() -> None:
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            root.attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        root.update_idletasks()
+        chosen = filedialog.askdirectory(
+            parent=root,
+            title=title,
+            initialdir=start,
+            mustexist=False,
+        )
+        root.destroy()
+        chosen_holder.append(chosen or None)
+
+    # Tk is more reliable on a dedicated thread under uvicorn threadpool
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout=600)
+    if t.is_alive():
+        raise RuntimeError("El selector de carpetas no respondió a tiempo")
+    return chosen_holder[0] if chosen_holder else None
 
 
-def _pick_directory_windows(title: str, initial_dir: str | None) -> str | None:
-    """Native FolderBrowserDialog via PowerShell (STA + foreground owner form)."""
+def _pick_directory_windows_ps(title: str, initial_dir: str | None) -> str | None:
+    """Fallback: FolderBrowserDialog via PowerShell STA + TopMost owner."""
     import json
     import subprocess
     import tempfile
 
     start = _normalize_initial_dir(initial_dir)
-    # Invisible TopMost owner so the dialog appears above the browser on desktop
     script = f"""
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms | Out-Null
@@ -194,9 +286,7 @@ $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
 $dialog.Description = {json.dumps(title)}
 $dialog.SelectedPath = $start
 $dialog.ShowNewFolderButton = $true
-try {{
-  $dialog.RootFolder = [Environment+SpecialFolder]::MyComputer
-}} catch {{ }}
+try {{ $dialog.RootFolder = [Environment+SpecialFolder]::MyComputer }} catch {{ }}
 $form = New-Object System.Windows.Forms.Form
 $form.TopMost = $true
 $form.ShowInTaskbar = $false
@@ -214,9 +304,7 @@ try {{
     Write-Output $dialog.SelectedPath
   }}
 }} finally {{
-  $form.Close()
-  $form.Dispose()
-  $dialog.Dispose()
+  $form.Close(); $form.Dispose(); $dialog.Dispose()
 }}
 """
     with tempfile.NamedTemporaryFile(
@@ -257,7 +345,7 @@ try {{
 
 def pick_backup_directory_interactive(
     *,
-    title: str = "Seleccione la carpeta donde se guardarán los backups",
+    title: str | None = None,
     initial_dir: str | None = None,
 ) -> str | None:
     """
@@ -265,18 +353,35 @@ def pick_backup_directory_interactive(
     Returns absolute path or None if the user cancels.
     Must NOT be called while holding an open SQLAlchemy session (SQLite lock risk).
     """
+    product = _product_name()
+    title = title or f"Seleccione la carpeta donde {product} guardará los backups"
     if not _pick_lock.acquire(blocking=False):
         raise HTTPException(
             status_code=409,
             detail="Ya hay un selector de carpeta abierto. Termine esa ventana e intente de nuevo.",
         )
+    errors: list[str] = []
     try:
         start = _normalize_initial_dir(initial_dir)
         if os.name == "nt":
-            try:
-                return _pick_directory_windows(title, start)
-            except Exception as win_exc:  # noqa: BLE001
-                logger.warning("Windows folder dialog failed (%s); trying tkinter", win_exc)
+            for label, fn in (
+                ("win32", lambda: _pick_directory_win32_shell(title, start)),
+                ("powershell", lambda: _pick_directory_windows_ps(title, start)),
+                ("tkinter", lambda: _pick_directory_tk(title, start)),
+            ):
+                try:
+                    return fn()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("folder picker %s failed: %s", label, exc)
+                    errors.append(f"{label}: {exc}")
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "No se pudo abrir el selector de carpetas en este equipo. "
+                    f"Use «Escribir ruta manualmente» o reinicie {_product_name()}. "
+                    f"({'; '.join(errors)[:300]})"
+                ),
+            )
         try:
             return _pick_directory_tk(title, start)
         except Exception as tk_exc:  # noqa: BLE001
@@ -284,7 +389,7 @@ def pick_backup_directory_interactive(
                 status_code=500,
                 detail=(
                     "No se pudo abrir el selector de carpetas en este equipo. "
-                    "Use «Escribir ruta manualmente» o reinicie DentalSimple. "
+                    f"Use «Escribir ruta manualmente» o reinicie {_product_name()}. "
                     f"({tk_exc})"
                 ),
             ) from tk_exc
@@ -533,9 +638,9 @@ def create_backup(
 
     _integrity_check(db_path)
 
-    clinic_name = settings.CLINIC_NAME or settings.APP_NAME or "clinica"
+    clinic_name = settings.CLINIC_NAME or _product_name()
     stamp = datetime.now(CLINIC_TZ).strftime("%Y%m%d_%H%M%S")
-    filename = f"dentalsimple_backup_{_slug(clinic_name)}_{stamp}.zip"
+    filename = f"{_product_slug()}_backup_{_slug(clinic_name)}_{stamp}.zip"
     history = BackupHistory(
         id=new_uuid(),
         filename=filename,
@@ -543,6 +648,7 @@ def create_backup(
         triggered_by=triggered_by,
         status="error",
         keep=keep or triggered_by == "manual",
+        created_at=_as_utc_aware(),
     )
     db.add(history)
     db.commit()
@@ -567,7 +673,8 @@ def create_backup(
                 file_count += c
                 files_size += s
             manifest = {
-                "app_name": settings.APP_NAME,
+                "app_name": _product_name(),
+                "clinic_name": settings.CLINIC_NAME,
                 "backup_format_version": BACKUP_FORMAT_VERSION,
                 "created_at": datetime.now(CLINIC_TZ).isoformat(),
                 "source_head_revision": HEAD_REVISION,
@@ -815,7 +922,7 @@ def _unlink_sidecars(live: Path) -> None:
                 status_code=500,
                 detail=(
                     f"No se pudo liberar {side.name} (archivo en uso en Windows). "
-                    "Cierre otras ventanas de DentalSimple e intente de nuevo."
+                    "Cierre otras ventanas de N&K Dental Soft e intente de nuevo."
                 ),
             ) from last_err
 
@@ -979,7 +1086,7 @@ def validate_backup_bytes(data: bytes) -> ValidationResult:
                     if order.index(src_rev) > order.index(HEAD_REVISION):
                         errors.append(
                             f"El backup es de una versión más nueva ({src_rev}) que esta "
-                            f"instalación ({HEAD_REVISION}). Actualice DentalSimple antes de restaurar."
+                            f"instalación ({HEAD_REVISION}). Actualice N&K Dental Soft antes de restaurar."
                         )
                     else:
                         warnings.append(
@@ -1110,7 +1217,7 @@ def restore_backup(
                 logger.warning("hot restore failed (%s) — staging pending restore", exc.detail)
                 stage_pending_restore(snap, live)
                 report["warnings"].append(
-                    "La base quedó programada para aplicarse al reiniciar DentalSimple "
+                    "La base quedó programada para aplicarse al reiniciar N&K Dental Soft "
                     "(Windows tenía el archivo en uso)."
                 )
 
@@ -1188,11 +1295,11 @@ def restore_backup(
                     "restart_required": True,
                     "db_applied": bool(applied_hot),
                     "message": (
-                        "Restauración completada. Reinicie DentalSimple e inicie sesión "
+                        "Restauración completada. Reinicie N&K Dental Soft e inicie sesión "
                         "con un usuario incluido en el backup."
                         if applied_hot
                         else (
-                            "Archivos restaurados. Reinicie DentalSimple para aplicar "
+                            "Archivos restaurados. Reinicie N&K Dental Soft para aplicar "
                             "la base de datos y luego inicie sesión."
                         )
                     ),

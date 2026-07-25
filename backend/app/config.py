@@ -78,10 +78,13 @@ class Settings(BaseSettings):
     PASSWORD_RESET_INLINE_CODE: bool = False
 
     # App
-    APP_NAME: str = "M&D Odontología Especializada"
+    APP_NAME: str = "N&K Dental Soft"
     CORS_ORIGINS: str = "http://localhost:3001"
     BACKEND_PORT: int = 8001
     CLINIC_NAME: str = "M&D Odontología Especializada"
+    # Product brand shown in backups, installer paths and operator messages
+    PRODUCT_NAME: str = "N&K Dental Soft"
+    PRODUCT_SLUG: str = "nkdentalsoft"
     CLINIC_PHONE: str = ""
     CLINIC_ADDRESS: str = ""
     CLINIC_RUC: str = ""

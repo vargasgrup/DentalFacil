@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,15 @@ from fastapi import Request
 router = APIRouter(prefix="/api/backup", tags=["backup"])
 
 
+def _coerce_utc(value: datetime | None) -> datetime | None:
+    """Naive DB timestamps are UTC — tag them so JSON includes Z and UI stays correct."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 class BackupSettingsOut(BaseModel):
     auto_backup_enabled: bool
     frequency: str
@@ -30,6 +39,13 @@ class BackupSettingsOut(BaseModel):
     backup_directory: str = ""
     effective_backup_directory: str = ""
     last_backup_at: datetime | None = None
+
+    @field_validator("last_backup_at", mode="before")
+    @classmethod
+    def _utc_last(cls, v: object) -> object:
+        if isinstance(v, datetime):
+            return _coerce_utc(v)
+        return v
 
 
 class BackupSettingsUpdate(BaseModel):
@@ -54,6 +70,13 @@ class BackupHistoryOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def _utc_created(cls, v: object) -> object:
+        if isinstance(v, datetime):
+            return _coerce_utc(v)
+        return v
 
 
 @router.get("/settings", response_model=BackupSettingsOut)
@@ -82,7 +105,7 @@ def get_settings(
                 status_code=500,
                 detail=(
                     "No se pudo cargar la configuración de respaldo. "
-                    f"Reinicie DentalSimple. ({retry_exc})"
+                    f"Reinicie N&K Dental Soft. ({retry_exc})"
                 ),
             ) from retry_exc
 

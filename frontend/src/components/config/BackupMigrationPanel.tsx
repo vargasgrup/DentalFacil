@@ -299,7 +299,7 @@ export function BackupMigrationPanel() {
           `Restaurado: ${body.tables_restored || "—"} tablas, ${body.files_restored || 0} archivos.`
       );
       setMsg(
-        "Restauración completada. Reinicie DentalSimple e inicie sesión con un usuario del backup."
+        "Restauración completada. Reinicie N&K Dental Soft e inicie sesión con un usuario del backup."
       );
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error al restaurar");
@@ -399,13 +399,16 @@ export function BackupMigrationPanel() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-slate-600">Hora preferida</span>
+            <span className="mb-1 block text-slate-600">Hora preferida (automático)</span>
             <input
               type="time"
               className="w-full rounded-lg border border-slate-300 px-3 py-2"
               value={preferredHour}
               onChange={(e) => setPreferredHour(e.target.value)}
             />
+            <span className="mt-1 block text-help text-slate-400">
+              Hora de Perú en que se generará el backup automático (no es la hora actual del sistema).
+            </span>
           </label>
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Conservar (automáticos)</span>
@@ -466,7 +469,7 @@ export function BackupMigrationPanel() {
                 spellCheck={false}
                 autoComplete="off"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-[13px]"
-                placeholder="D:\Backups\DentalSimple"
+                placeholder="D:\Backups\NKDentalSoft"
                 value={backupDirectory}
                 onChange={(e) => setBackupDirectory(e.target.value)}
               />

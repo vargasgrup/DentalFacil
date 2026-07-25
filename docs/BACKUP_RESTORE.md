@@ -21,23 +21,24 @@ El caso de uso real es **1 SQLite por PC** (no una BD compartida por Wi‑Fi/RJ4
 
 | Tema | Requisito |
 |------|-----------|
-| Datos escribibles | **No** instalar DB/backups/uploads bajo `Program Files`. Usar `%LOCALAPPDATA%\DentalSimple\` (o `DENTALSIMPLE_DATA_DIR`). |
+| Datos escribibles | **No** instalar DB/backups/uploads bajo `Program Files`. Usar `%LOCALAPPDATA%\NKDentalSoft\` (o `NKDENTALSOFT_DATA_DIR`). Instalaciones antiguas pueden seguir en `DentalSimple`. |
 | `DATABASE_URL` | Preferir ruta **absoluta** en el `.env` del instalador. |
 | Rutas de medios | Misma raíz de datos: `TOOTH_MEDIA_ROOT`, `COMPLEMENTARY_TESTS_ROOT`, `HISTORICAL_DOCUMENTS_ROOT`, `BACKUP_DIRECTORY`. |
 | Restore | Cierra sesiones, pausa scheduler, limpia `-wal`/`-shm`, `os.replace`. Si Windows bloquea el archivo → restore pendiente al reiniciar. |
 | Tras restaurar | Reiniciar el backend/app (`restart_required: true`) e iniciar sesión de nuevo. |
 | 3 PCs en red | Cada PC tiene su copia local. Migración = USB/zip. **No** montar `clinica.db` en un recurso SMB compartido. |
-| Zona horaria | Dependencia `tzdata` (America/Lima); hay fallback UTC−5 si falta. |
+| Zona horaria | Fechas de historial/UI en **America/Lima**. Timestamps naive de SQLite se tratan como UTC. |
+| Selector de carpeta | `POST /api/backup/choose-directory` (Win32 → PowerShell → tkinter). No retiene la BD abierta. |
 
 Ejemplo `.env` de instalador:
 
 ```env
-DATABASE_URL=sqlite:///C:/Users/Clinica/AppData/Local/DentalSimple/clinica.db
-BACKUP_DIRECTORY=C:/Users/Clinica/AppData/Local/DentalSimple/backups
-TOOTH_MEDIA_ROOT=C:/Users/Clinica/AppData/Local/DentalSimple/tooth_media
-COMPLEMENTARY_TESTS_ROOT=C:/Users/Clinica/AppData/Local/DentalSimple/complementary_tests
-HISTORICAL_DOCUMENTS_ROOT=C:/Users/Clinica/AppData/Local/DentalSimple/historical_documents
-DENTALSIMPLE_DATA_DIR=C:/Users/Clinica/AppData/Local/DentalSimple
+DATABASE_URL=sqlite:///C:/Users/Clinica/AppData/Local/NKDentalSoft/clinica.db
+BACKUP_DIRECTORY=C:/Users/Clinica/AppData/Local/NKDentalSoft/backups
+TOOTH_MEDIA_ROOT=C:/Users/Clinica/AppData/Local/NKDentalSoft/tooth_media
+COMPLEMENTARY_TESTS_ROOT=C:/Users/Clinica/AppData/Local/NKDentalSoft/complementary_tests
+HISTORICAL_DOCUMENTS_ROOT=C:/Users/Clinica/AppData/Local/NKDentalSoft/historical_documents
+NKDENTALSOFT_DATA_DIR=C:/Users/Clinica/AppData/Local/NKDentalSoft
 ```
 
 ## API

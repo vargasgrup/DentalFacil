@@ -1,4 +1,6 @@
-/** Display helpers — 12-hour clock (a. m. / p. m.) across the app. */
+/** Display helpers — clinic wall clock America/Lima (Perú), 12-hour a. m. / p. m. */
+
+export const CLINIC_TIME_ZONE = "America/Lima";
 
 export const TIME_12H: Intl.DateTimeFormatOptions = {
   hour: "numeric",
@@ -6,21 +8,43 @@ export const TIME_12H: Intl.DateTimeFormatOptions = {
   hour12: true,
 };
 
+/**
+ * Parse API timestamps correctly.
+ * SQLite/SQLAlchemy often emit naive ISO (no Z). By convention those are UTC —
+ * treating them as local (browser default) shifts Perú times by ~5 hours.
+ */
 export function toDate(value: Date | string | number): Date {
-  return value instanceof Date ? value : new Date(value);
+  if (value instanceof Date) return value;
+  if (typeof value === "number") return new Date(value);
+  const raw = String(value).trim();
+  if (!raw) return new Date(NaN);
+  // Date-only → calendar day in clinic TZ noon to avoid off-by-one
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return new Date(`${raw}T12:00:00-05:00`);
+  }
+  const hasZone = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw);
+  if (!hasZone && /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(raw)) {
+    const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+    return new Date(`${normalized}Z`);
+  }
+  return new Date(raw);
 }
 
-/** e.g. "3:44 p. m." */
+/** e.g. "3:44 p. m." in clinic timezone */
 export function formatTime(value: Date | string | number): string {
-  return toDate(value).toLocaleTimeString("es-PE", TIME_12H);
+  return toDate(value).toLocaleTimeString("es-PE", {
+    timeZone: CLINIC_TIME_ZONE,
+    ...TIME_12H,
+  });
 }
 
-/** Date + time with 12h clock. Extra options merge on top. */
+/** Date + time with 12h clock in America/Lima. Extra options merge on top. */
 export function formatDateTime(
   value: Date | string | number,
   extra?: Intl.DateTimeFormatOptions
 ): string {
   return toDate(value).toLocaleString("es-PE", {
+    timeZone: CLINIC_TIME_ZONE,
     day: "2-digit",
     month: "short",
     year: "numeric",

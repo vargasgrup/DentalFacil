@@ -281,6 +281,22 @@ def test_backup_choose_directory_cancelled(
     assert r.json()["settings"] is None
 
 
+def test_backup_history_timestamps_are_utc_aware(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("BACKUP_DIRECTORY", str(tmp_path / "backups_tz"))
+    gen = client.post("/api/backup/generate", headers=admin_headers)
+    assert gen.status_code == 200, gen.text
+    created = gen.json()["created_at"]
+    assert isinstance(created, str)
+    # Must carry explicit UTC designator so the UI does not treat naive as local
+    assert created.endswith("Z") or "+" in created[10:] or created.endswith("+00:00")
+    assert gen.json()["filename"].startswith("nkdentalsoft_backup_")
+
+
 def test_backup_rejects_program_files_path(
     client: TestClient,
     admin_headers: dict[str, str],

@@ -193,77 +193,24 @@ def _windows_powershell_exe() -> str:
 
 
 def _pick_directory_win32_shell(title: str, initial_dir: str | None) -> str | None:
-    """Native SHBrowseForFolderW in-process (no external executables)."""
-    import ctypes
-    from ctypes import wintypes
-
-    ole32 = ctypes.OleDLL("ole32")
-    shell32 = ctypes.windll.shell32
-    user32 = ctypes.windll.user32
-
-    class BROWSEINFOW(ctypes.Structure):
-        _fields_ = [
-            ("hwndOwner", wintypes.HWND),
-            ("pidlRoot", ctypes.c_void_p),
-            ("pszDisplayName", ctypes.c_void_p),
-            ("lpszTitle", wintypes.LPCWSTR),
-            ("ulFlags", wintypes.UINT),
-            ("lpfn", ctypes.c_void_p),
-            ("lParam", ctypes.c_void_p),
-            ("iImage", ctypes.c_int),
-        ]
-
-    BIF_RETURNONLYFSDIRS = 0x0001
-    BIF_NEWDIALOGSTYLE = 0x0040
-    BIF_EDITBOX = 0x0010
-
-    _ = initial_dir
-    MAX_PATH = 1024
-    display = ctypes.create_unicode_buffer(MAX_PATH)
-    bi = BROWSEINFOW()
-    hwnd = user32.GetForegroundWindow()
-    bi.hwndOwner = hwnd if hwnd else None
-    bi.pidlRoot = None
-    bi.pszDisplayName = ctypes.cast(display, ctypes.c_void_p)
-    bi.lpszTitle = title
-    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE | BIF_EDITBOX
-    bi.lpfn = None
-    bi.lParam = None
-    bi.iImage = 0
-
-    COINIT_APARTMENTTHREADED = 0x2
-    hr = ole32.CoInitializeEx(None, COINIT_APARTMENTTHREADED)
-    initialized = hr in (0, 1)
-    try:
-        shell32.SHBrowseForFolderW.restype = ctypes.c_void_p
-        shell32.SHBrowseForFolderW.argtypes = [ctypes.POINTER(BROWSEINFOW)]
-        pidl = shell32.SHBrowseForFolderW(ctypes.byref(bi))
-        if not pidl:
-            return None
-        path_buf = ctypes.create_unicode_buffer(MAX_PATH)
-        shell32.SHGetPathFromIDListW.argtypes = [ctypes.c_void_p, wintypes.LPWSTR]
-        shell32.SHGetPathFromIDListW.restype = wintypes.BOOL
-        ok = shell32.SHGetPathFromIDListW(pidl, path_buf)
-        ole32.CoTaskMemFree(pidl)
-        if not ok:
-            raise OSError("SHGetPathFromIDListW falló")
-        chosen = (path_buf.value or "").strip()
-        return chosen or None
-    finally:
-        if initialized:
-            try:
-                ole32.CoUninitialize()
-            except Exception:  # noqa: BLE001
-                pass
+    """
+    Deprecated in-process Win32 browse — can ACCESS_VIOLATE under uvicorn and
+    surface as plain «Internal Server Error». Kept only as a no-op raise so
+    callers fall through to safe subprocess pickers.
+    """
+    _ = title, initial_dir
+    raise RuntimeError("in-process Win32 picker disabled (use subprocess)")
 
 
 def _pick_directory_python_subprocess(title: str, initial_dir: str | None) -> str | None:
     """
     Spawn the same Python interpreter with tkinter — works when PATH lacks powershell
     (typical of Windows desktop installers under custom folders).
+    Uses a temp .py file so titles with & / accents do not break -c parsing.
     """
     import subprocess
     import sys
+    import tempfile
     import textwrap
 
     start = _normalize_initial_dir(initial_dir)
@@ -271,6 +218,7 @@ def _pick_directory_python_subprocess(title: str, initial_dir: str | None) -> st
         r"""
         import sys
         from tkinter import Tk, filedialog
+
         title = sys.argv[1]
         initial = sys.argv[2] if len(sys.argv) > 2 else ""
         root = Tk()
@@ -294,16 +242,31 @@ def _pick_directory_python_subprocess(title: str, initial_dir: str | None) -> st
             sys.stdout.buffer.write(chosen.encode("utf-8", errors="replace"))
         """
     )
-    creationflags = 0
-    if os.name == "nt":
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-
-    proc = subprocess.run(
-        [sys.executable, "-c", code, title, start],
-        capture_output=True,
-        timeout=600,
-        creationflags=creationflags,
-    )
+    script_path = None
+    proc = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".py", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write(code)
+            script_path = fh.name
+        creationflags = 0
+        if os.name == "nt":
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        proc = subprocess.run(
+            [sys.executable, script_path, title, start],
+            capture_output=True,
+            timeout=600,
+            creationflags=creationflags,
+        )
+    finally:
+        if script_path:
+            try:
+                os.unlink(script_path)
+            except OSError:
+                pass
+    if proc is None:
+        raise RuntimeError("No se pudo iniciar el selector de carpetas")
     if proc.returncode != 0:
         err = (proc.stderr or b"").decode("utf-8", errors="replace").strip()
         raise RuntimeError(err or f"Python folder picker exit={proc.returncode}")
@@ -477,6 +440,7 @@ def pick_backup_directory_interactive(
     Open a native folder picker on the clinic PC (desktop mode).
     Returns absolute path or None if the user cancels.
     Must NOT be called while holding an open SQLAlchemy session (SQLite lock risk).
+    Prefer subprocess pickers — in-process Win32/ctypes can crash the API worker.
     """
     product = _product_name()
     title = title or f"Seleccione la carpeta donde {product} guardará los backups"
@@ -488,30 +452,32 @@ def pick_backup_directory_interactive(
     errors: list[str] = []
     try:
         start = _normalize_initial_dir(initial_dir)
+        methods: list[tuple[str, Any]]
         if os.name == "nt":
-            for label, fn in (
-                ("win32", lambda: _pick_directory_win32_shell(title, start)),
+            methods = [
                 ("python-tk", lambda: _pick_directory_python_subprocess(title, start)),
                 ("powershell", lambda: _pick_directory_windows_ps(title, start)),
                 ("tkinter", lambda: _pick_directory_tk(title, start)),
-            ):
-                try:
-                    return fn()
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("folder picker %s failed: %s", label, exc)
-                    errors.append(f"{label}: {exc}")
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    "No se pudo abrir el selector de carpetas en este equipo. "
-                    "Use una carpeta sugerida o escriba la ruta manualmente "
-                    f"(ej. D:\\Backups\\NKDentalSoft). ({'; '.join(errors)[:240]})"
-                ),
-            )
-        try:
-            return _pick_directory_python_subprocess(title, start)
-        except Exception:
-            return _pick_directory_tk(title, start)
+            ]
+        else:
+            methods = [
+                ("python-tk", lambda: _pick_directory_python_subprocess(title, start)),
+                ("tkinter", lambda: _pick_directory_tk(title, start)),
+            ]
+        for label, fn in methods:
+            try:
+                return fn()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("folder picker %s failed: %s", label, exc)
+                errors.append(f"{label}: {exc}")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No se pudo abrir el selector de carpetas en este equipo. "
+                "Use una carpeta sugerida (AppData / Documentos) o escriba la ruta "
+                f"manualmente (ej. D:\\Backups\\NKDentalSoft). ({'; '.join(errors)[:200]})"
+            ),
+        )
     finally:
         _pick_lock.release()
 
@@ -519,33 +485,47 @@ def pick_backup_directory_interactive(
 def choose_and_persist_backup_directory() -> dict[str, Any]:
     """
     Desktop one-shot: read initial path → native dialog (no DB held) → validate + save.
+    Never raises bare exceptions to the ASGI layer (avoids plain Internal Server Error).
     """
     from app.database import SessionLocal
 
-    with SessionLocal() as db:
-        ensure_backup_ready()
-        row = get_or_create_backup_settings(db)
-        initial = (getattr(row, "backup_directory", None) or "").strip() or None
-        if not initial:
-            initial = resolve_effective_backup_dir_safe(db)
-        db.commit()
+    try:
+        with SessionLocal() as db:
+            ensure_backup_ready()
+            row = get_or_create_backup_settings(db)
+            initial = (getattr(row, "backup_directory", None) or "").strip() or None
+            if not initial:
+                initial = resolve_effective_backup_dir_safe(db)
+            db.commit()
 
-    chosen = pick_backup_directory_interactive(initial_dir=initial)
-    if not chosen:
-        return {"cancelled": True, "path": None, "settings": None}
+        chosen = pick_backup_directory_interactive(initial_dir=initial)
+        if not chosen:
+            return {"cancelled": True, "path": None, "settings": None}
 
-    resolved = validate_backup_directory(chosen, create=True)
+        resolved = validate_backup_directory(chosen, create=True)
 
-    with SessionLocal() as db:
-        row = get_or_create_backup_settings(db)
-        row.backup_directory = str(resolved)
-        db.commit()
-        db.refresh(row)
-        return {
-            "cancelled": False,
-            "path": str(resolved),
-            "settings": settings_public_dict(row, db),
-        }
+        with SessionLocal() as db:
+            row = get_or_create_backup_settings(db)
+            row.backup_directory = str(resolved)
+            db.commit()
+            db.refresh(row)
+            return {
+                "cancelled": False,
+                "path": str(resolved),
+                "settings": settings_public_dict(row, db),
+            }
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("choose_and_persist_backup_directory failed")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No se pudo elegir la carpeta de backup. "
+                "Use una carpeta sugerida o escriba la ruta manualmente. "
+                f"({exc})"
+            ),
+        ) from exc
 
 
 def _default_backup_dir(*, create: bool = True) -> Path:

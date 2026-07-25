@@ -168,11 +168,14 @@ export function BackupMigrationPanel() {
           : "Carpeta de backups guardada."
       );
     } catch (e) {
-      setErr(
-        e instanceof Error
-          ? e.message
-          : "No se pudo abrir el selector. Elija una carpeta sugerida o escriba la ruta."
-      );
+      const raw = e instanceof Error ? e.message : "";
+      const friendly =
+        !raw ||
+        /^internal server error$/i.test(raw.trim()) ||
+        raw.toLowerCase().includes("internal server error")
+          ? "No se pudo abrir el selector de Windows. Elija una carpeta sugerida abajo o escriba la ruta manualmente."
+          : raw;
+      setErr(friendly);
       setMsg("");
       setShowManualPath(true);
       void loadSuggestions();

@@ -254,6 +254,10 @@ def test_backup_choose_directory_saves_path(
         return str(chosen)
 
     monkeypatch.setattr(
+        "app.services.backup_service.native_folder_picker_available",
+        lambda: {"available": True, "platform": "test", "reason": ""},
+    )
+    monkeypatch.setattr(
         "app.services.backup_service.pick_backup_directory_interactive",
         _fake_pick,
     )
@@ -261,6 +265,7 @@ def test_backup_choose_directory_saves_path(
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["cancelled"] is False
+    assert body.get("picker_unavailable") is False
     assert Path(body["path"]) == chosen.resolve()
     assert body["settings"]["backup_directory"]
     assert Path(body["settings"]["effective_backup_directory"]) == chosen.resolve()
@@ -272,6 +277,10 @@ def test_backup_choose_directory_cancelled(
     monkeypatch,
 ):
     monkeypatch.setattr(
+        "app.services.backup_service.native_folder_picker_available",
+        lambda: {"available": True, "platform": "test", "reason": ""},
+    )
+    monkeypatch.setattr(
         "app.services.backup_service.pick_backup_directory_interactive",
         lambda **_: None,
     )
@@ -279,6 +288,30 @@ def test_backup_choose_directory_cancelled(
     assert r.status_code == 200, r.text
     assert r.json()["cancelled"] is True
     assert r.json()["settings"] is None
+
+
+def test_backup_choose_directory_picker_unavailable(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "app.services.backup_service.native_folder_picker_available",
+        lambda: {
+            "available": False,
+            "platform": "linux",
+            "reason": "El servidor no tiene escritorio gráfico (DISPLAY).",
+        },
+    )
+    r = client.post("/api/backup/choose-directory", headers=admin_headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["picker_unavailable"] is True
+    assert body["path"] is None
+    assert body["settings"] is None
+    assert isinstance(body.get("suggestions"), list)
+    assert len(body["suggestions"]) >= 1
+    assert body.get("message")
 
 
 def test_backup_history_timestamps_are_utc_aware(

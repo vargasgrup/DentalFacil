@@ -389,28 +389,76 @@ try {{
     return lines[-1] or None
 
 
+def native_folder_picker_available() -> dict[str, Any]:
+    """
+    Native OS folder dialogs only work when the API process has a desktop GUI.
+    Linux/Docker/Railway (no DISPLAY, no tk) must use suggested paths / manual entry.
+    """
+    platform = "windows" if os.name == "nt" else ("darwin" if sys_platform_is_darwin() else "linux")
+    if os.name == "nt":
+        return {
+            "available": True,
+            "platform": platform,
+            "reason": "",
+        }
+    has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    tk_ok = False
+    tk_err = ""
+    try:
+        import tkinter  # noqa: F401
+
+        tk_ok = True
+    except Exception as exc:  # noqa: BLE001
+        tk_err = str(exc)
+    available = bool(has_display and tk_ok)
+    reason = ""
+    if not has_display:
+        reason = "El servidor no tiene escritorio gráfico (DISPLAY)."
+    elif not tk_ok:
+        reason = f"Tkinter no está disponible en el servidor ({tk_err[:120]})."
+    return {"available": available, "platform": platform, "reason": reason}
+
+
+def sys_platform_is_darwin() -> bool:
+    import sys
+
+    return sys.platform == "darwin"
+
+
 def list_suggested_backup_directories() -> list[dict[str, str]]:
-    """Writable candidate folders for one-click setup when the native dialog fails."""
+    """Writable candidate folders for one-click setup (server-side paths)."""
+    from app.paths import default_data_dir
+
     suggestions: list[tuple[str, Path]] = []
     home = Path.home()
-    docs = home / "Documents" / "NKDentalSoft" / "backups"
-    desktop = home / "Desktop" / "NKDentalSoft-Backups"
-    local = os.environ.get("LOCALAPPDATA")
-    if local:
-        suggestions.append(
-            ("AppData local (recomendado)", Path(local) / "NKDentalSoft" / "backups")
+    data = default_data_dir() / "backups"
+    suggestions.append(("Carpeta de datos N&K (recomendado)", data))
+
+    if os.name == "nt":
+        local = os.environ.get("LOCALAPPDATA")
+        if local:
+            suggestions.append(
+                ("AppData local", Path(local) / "NKDentalSoft" / "backups")
+            )
+        suggestions.extend(
+            [
+                ("Documentos", home / "Documents" / "NKDentalSoft" / "backups"),
+                ("Escritorio", home / "Desktop" / "NKDentalSoft-Backups"),
+            ]
         )
-    suggestions.extend(
-        [
-            ("Documentos", docs),
-            ("Escritorio", desktop),
-            ("Predeterminada del sistema", _DEFAULT_BACKUP_DIR),
-        ]
-    )
-    for letter in ("D", "E", "F"):
-        root = Path(f"{letter}:/")
-        if root.exists():
-            suggestions.append((f"Disco {letter}:", root / "Backups" / "NKDentalSoft"))
+        for letter in ("D", "E", "F"):
+            root = Path(f"{letter}:/")
+            if root.exists():
+                suggestions.append((f"Disco {letter}:", root / "Backups" / "NKDentalSoft"))
+    else:
+        suggestions.extend(
+            [
+                ("Documentos", home / "Documents" / "NKDentalSoft" / "backups"),
+                ("Home", home / "NKDentalSoft" / "backups"),
+            ]
+        )
+
+    suggestions.append(("Predeterminada del sistema", _DEFAULT_BACKUP_DIR))
 
     out: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -437,11 +485,21 @@ def pick_backup_directory_interactive(
     initial_dir: str | None = None,
 ) -> str | None:
     """
-    Open a native folder picker on the clinic PC (desktop mode).
+    Open a native folder picker when a desktop GUI exists.
     Returns absolute path or None if the user cancels.
     Must NOT be called while holding an open SQLAlchemy session (SQLite lock risk).
-    Prefer subprocess pickers — in-process Win32/ctypes can crash the API worker.
     """
+    status = native_folder_picker_available()
+    if not status.get("available"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "El selector gráfico no está disponible en este servidor. "
+                "Use una carpeta sugerida o escriba la ruta manualmente. "
+                f"({status.get('reason') or status.get('platform')})"
+            ),
+        )
+
     product = _product_name()
     title = title or f"Seleccione la carpeta donde {product} guardará los backups"
     if not _pick_lock.acquire(blocking=False):
@@ -452,9 +510,8 @@ def pick_backup_directory_interactive(
     errors: list[str] = []
     try:
         start = _normalize_initial_dir(initial_dir)
-        methods: list[tuple[str, Any]]
         if os.name == "nt":
-            methods = [
+            methods: list[tuple[str, Any]] = [
                 ("python-tk", lambda: _pick_directory_python_subprocess(title, start)),
                 ("powershell", lambda: _pick_directory_windows_ps(title, start)),
                 ("tkinter", lambda: _pick_directory_tk(title, start)),
@@ -473,9 +530,9 @@ def pick_backup_directory_interactive(
         raise HTTPException(
             status_code=400,
             detail=(
-                "No se pudo abrir el selector de carpetas en este equipo. "
-                "Use una carpeta sugerida (AppData / Documentos) o escriba la ruta "
-                f"manualmente (ej. D:\\Backups\\NKDentalSoft). ({'; '.join(errors)[:200]})"
+                "No se pudo abrir el selector de carpetas. "
+                "Use una carpeta sugerida o escriba la ruta manualmente. "
+                f"({'; '.join(errors)[:200]})"
             ),
         )
     finally:
@@ -484,10 +541,26 @@ def pick_backup_directory_interactive(
 
 def choose_and_persist_backup_directory() -> dict[str, Any]:
     """
-    Desktop one-shot: read initial path → native dialog (no DB held) → validate + save.
-    Never raises bare exceptions to the ASGI layer (avoids plain Internal Server Error).
+    Desktop one-shot: native dialog when available; otherwise return suggestions
+    (no hard failure — production-safe for Linux/Docker backends).
     """
     from app.database import SessionLocal
+
+    status = native_folder_picker_available()
+    suggestions = list_suggested_backup_directories()
+    if not status.get("available"):
+        return {
+            "cancelled": False,
+            "picker_unavailable": True,
+            "path": None,
+            "settings": None,
+            "suggestions": suggestions,
+            "message": (
+                "Este servidor no puede abrir una ventana de carpetas "
+                f"({status.get('platform')}: {status.get('reason') or 'sin GUI'}). "
+                "Elija una carpeta sugerida o escriba la ruta donde el servidor guardará los backups."
+            ),
+        }
 
     try:
         with SessionLocal() as db:
@@ -500,7 +573,14 @@ def choose_and_persist_backup_directory() -> dict[str, Any]:
 
         chosen = pick_backup_directory_interactive(initial_dir=initial)
         if not chosen:
-            return {"cancelled": True, "path": None, "settings": None}
+            return {
+                "cancelled": True,
+                "picker_unavailable": False,
+                "path": None,
+                "settings": None,
+                "suggestions": suggestions,
+                "message": None,
+            }
 
         resolved = validate_backup_directory(chosen, create=True)
 
@@ -511,8 +591,11 @@ def choose_and_persist_backup_directory() -> dict[str, Any]:
             db.refresh(row)
             return {
                 "cancelled": False,
+                "picker_unavailable": False,
                 "path": str(resolved),
                 "settings": settings_public_dict(row, db),
+                "suggestions": suggestions,
+                "message": None,
             }
     except HTTPException:
         raise

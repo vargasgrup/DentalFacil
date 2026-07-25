@@ -30,8 +30,11 @@ interface BackupSettings {
 
 interface ChooseDirectoryResult {
   cancelled: boolean;
+  picker_unavailable?: boolean;
   path: string | null;
   settings: BackupSettings | null;
+  suggestions?: SuggestedDirectory[];
+  message?: string | null;
 }
 
 interface SuggestedDirectory {
@@ -144,14 +147,24 @@ export function BackupMigrationPanel() {
 
   const chooseFolder = async () => {
     setPickingFolder(true);
-    setMsg(
-      "Se abrió el selector de carpetas de Windows. Si no lo ve, revise la barra de tareas."
-    );
+    setMsg("Abriendo selector de carpetas… Si no aparece, use una carpeta sugerida.");
     setErr("");
     try {
       const result = await apiFetch<ChooseDirectoryResult>("/api/backup/choose-directory", {
         method: "POST",
       });
+      if (result.suggestions?.length) {
+        setSuggestions(result.suggestions);
+      }
+      if (result.picker_unavailable) {
+        setShowManualPath(true);
+        setErr("");
+        setMsg(
+          result.message ||
+            "Este servidor no puede abrir una ventana de carpetas. Elija una carpeta sugerida o escriba la ruta."
+        );
+        return;
+      }
       if (result.cancelled) {
         setMsg("No se cambió la carpeta (selección cancelada).");
         return;
@@ -173,7 +186,7 @@ export function BackupMigrationPanel() {
         !raw ||
         /^internal server error$/i.test(raw.trim()) ||
         raw.toLowerCase().includes("internal server error")
-          ? "No se pudo abrir el selector de Windows. Elija una carpeta sugerida abajo o escriba la ruta manualmente."
+          ? "No se pudo abrir el selector de carpetas. Elija una carpeta sugerida o escriba la ruta."
           : raw;
       setErr(friendly);
       setMsg("");
@@ -471,8 +484,8 @@ export function BackupMigrationPanel() {
         <div className="space-y-2 rounded-lg border border-slate-200 bg-surface-subtle/60 p-3">
           <p className="text-sm font-medium text-slate-800">Dónde guardar los backups</p>
           <p className="text-help text-slate-500">
-            Pulse <strong>Elegir carpeta…</strong> (selector de Windows) o use una carpeta sugerida.
-            La ruta se guarda al instante.
+            En PC con escritorio use <strong>Elegir carpeta…</strong>. Si el API corre en servidor
+            (Linux/Docker), use una carpeta sugerida o escriba la ruta. Se guarda al instante.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -536,7 +549,7 @@ export function BackupMigrationPanel() {
                 spellCheck={false}
                 autoComplete="off"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-[13px]"
-                placeholder="D:\Backups\NKDentalSoft"
+                placeholder="Ej. C:\\Backups\\NKDentalSoft o /var/backups/nkdentalsoft"
                 value={backupDirectory}
                 onChange={(e) => setBackupDirectory(e.target.value)}
               />

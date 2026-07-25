@@ -138,10 +138,18 @@ def patch_settings(
     return BackupSettingsOut(**svc.settings_public_dict(row, db))
 
 
+class SuggestedDirectoryOut(BaseModel):
+    label: str
+    path: str
+
+
 class ChooseDirectoryOut(BaseModel):
     cancelled: bool = False
+    picker_unavailable: bool = False
     path: str | None = None
     settings: BackupSettingsOut | None = None
+    suggestions: list[SuggestedDirectoryOut] = []
+    message: str | None = None
 
 
 @router.post("/choose-directory", response_model=ChooseDirectoryOut)
@@ -149,14 +157,30 @@ def choose_directory(
     admin: User = Depends(require_roles(Rol.ADMIN)),
 ):
     """
-    Desktop: opens a folder dialog in a subprocess (never in-process Win32/ctypes),
-    then validates writability and saves the path in a fresh session.
+    Desktop with GUI: opens a folder dialog (subprocess), validates, saves.
+    Headless Linux/Docker: returns picker_unavailable + suggestions (HTTP 200).
     """
     _ = admin
     try:
         result = svc.choose_and_persist_backup_directory()
+        suggestions = [
+            SuggestedDirectoryOut(**row) for row in (result.get("suggestions") or [])
+        ]
         if result.get("cancelled"):
-            return ChooseDirectoryOut(cancelled=True)
+            return ChooseDirectoryOut(
+                cancelled=True,
+                suggestions=suggestions,
+                message=result.get("message"),
+            )
+        if result.get("picker_unavailable"):
+            return ChooseDirectoryOut(
+                cancelled=False,
+                picker_unavailable=True,
+                path=None,
+                settings=None,
+                suggestions=suggestions,
+                message=result.get("message"),
+            )
         settings_dict = result.get("settings") or {}
         settings_out = None
         if settings_dict:
@@ -167,8 +191,11 @@ def choose_directory(
             settings_out = BackupSettingsOut.model_validate(settings_dict)
         return ChooseDirectoryOut(
             cancelled=False,
+            picker_unavailable=False,
             path=result.get("path"),
             settings=settings_out,
+            suggestions=suggestions,
+            message=result.get("message"),
         )
     except HTTPException:
         raise
@@ -186,16 +213,11 @@ def choose_directory(
         ) from exc
 
 
-class SuggestedDirectoryOut(BaseModel):
-    label: str
-    path: str
-
-
 @router.get("/suggested-directories", response_model=list[SuggestedDirectoryOut])
 def suggested_directories(
     admin: User = Depends(require_roles(Rol.ADMIN)),
 ):
-    """Writable one-click backup folders for desktop when the native dialog fails."""
+    """Writable one-click backup folders when the native dialog is unavailable."""
     _ = admin
     return [SuggestedDirectoryOut(**row) for row in svc.list_suggested_backup_directories()]
 

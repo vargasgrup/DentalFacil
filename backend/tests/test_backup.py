@@ -297,6 +297,28 @@ def test_backup_history_timestamps_are_utc_aware(
     assert gen.json()["filename"].startswith("nkdentalsoft_backup_")
 
 
+def test_backup_suggested_and_apply_directory(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "LocalAppData"))
+    rows = client.get("/api/backup/suggested-directories", headers=admin_headers)
+    assert rows.status_code == 200, rows.text
+    body = rows.json()
+    assert isinstance(body, list)
+    assert len(body) >= 1
+    target = body[0]["path"]
+    applied = client.post(
+        "/api/backup/apply-directory",
+        headers=admin_headers,
+        json={"path": target},
+    )
+    assert applied.status_code == 200, applied.text
+    assert Path(applied.json()["effective_backup_directory"]) == Path(target).resolve()
+
+
 def test_backup_rejects_program_files_path(
     client: TestClient,
     admin_headers: dict[str, str],
@@ -308,3 +330,13 @@ def test_backup_rejects_program_files_path(
     )
     assert r.status_code == 400
     assert "Program Files" in r.json()["detail"]
+
+
+def test_windows_powershell_resolved_absolutely():
+    from pathlib import Path
+
+    from app.services.backup_service import _windows_powershell_exe
+
+    exe = _windows_powershell_exe()
+    assert Path(exe).is_file()
+    assert exe.lower().endswith("powershell.exe")

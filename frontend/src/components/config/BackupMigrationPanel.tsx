@@ -34,6 +34,11 @@ interface ChooseDirectoryResult {
   settings: BackupSettings | null;
 }
 
+interface SuggestedDirectory {
+  label: string;
+  path: string;
+}
+
 interface BackupRow {
   id: string;
   filename: string;
@@ -75,6 +80,8 @@ export function BackupMigrationPanel() {
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pickingFolder, setPickingFolder] = useState(false);
+  const [showManualPath, setShowManualPath] = useState(false);
+  const [suggestions, setSuggestions] = useState<SuggestedDirectory[]>([]);
 
   const [autoEnabled, setAutoEnabled] = useState(false);
   const [frequency, setFrequency] = useState("daily");
@@ -121,9 +128,77 @@ export function BackupMigrationPanel() {
     setLoading(false);
   }, []);
 
+  const loadSuggestions = useCallback(async () => {
+    try {
+      const rows = await apiFetch<SuggestedDirectory[]>("/api/backup/suggested-directories");
+      setSuggestions(rows);
+    } catch {
+      setSuggestions([]);
+    }
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadSuggestions();
+  }, [load, loadSuggestions]);
+
+  const chooseFolder = async () => {
+    setPickingFolder(true);
+    setMsg(
+      "Se abrió el selector de carpetas de Windows. Si no lo ve, revise la barra de tareas."
+    );
+    setErr("");
+    try {
+      const result = await apiFetch<ChooseDirectoryResult>("/api/backup/choose-directory", {
+        method: "POST",
+      });
+      if (result.cancelled) {
+        setMsg("No se cambió la carpeta (selección cancelada).");
+        return;
+      }
+      if (result.settings) {
+        applySettings(result.settings);
+      } else if (result.path) {
+        setBackupDirectory(result.path);
+      }
+      setShowManualPath(false);
+      setMsg(
+        result.path
+          ? `Carpeta de backups guardada: ${result.path}`
+          : "Carpeta de backups guardada."
+      );
+    } catch (e) {
+      setErr(
+        e instanceof Error
+          ? e.message
+          : "No se pudo abrir el selector. Elija una carpeta sugerida o escriba la ruta."
+      );
+      setMsg("");
+      setShowManualPath(true);
+      void loadSuggestions();
+    } finally {
+      setPickingFolder(false);
+    }
+  };
+
+  const applySuggestedPath = async (path: string) => {
+    setSaving(true);
+    setMsg("");
+    setErr("");
+    try {
+      const s = await apiFetch<BackupSettings>("/api/backup/apply-directory", {
+        method: "POST",
+        body: JSON.stringify({ path }),
+      });
+      applySettings(s);
+      setShowManualPath(false);
+      setMsg(`Carpeta de backups guardada: ${s.effective_backup_directory || path}`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "No se pudo aplicar la carpeta");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const saveSettings = async (e: FormEvent) => {
     e.preventDefault();
@@ -147,38 +222,6 @@ export function BackupMigrationPanel() {
       setErr(e instanceof Error ? e.message : "Error al guardar");
     } finally {
       setSaving(false);
-    }
-  };
-
-  const chooseFolder = async () => {
-    setPickingFolder(true);
-    setMsg(
-      "Se abrió el selector de carpetas de Windows. Si no lo ve, revise la barra de tareas."
-    );
-    setErr("");
-    try {
-      const result = await apiFetch<ChooseDirectoryResult>("/api/backup/choose-directory", {
-        method: "POST",
-      });
-      if (result.cancelled) {
-        setMsg("No se cambió la carpeta (selección cancelada).");
-        return;
-      }
-      if (result.settings) {
-        applySettings(result.settings);
-      } else if (result.path) {
-        setBackupDirectory(result.path);
-      }
-      setMsg(
-        result.path
-          ? `Carpeta de backups guardada: ${result.path}`
-          : "Carpeta de backups guardada."
-      );
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "No se pudo elegir la carpeta");
-      setMsg("");
-    } finally {
-      setPickingFolder(false);
     }
   };
 
@@ -425,8 +468,8 @@ export function BackupMigrationPanel() {
         <div className="space-y-2 rounded-lg border border-slate-200 bg-surface-subtle/60 p-3">
           <p className="text-sm font-medium text-slate-800">Dónde guardar los backups</p>
           <p className="text-help text-slate-500">
-            Pulse <strong>Elegir carpeta…</strong> y seleccione USB, disco D: o Documentos. La ruta
-            se guarda al confirmar. Si la ventana no aparece delante, mírela en la barra de tareas.
+            Pulse <strong>Elegir carpeta…</strong> (selector de Windows) o use una carpeta sugerida.
+            La ruta se guarda al instante.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -448,6 +491,23 @@ export function BackupMigrationPanel() {
               Usar predeterminada
             </Button>
           </div>
+          {suggestions.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {suggestions.slice(0, 4).map((s) => (
+                <Button
+                  key={s.path}
+                  type="button"
+                  variant="secondary"
+                  className="!px-2.5 !py-1.5 text-xs"
+                  disabled={saving || pickingFolder}
+                  title={s.path}
+                  onClick={() => void applySuggestedPath(s.path)}
+                >
+                  {s.label}
+                </Button>
+              ))}
+            </div>
+          )}
           <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
             <p className="text-help text-slate-500">Carpeta actual</p>
             <p
@@ -459,11 +519,15 @@ export function BackupMigrationPanel() {
                 "Carpeta predeterminada del sistema"}
             </p>
           </div>
-          <details className="text-sm text-slate-600">
+          <details
+            className="text-sm text-slate-600"
+            open={showManualPath}
+            onToggle={(e) => setShowManualPath((e.target as HTMLDetailsElement).open)}
+          >
             <summary className="cursor-pointer select-none text-slate-500 hover:text-slate-700">
               Escribir ruta manualmente (avanzado)
             </summary>
-            <div className="mt-2 space-y-1">
+            <div className="mt-2 space-y-2">
               <input
                 type="text"
                 spellCheck={false}
@@ -473,9 +537,16 @@ export function BackupMigrationPanel() {
                 value={backupDirectory}
                 onChange={(e) => setBackupDirectory(e.target.value)}
               />
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={saving || !backupDirectory.trim()}
+                onClick={() => void applySuggestedPath(backupDirectory.trim())}
+              >
+                Usar esta ruta
+              </Button>
               <p className="text-help text-slate-500">
-                Si escribe la ruta aquí, pulse «Guardar configuración» abajo. Preferible un disco
-                externo; no use Program Files.
+                Preferible un disco externo o Documentos. No use Program Files.
               </p>
             </div>
           </details>

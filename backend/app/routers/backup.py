@@ -164,6 +164,39 @@ def choose_directory(
     )
 
 
+class SuggestedDirectoryOut(BaseModel):
+    label: str
+    path: str
+
+
+@router.get("/suggested-directories", response_model=list[SuggestedDirectoryOut])
+def suggested_directories(
+    admin: User = Depends(require_roles(Rol.ADMIN)),
+):
+    """Writable one-click backup folders for desktop when the native dialog fails."""
+    _ = admin
+    return [SuggestedDirectoryOut(**row) for row in svc.list_suggested_backup_directories()]
+
+
+@router.post("/apply-directory", response_model=BackupSettingsOut)
+def apply_directory(
+    payload: dict,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles(Rol.ADMIN)),
+):
+    """Save a suggested or typed path without opening the native dialog."""
+    _ = admin
+    raw = str((payload or {}).get("path") or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Indique una carpeta de backup")
+    resolved = svc.validate_backup_directory(raw, create=True)
+    row = svc.get_or_create_backup_settings(db)
+    row.backup_directory = str(resolved)
+    db.commit()
+    db.refresh(row)
+    return BackupSettingsOut(**svc.settings_public_dict(row, db))
+
+
 @router.post("/generate", response_model=BackupHistoryOut)
 def generate_backup(
     db: Session = Depends(get_db),

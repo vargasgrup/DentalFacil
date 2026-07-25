@@ -172,15 +172,32 @@ def _normalize_initial_dir(initial_dir: str | None) -> str:
     return str(Path.home())
 
 
+def _windows_powershell_exe() -> str:
+    """Absolute powershell.exe — packaged desktop apps often have a broken PATH."""
+    import shutil
+
+    root = os.environ.get("SystemRoot") or os.environ.get("WINDIR") or r"C:\Windows"
+    candidates = [
+        str(Path(root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"),
+        str(Path(root) / "SysWOW64" / "WindowsPowerShell" / "v1.0" / "powershell.exe"),
+    ]
+    for path in candidates:
+        if Path(path).is_file():
+            return path
+    found = shutil.which("powershell.exe") or shutil.which("powershell")
+    if found:
+        return found
+    raise FileNotFoundError(
+        "No se encontró powershell.exe. Compruebe System32\\WindowsPowerShell."
+    )
+
+
 def _pick_directory_win32_shell(title: str, initial_dir: str | None) -> str | None:
-    """
-    Native SHBrowseForFolderW — no PowerShell/tkinter.
-    Works for local desktop FastAPI on the interactive Windows session.
-    """
+    """Native SHBrowseForFolderW in-process (no external executables)."""
     import ctypes
     from ctypes import wintypes
 
-    ole32 = ctypes.windll.ole32
+    ole32 = ctypes.OleDLL("ole32")
     shell32 = ctypes.windll.shell32
     user32 = ctypes.windll.user32
 
@@ -188,8 +205,8 @@ def _pick_directory_win32_shell(title: str, initial_dir: str | None) -> str | No
         _fields_ = [
             ("hwndOwner", wintypes.HWND),
             ("pidlRoot", ctypes.c_void_p),
-            ("pszDisplayName", ctypes.c_wchar_p),
-            ("lpszTitle", ctypes.c_wchar_p),
+            ("pszDisplayName", ctypes.c_void_p),
+            ("lpszTitle", wintypes.LPCWSTR),
             ("ulFlags", wintypes.UINT),
             ("lpfn", ctypes.c_void_p),
             ("lParam", ctypes.c_void_p),
@@ -199,31 +216,37 @@ def _pick_directory_win32_shell(title: str, initial_dir: str | None) -> str | No
     BIF_RETURNONLYFSDIRS = 0x0001
     BIF_NEWDIALOGSTYLE = 0x0040
     BIF_EDITBOX = 0x0010
-    BIF_USENEWUI = BIF_NEWDIALOGSTYLE | 0x0010
 
-    _ = initial_dir  # SHBrowseForFolder has limited initial-path support
-    display = ctypes.create_unicode_buffer(1024)
+    _ = initial_dir
+    MAX_PATH = 1024
+    display = ctypes.create_unicode_buffer(MAX_PATH)
     bi = BROWSEINFOW()
-    bi.hwndOwner = user32.GetForegroundWindow() or None
+    hwnd = user32.GetForegroundWindow()
+    bi.hwndOwner = hwnd if hwnd else None
     bi.pidlRoot = None
-    bi.pszDisplayName = ctypes.cast(display, ctypes.c_wchar_p)
+    bi.pszDisplayName = ctypes.cast(display, ctypes.c_void_p)
     bi.lpszTitle = title
-    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_USENEWUI | BIF_EDITBOX
+    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE | BIF_EDITBOX
     bi.lpfn = None
     bi.lParam = None
     bi.iImage = 0
 
-    hr = ole32.CoInitialize(None)
-    initialized = hr in (0, 1)  # S_OK, S_FALSE
+    COINIT_APARTMENTTHREADED = 0x2
+    hr = ole32.CoInitializeEx(None, COINIT_APARTMENTTHREADED)
+    initialized = hr in (0, 1)
     try:
+        shell32.SHBrowseForFolderW.restype = ctypes.c_void_p
+        shell32.SHBrowseForFolderW.argtypes = [ctypes.POINTER(BROWSEINFOW)]
         pidl = shell32.SHBrowseForFolderW(ctypes.byref(bi))
         if not pidl:
             return None
-        path_buf = ctypes.create_unicode_buffer(1024)
+        path_buf = ctypes.create_unicode_buffer(MAX_PATH)
+        shell32.SHGetPathFromIDListW.argtypes = [ctypes.c_void_p, wintypes.LPWSTR]
+        shell32.SHGetPathFromIDListW.restype = wintypes.BOOL
         ok = shell32.SHGetPathFromIDListW(pidl, path_buf)
         ole32.CoTaskMemFree(pidl)
         if not ok:
-            return None
+            raise OSError("SHGetPathFromIDListW falló")
         chosen = (path_buf.value or "").strip()
         return chosen or None
     finally:
@@ -234,46 +257,106 @@ def _pick_directory_win32_shell(title: str, initial_dir: str | None) -> str | No
                 pass
 
 
+def _pick_directory_python_subprocess(title: str, initial_dir: str | None) -> str | None:
+    """
+    Spawn the same Python interpreter with tkinter — works when PATH lacks powershell
+    (typical of Windows desktop installers under custom folders).
+    """
+    import subprocess
+    import sys
+    import textwrap
+
+    start = _normalize_initial_dir(initial_dir)
+    code = textwrap.dedent(
+        r"""
+        import sys
+        from tkinter import Tk, filedialog
+        title = sys.argv[1]
+        initial = sys.argv[2] if len(sys.argv) > 2 else ""
+        root = Tk()
+        root.withdraw()
+        try:
+            root.attributes("-topmost", True)
+        except Exception:
+            pass
+        root.update_idletasks()
+        chosen = filedialog.askdirectory(
+            parent=root,
+            title=title,
+            initialdir=initial or None,
+            mustexist=False,
+        )
+        try:
+            root.destroy()
+        except Exception:
+            pass
+        if chosen:
+            sys.stdout.buffer.write(chosen.encode("utf-8", errors="replace"))
+        """
+    )
+    creationflags = 0
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+    proc = subprocess.run(
+        [sys.executable, "-c", code, title, start],
+        capture_output=True,
+        timeout=600,
+        creationflags=creationflags,
+    )
+    if proc.returncode != 0:
+        err = (proc.stderr or b"").decode("utf-8", errors="replace").strip()
+        raise RuntimeError(err or f"Python folder picker exit={proc.returncode}")
+    raw = (proc.stdout or b"").decode("utf-8", errors="replace").strip()
+    return raw or None
+
+
 def _pick_directory_tk(title: str, initial_dir: str | None) -> str | None:
     import tkinter as tk
     from tkinter import filedialog
 
     start = _normalize_initial_dir(initial_dir)
     chosen_holder: list[str | None] = []
+    error_holder: list[BaseException] = []
 
     def _run() -> None:
-        root = tk.Tk()
-        root.withdraw()
         try:
-            root.attributes("-topmost", True)
-        except tk.TclError:
-            pass
-        root.update_idletasks()
-        chosen = filedialog.askdirectory(
-            parent=root,
-            title=title,
-            initialdir=start,
-            mustexist=False,
-        )
-        root.destroy()
-        chosen_holder.append(chosen or None)
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                root.attributes("-topmost", True)
+            except tk.TclError:
+                pass
+            root.update_idletasks()
+            chosen = filedialog.askdirectory(
+                parent=root,
+                title=title,
+                initialdir=start,
+                mustexist=False,
+            )
+            root.destroy()
+            chosen_holder.append(chosen or None)
+        except BaseException as exc:  # noqa: BLE001
+            error_holder.append(exc)
 
-    # Tk is more reliable on a dedicated thread under uvicorn threadpool
     t = threading.Thread(target=_run, daemon=True)
     t.start()
     t.join(timeout=600)
     if t.is_alive():
         raise RuntimeError("El selector de carpetas no respondió a tiempo")
+    if error_holder:
+        raise error_holder[0]
     return chosen_holder[0] if chosen_holder else None
 
 
 def _pick_directory_windows_ps(title: str, initial_dir: str | None) -> str | None:
-    """Fallback: FolderBrowserDialog via PowerShell STA + TopMost owner."""
+    """Fallback: FolderBrowserDialog via absolute powershell.exe + STA."""
     import json
     import subprocess
     import tempfile
 
     start = _normalize_initial_dir(initial_dir)
+    ps_exe = _windows_powershell_exe()
     script = f"""
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms | Out-Null
@@ -315,7 +398,7 @@ try {{
     try:
         proc = subprocess.run(
             [
-                "powershell",
+                ps_exe,
                 "-NoProfile",
                 "-STA",
                 "-ExecutionPolicy",
@@ -343,6 +426,48 @@ try {{
     return lines[-1] or None
 
 
+def list_suggested_backup_directories() -> list[dict[str, str]]:
+    """Writable candidate folders for one-click setup when the native dialog fails."""
+    suggestions: list[tuple[str, Path]] = []
+    home = Path.home()
+    docs = home / "Documents" / "NKDentalSoft" / "backups"
+    desktop = home / "Desktop" / "NKDentalSoft-Backups"
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        suggestions.append(
+            ("AppData local (recomendado)", Path(local) / "NKDentalSoft" / "backups")
+        )
+    suggestions.extend(
+        [
+            ("Documentos", docs),
+            ("Escritorio", desktop),
+            ("Predeterminada del sistema", _DEFAULT_BACKUP_DIR),
+        ]
+    )
+    for letter in ("D", "E", "F"):
+        root = Path(f"{letter}:/")
+        if root.exists():
+            suggestions.append((f"Disco {letter}:", root / "Backups" / "NKDentalSoft"))
+
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for label, path in suggestions:
+        try:
+            path = path.resolve()
+            key = str(path).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            path.mkdir(parents=True, exist_ok=True)
+            probe = path / f".nk_write_{new_uuid()[:6]}"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            out.append({"label": label, "path": str(path)})
+        except OSError:
+            continue
+    return out
+
+
 def pick_backup_directory_interactive(
     *,
     title: str | None = None,
@@ -366,6 +491,7 @@ def pick_backup_directory_interactive(
         if os.name == "nt":
             for label, fn in (
                 ("win32", lambda: _pick_directory_win32_shell(title, start)),
+                ("python-tk", lambda: _pick_directory_python_subprocess(title, start)),
                 ("powershell", lambda: _pick_directory_windows_ps(title, start)),
                 ("tkinter", lambda: _pick_directory_tk(title, start)),
             ):
@@ -378,21 +504,14 @@ def pick_backup_directory_interactive(
                 status_code=500,
                 detail=(
                     "No se pudo abrir el selector de carpetas en este equipo. "
-                    f"Use «Escribir ruta manualmente» o reinicie {_product_name()}. "
-                    f"({'; '.join(errors)[:300]})"
+                    "Use una carpeta sugerida o escriba la ruta manualmente "
+                    f"(ej. D:\\Backups\\NKDentalSoft). ({'; '.join(errors)[:240]})"
                 ),
             )
         try:
+            return _pick_directory_python_subprocess(title, start)
+        except Exception:
             return _pick_directory_tk(title, start)
-        except Exception as tk_exc:  # noqa: BLE001
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    "No se pudo abrir el selector de carpetas en este equipo. "
-                    f"Use «Escribir ruta manualmente» o reinicie {_product_name()}. "
-                    f"({tk_exc})"
-                ),
-            ) from tk_exc
     finally:
         _pick_lock.release()
 

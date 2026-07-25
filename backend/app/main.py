@@ -44,18 +44,24 @@ def _run_migrations() -> None:
 def _scheduler_health() -> dict[str, Any]:
     sch = _scheduler
     if sch is None:
-        return {"running": False, "job_id": "reminders", "next_run": None}
-    job = None
-    try:
-        job = sch.get_job("reminders")
-    except Exception:  # noqa: BLE001
-        job = None
+        return {"running": False, "jobs": [], "next_run": None}
+    jobs_out = []
     next_run = None
-    if job and getattr(job, "next_run_time", None) is not None:
-        next_run = job.next_run_time.isoformat()
+    for job_id in ("reminders", "backups"):
+        try:
+            job = sch.get_job(job_id)
+        except Exception:  # noqa: BLE001
+            job = None
+        nrt = None
+        if job and getattr(job, "next_run_time", None) is not None:
+            nrt = job.next_run_time.isoformat()
+            if next_run is None:
+                next_run = nrt
+        jobs_out.append({"id": job_id, "next_run": nrt})
     return {
         "running": bool(sch.running),
         "job_id": "reminders",
+        "jobs": jobs_out,
         "next_run": next_run,
     }
 

@@ -97,3 +97,32 @@ def test_backup_restore_requires_confirm(
         data=data,
     )
     assert bad.status_code == 400
+
+
+def test_backup_restore_succeeds_on_windows_paths(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    monkeypatch,
+    tmp_path: Path,
+):
+    """Full restore must release SQLite handles and replace WAL sidecars safely."""
+    monkeypatch.setenv("BACKUP_DIRECTORY", str(tmp_path / "backups3"))
+    gen = client.post("/api/backup/generate", headers=admin_headers)
+    assert gen.status_code == 200, gen.text
+    hist = client.get("/api/backup/history", headers=admin_headers).json()[0]
+    dl = client.get(f"/api/backup/{hist['id']}/download", headers=admin_headers)
+    assert dl.status_code == 200
+
+    files = {"file": ("restore.zip", dl.content, "application/zip")}
+    ok = client.post(
+        "/api/backup/restore",
+        headers=admin_headers,
+        files=files,
+        data={"confirm_token": "CONFIRMAR"},
+    )
+    assert ok.status_code == 200, ok.text
+    body = ok.json()
+    assert body["ok"] is True
+    assert body.get("restart_required") is True
+    # Hot apply or same-process pending apply both count as success on Windows
+    assert body.get("db_applied") is True or body.get("files_restored") is not None

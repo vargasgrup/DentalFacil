@@ -165,6 +165,7 @@ async def restore_backup(
 ):
     _ = request
     data = await file.read()
+    # Pass session for prechecks/safety backup; service closes it before Windows file swap
     return svc.restore_backup(
         db,
         data,

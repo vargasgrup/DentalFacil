@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, BinaryIO
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, status
 from sqlalchemy import inspect, text
@@ -26,15 +26,22 @@ from app.logging_config import get_logger
 from app.migrate import HEAD_REVISION
 from app.models import BackupHistory, BackupSettings, User
 from app.models.ids import BACKUP_SETTINGS_ID, new_uuid
+from app.paths import BACKEND_ROOT, resolve_sqlite_file, resolve_under_backend
 from app.services.audit import log_audit
+from app.sqlite_restore import apply_pending_sqlite_restore, stage_pending_restore
 
 logger = get_logger("backup_service")
 
-CLINIC_TZ = ZoneInfo("America/Lima")
+try:
+    CLINIC_TZ = ZoneInfo("America/Lima")
+except ZoneInfoNotFoundError:
+    # Windows without tzdata: fixed UTC-5 (Peru does not observe DST)
+    CLINIC_TZ = timezone(timedelta(hours=-5))
+    logger.warning("tzdata missing — using fixed UTC-5 for America/Lima")
 BACKUP_FORMAT_VERSION = "1.0"
 CONFIRM_TOKEN = "CONFIRMAR"
 
-_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+_BACKEND_ROOT = BACKEND_ROOT
 _DEFAULT_BACKUP_DIR = _BACKEND_ROOT / "app" / "backups"
 _CLINIC_UPLOADS = Path(__file__).resolve().parents[1] / "assets" / "uploads"
 
@@ -57,9 +64,7 @@ def _slug(text: str) -> str:
 
 def get_backup_dir() -> Path:
     raw = (os.environ.get("BACKUP_DIRECTORY") or "").strip()
-    path = Path(raw) if raw else _DEFAULT_BACKUP_DIR
-    if not path.is_absolute():
-        path = _BACKEND_ROOT / path
+    path = resolve_under_backend(raw) if raw else _DEFAULT_BACKUP_DIR
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -73,35 +78,25 @@ def resolve_sqlite_path() -> Path:
                 "Esta instancia usa otro motor de base de datos."
             ),
         )
-    from sqlalchemy.engine.url import make_url
-
-    db = make_url(settings.DATABASE_URL).database
-    if not db or db == ":memory:":
-        raise HTTPException(status_code=400, detail="Ruta de base de datos inválida")
-    path = Path(db)
-    if not path.is_absolute():
-        path = Path.cwd() / path
-    return path.resolve()
+    try:
+        return resolve_sqlite_file(settings.DATABASE_URL)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _upload_roots() -> dict[str, Path]:
-    tooth = Path(
-        os.environ.get("TOOTH_MEDIA_ROOT")
-        or str(_BACKEND_ROOT / "data" / "tooth_media")
+    tooth = os.environ.get("TOOTH_MEDIA_ROOT") or str(_BACKEND_ROOT / "data" / "tooth_media")
+    comp = os.environ.get("COMPLEMENTARY_TESTS_ROOT") or str(
+        _BACKEND_ROOT / "data" / "complementary_tests"
     )
-    comp = Path(
-        os.environ.get("COMPLEMENTARY_TESTS_ROOT")
-        or str(_BACKEND_ROOT / "data" / "complementary_tests")
-    )
-    hist = Path(
-        os.environ.get("HISTORICAL_DOCUMENTS_ROOT")
-        or str(_BACKEND_ROOT / "data" / "historical_documents")
+    hist = os.environ.get("HISTORICAL_DOCUMENTS_ROOT") or str(
+        _BACKEND_ROOT / "data" / "historical_documents"
     )
     return {
-        "tooth_media": tooth,
-        "complementary_tests": comp,
-        "historical_documents": hist,
-        "clinic_uploads": _CLINIC_UPLOADS,
+        "tooth_media": resolve_under_backend(tooth),
+        "complementary_tests": resolve_under_backend(comp),
+        "historical_documents": resolve_under_backend(hist),
+        "clinic_uploads": _CLINIC_UPLOADS.resolve(),
     }
 
 
@@ -349,14 +344,189 @@ class ValidationResult:
 
 def _safe_extract_member(zf: zipfile.ZipFile, member: str, dest: Path) -> Path:
     info = zf.getinfo(member)
-    # Path traversal guard
-    target = (dest / info.filename).resolve()
-    if not str(target).startswith(str(dest.resolve())):
-        raise HTTPException(status_code=400, detail="El zip contiene rutas no permitidas")
+    # Normalize zip member paths (Windows zippers may use backslashes)
+    rel = info.filename.replace("\\", "/").lstrip("/")
+    if not rel or rel.endswith("/"):
+        raise HTTPException(status_code=400, detail="Entrada de zip inválida")
+    dest_r = dest.resolve()
+    target = (dest / Path(*rel.split("/"))).resolve()
+    try:
+        if not target.is_relative_to(dest_r):
+            raise HTTPException(status_code=400, detail="El zip contiene rutas no permitidas")
+    except AttributeError:
+        # Python < 3.9 fallback
+        if os.path.commonpath([str(dest_r), str(target)]) != str(dest_r):
+            raise HTTPException(status_code=400, detail="El zip contiene rutas no permitidas")
     target.parent.mkdir(parents=True, exist_ok=True)
     with zf.open(info) as src, target.open("wb") as out:
         shutil.copyfileobj(src, out)
     return target
+
+
+def _norm_zip_names(names: list[str] | set[str]) -> set[str]:
+    return {n.replace("\\", "/").lstrip("/") for n in names}
+
+
+def _sqlite_sidecars(db_path: Path) -> list[Path]:
+    base = str(db_path)
+    return [Path(base + "-wal"), Path(base + "-shm"), Path(base + "-journal")]
+
+
+def _pause_scheduler() -> None:
+    try:
+        from app import main as main_mod
+
+        sch = getattr(main_mod, "_scheduler", None)
+        if sch is not None and getattr(sch, "running", False):
+            sch.pause()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("could not pause scheduler: %s", exc)
+
+
+def _resume_scheduler() -> None:
+    try:
+        from app import main as main_mod
+
+        sch = getattr(main_mod, "_scheduler", None)
+        if sch is not None and getattr(sch, "running", False):
+            sch.resume()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("could not resume scheduler: %s", exc)
+
+
+def _close_db_session(db: Session | None) -> None:
+    if db is None:
+        return
+    try:
+        db.rollback()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        db.close()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _dispose_engine() -> None:
+    from app.database import engine
+
+    engine.dispose()
+    # Windows may keep the file lock briefly after dispose
+    time.sleep(0.2)
+
+
+def _unlink_sidecars(live: Path) -> None:
+    for side in _sqlite_sidecars(live):
+        if not side.exists():
+            continue
+        last_err: Exception | None = None
+        for attempt in range(12):
+            try:
+                side.unlink()
+                last_err = None
+                break
+            except OSError as exc:
+                last_err = exc
+                try:
+                    trash = side.with_name(f"{side.name}.trash-{new_uuid()}")
+                    side.rename(trash)
+                    last_err = None
+                    break
+                except OSError:
+                    pass
+                _dispose_engine()
+                time.sleep(0.25 * (attempt + 1))
+        if last_err is not None:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"No se pudo liberar {side.name} (archivo en uso en Windows). "
+                    "Cierre otras ventanas de DentalSimple e intente de nuevo."
+                ),
+            ) from last_err
+
+
+def _quiesce_sqlite_for_replace(live: Path) -> None:
+    """
+    Release Windows file locks: dispose pool, leave WAL mode, truncate sidecars.
+    journal_mode=DELETE checkpoints WAL and drops -wal/-shm when possible.
+    """
+    import gc
+
+    _dispose_engine()
+    gc.collect()
+    if not live.exists():
+        return
+    last_err: Exception | None = None
+    for attempt in range(6):
+        try:
+            conn = sqlite3.connect(str(live), timeout=30)
+            try:
+                conn.execute("PRAGMA busy_timeout=30000")
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                conn.execute("PRAGMA journal_mode=DELETE")
+                conn.commit()
+            finally:
+                conn.close()
+            last_err = None
+            break
+        except sqlite3.Error as exc:
+            last_err = exc
+            _dispose_engine()
+            gc.collect()
+            time.sleep(0.2 * (attempt + 1))
+    if last_err is not None:
+        logger.warning("sqlite quiesce incomplete: %s", last_err)
+    _dispose_engine()
+    gc.collect()
+    time.sleep(0.15)
+
+
+def _replace_live_sqlite(snap: Path, live: Path) -> None:
+    """Atomically replace SQLite file in a Windows-safe way (handles + WAL/SHM)."""
+    live.parent.mkdir(parents=True, exist_ok=True)
+    _quiesce_sqlite_for_replace(live)
+    _unlink_sidecars(live)
+
+    tmp = live.with_name(f"{live.name}.restore-{new_uuid()}.tmp")
+    try:
+        shutil.copy2(snap, tmp)
+        last_err: Exception | None = None
+        for attempt in range(8):
+            try:
+                os.replace(str(tmp), str(live))
+                last_err = None
+                break
+            except PermissionError as exc:
+                last_err = exc
+                _dispose_engine()
+                time.sleep(0.3 * (attempt + 1))
+        if last_err is not None:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Windows no permitió reemplazar clinica.db (archivo en uso). "
+                    "Cierre el sistema en otras PCs/sesiones e intente otra vez."
+                ),
+            ) from last_err
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+    # Drop any leftover sidecars that could corrupt the restored DB under WAL
+    for side in _sqlite_sidecars(live):
+        try:
+            if side.exists():
+                trash = side.with_name(f"{side.name}.trash-{new_uuid()}")
+                try:
+                    side.rename(trash)
+                except OSError:
+                    side.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _alembic_revision_order() -> list[str]:
@@ -405,14 +575,27 @@ def validate_backup_bytes(data: bytes) -> ValidationResult:
 
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            names = set(zf.namelist())
+            names = _norm_zip_names(zf.namelist())
             if "manifest.json" not in names:
                 errors.append("Falta manifest.json")
             if "database/clinica.db" not in names:
                 errors.append("Falta database/clinica.db")
             if errors:
                 return ValidationResult(False, {}, warnings, errors)
-            manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+            # Prefer forward-slash member; fall back to original zip name
+            manifest_member = next(
+                (n for n in zf.namelist() if n.replace("\\", "/").lstrip("/") == "manifest.json"),
+                "manifest.json",
+            )
+            db_member = next(
+                (
+                    n
+                    for n in zf.namelist()
+                    if n.replace("\\", "/").lstrip("/") == "database/clinica.db"
+                ),
+                "database/clinica.db",
+            )
+            manifest = json.loads(zf.read(manifest_member).decode("utf-8"))
             if manifest.get("backup_format_version") != BACKUP_FORMAT_VERSION:
                 warnings.append("Versión de formato de backup distinta; se intentará de todos modos")
             src_rev = str(manifest.get("source_head_revision") or "")
@@ -439,7 +622,6 @@ def validate_backup_bytes(data: bytes) -> ValidationResult:
 
             with tempfile.TemporaryDirectory() as td:
                 td_path = Path(td)
-                db_member = "database/clinica.db"
                 extracted = td_path / "clinica.db"
                 with zf.open(db_member) as src, extracted.open("wb") as out:
                     shutil.copyfileobj(src, out)
@@ -507,21 +689,35 @@ def restore_backup(
     import io
     import tempfile
 
+    paused = False
     try:
-        # Safety backup BEFORE maintenance mode (create_backup rejects when restoring)
+        # Release request session early (Windows locks) — safety backup uses its own session
+        _close_db_session(db)
+        from app.database import SessionLocal
+
         try:
             if resolve_sqlite_path().exists() and user_count > 0:
-                create_backup(db, triggered_by="pre_restore_safety", user_id=user_id, keep=True)
+                with SessionLocal() as s_safe:
+                    create_backup(
+                        s_safe,
+                        triggered_by="pre_restore_safety",
+                        user_id=user_id,
+                        keep=True,
+                    )
         except Exception as exc:  # noqa: BLE001
             report["warnings"].append(f"No se pudo crear backup de seguridad previo: {exc}")
 
+        _pause_scheduler()
+        paused = True
         _restoring = True
+        _dispose_engine()
 
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
             with zipfile.ZipFile(io.BytesIO(data)) as zf:
                 for name in zf.namelist():
-                    if name.endswith("/"):
+                    norm = name.replace("\\", "/").rstrip("/")
+                    if not norm or name.endswith("/") or name.endswith("\\"):
                         continue
                     _safe_extract_member(zf, name, td_path)
 
@@ -531,57 +727,111 @@ def restore_backup(
             _integrity_check(snap)
 
             live = resolve_sqlite_path()
-            # Dispose engine connections before replacing file
-            from app.database import engine
-
-            engine.dispose()
-            live.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(snap, live)
+            applied_hot = False
+            try:
+                _replace_live_sqlite(snap, live)
+                applied_hot = True
+            except HTTPException as exc:
+                # Windows file lock: stage for next process start (engine closed)
+                logger.warning("hot restore failed (%s) — staging pending restore", exc.detail)
+                stage_pending_restore(snap, live)
+                report["warnings"].append(
+                    "La base quedó programada para aplicarse al reiniciar DentalSimple "
+                    "(Windows tenía el archivo en uso)."
+                )
 
             uploads_root = td_path / "uploads"
             restored_files = 0
             for key, dest in _upload_roots().items():
                 restored_files += _replace_tree(uploads_root / key, dest)
 
-            # Re-check and bump token versions after reconnect
-            engine.dispose()
-            from app.database import SessionLocal
-
-            with SessionLocal() as s2:
-                try:
-                    s2.execute(text("UPDATE users SET token_version = COALESCE(token_version, 0) + 1"))
+            rows: dict[str, int] = {}
+            if applied_hot:
+                _dispose_engine()
+                with SessionLocal() as s2:
+                    try:
+                        s2.execute(
+                            text(
+                                "UPDATE users SET token_version = COALESCE(token_version, 0) + 1"
+                            )
+                        )
+                        s2.commit()
+                    except Exception:  # noqa: BLE001
+                        s2.rollback()
+                    rows = _row_counts(s2)
+                    log_audit(
+                        s2,
+                        patient_id=None,
+                        entity_type="system",
+                        entity_id="backup",
+                        action="restore",
+                        user_id=user_id,
+                        detail={"tables": len(rows), "files": restored_files, "hot": True},
+                    )
                     s2.commit()
-                except Exception:  # noqa: BLE001
-                    s2.rollback()
-                rows = _row_counts(s2)
-                log_audit(
-                    s2,
-                    patient_id=None,
-                    entity_type="system",
-                    entity_id="backup",
-                    action="restore",
-                    user_id=user_id,
-                    detail={"tables": len(rows), "files": restored_files},
-                )
-                s2.commit()
+            else:
+                # Apply staged DB now that pool is disposed (same process — tests / soft restart)
+                if apply_pending_sqlite_restore(settings.DATABASE_URL):
+                    applied_hot = True
+                    _dispose_engine()
+                    with SessionLocal() as s2:
+                        try:
+                            s2.execute(
+                                text(
+                                    "UPDATE users SET token_version = COALESCE(token_version, 0) + 1"
+                                )
+                            )
+                            s2.commit()
+                        except Exception:  # noqa: BLE001
+                            s2.rollback()
+                        rows = _row_counts(s2)
+                        log_audit(
+                            s2,
+                            patient_id=None,
+                            entity_type="system",
+                            entity_id="backup",
+                            action="restore",
+                            user_id=user_id,
+                            detail={
+                                "tables": len(rows),
+                                "files": restored_files,
+                                "hot": False,
+                            },
+                        )
+                        s2.commit()
+                else:
+                    report["warnings"].append(
+                        "Reinicie el servicio backend para terminar de aplicar la base de datos."
+                    )
 
             report.update(
                 {
                     "ok": True,
-                    "tables_restored": len(rows),
-                    "row_counts": rows,
+                    "tables_restored": len(rows) if rows else None,
+                    "row_counts": rows or None,
                     "files_restored": restored_files,
                     "source_head_revision": validation.manifest.get("source_head_revision"),
+                    "restart_required": True,
+                    "db_applied": bool(applied_hot),
                     "message": (
-                        "Restauración completada. Cierre sesión e inicie de nuevo "
-                        "con un usuario del backup."
+                        "Restauración completada. Reinicie DentalSimple e inicie sesión "
+                        "con un usuario incluido en el backup."
+                        if applied_hot
+                        else (
+                            "Archivos restaurados. Reinicie DentalSimple para aplicar "
+                            "la base de datos y luego inicie sesión."
+                        )
                     ),
                 }
             )
-            logger.info("restore ok tables=%s files=%s", len(rows), restored_files)
+            logger.info(
+                "restore ok applied=%s files=%s", applied_hot, restored_files
+            )
             return report
     finally:
         _restoring = False
+        if paused:
+            _resume_scheduler()
         _restore_lock.release()
 
 

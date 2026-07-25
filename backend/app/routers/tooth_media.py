@@ -18,10 +18,14 @@ from app.models import Patient, User
 from app.models.periodontogram import ToothMedia
 from app.services.audit import log_audit
 from app.services.patient_access import get_active_patient_or_404
+from app.paths import resolve_under_backend
 
 router = APIRouter(prefix="/api/tooth-media", tags=["tooth-media"])
 
-UPLOAD_ROOT = Path(os.environ.get("TOOTH_MEDIA_ROOT", "/app/uploads/tooth_media"))
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+UPLOAD_ROOT = resolve_under_backend(
+    os.environ.get("TOOTH_MEDIA_ROOT") or str(_BACKEND_ROOT / "data" / "tooth_media")
+)
 
 
 class MediaOut(BaseModel):

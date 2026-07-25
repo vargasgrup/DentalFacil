@@ -224,7 +224,9 @@ export function BackupMigrationPanel() {
         body.message ||
           `Restaurado: ${body.tables_restored || "—"} tablas, ${body.files_restored || 0} archivos.`
       );
-      setMsg("Restauración completada. Cierre sesión e inicie de nuevo.");
+      setMsg(
+        "Restauración completada. Reinicie DentalSimple e inicie sesión con un usuario del backup."
+      );
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error al restaurar");
     } finally {

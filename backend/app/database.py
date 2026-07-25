@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from app.config import settings
-
 from app.logging_config import get_logger
+from app.paths import absolute_sqlite_url
 
 logger = get_logger('database')
 
@@ -19,7 +18,7 @@ def _is_sqlite(url: str) -> bool:
 
 def _connect_args(url: str) -> dict:
     if _is_sqlite(url):
-        return {"check_same_thread": False}
+        return {"check_same_thread": False, "timeout": 60}
     args: dict = {"connect_timeout": 10}
     lower = url.lower()
     if ("railway.app" in lower or "rlwy.net" in lower) and "railway.internal" not in lower:
@@ -27,18 +26,10 @@ def _connect_args(url: str) -> dict:
     return args
 
 
-def _ensure_sqlite_parent(url: str) -> None:
+def _ensure_sqlite_parent(url: str) -> str:
     if not _is_sqlite(url):
-        return
-    from sqlalchemy.engine.url import make_url
-
-    db_path = make_url(url).database
-    if not db_path or db_path == ":memory:":
-        return
-    path = Path(db_path)
-    if not path.is_absolute():
-        path = Path.cwd() / path
-    path.parent.mkdir(parents=True, exist_ok=True)
+        return url
+    return absolute_sqlite_url(url)
 
 
 @event.listens_for(Engine, "connect")
@@ -51,33 +42,50 @@ def _sqlite_on_connect(dbapi_connection, connection_record) -> None:  # noqa: AR
     cursor.close()
 
 
+def _apply_pending_restore_at_boot() -> None:
+    """Swap staged clinica.db before opening the engine (Windows installer path)."""
+    if not _is_sqlite(settings.DATABASE_URL):
+        return
+    try:
+        from app.sqlite_restore import apply_pending_sqlite_restore
+
+        if apply_pending_sqlite_restore(settings.DATABASE_URL):
+            logger.info("[dentalfacil] pending backup restore applied at boot")
+    except Exception as exc:  # noqa: BLE001
+        logger.error("pending restore at boot failed: %s", exc, exc_info=True)
+
+
 def _make_engine():
     url = settings.DATABASE_URL
     try:
-        _ensure_sqlite_parent(url)
-        return create_engine(
-            url,
-            pool_pre_ping=not _is_sqlite(url),
-            connect_args=_connect_args(url),
-        )
+        url = _ensure_sqlite_parent(url)
+        # NullPool: no pooled handles — required for Windows backup/restore file replace
+        kwargs: dict = {
+            "pool_pre_ping": not _is_sqlite(url),
+            "connect_args": _connect_args(url),
+        }
+        if _is_sqlite(url):
+            kwargs["poolclass"] = NullPool
+        return create_engine(url, **kwargs)
     except Exception as exc:  # noqa: BLE001
         logger.error(f"[dentalfacil] ERROR create_engine: {exc}")
         if settings.is_production:
             raise RuntimeError(
                 f"No se pudo abrir DATABASE_URL en producción: {exc}"
             ) from exc
-        fallback = "sqlite:///./data/clinica_fallback.db"
+        fallback = absolute_sqlite_url("sqlite:///./data/clinica_fallback.db")
         logger.warning(
             "[dentalfacil] Using local SQLite fallback DB (dev only): %s", fallback
         )
-        _ensure_sqlite_parent(fallback)
         return create_engine(
             fallback,
             pool_pre_ping=False,
-            connect_args={"check_same_thread": False},
+            poolclass=NullPool,
+            connect_args={"check_same_thread": False, "timeout": 60},
         )
 
 
+_apply_pending_restore_at_boot()
 engine = _make_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

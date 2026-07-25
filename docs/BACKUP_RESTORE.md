@@ -1,6 +1,6 @@
 # Respaldo y Migración (Backup / Restore)
 
-Feature añadida en Configuración → **Respaldo y Migración** (solo ADMIN).
+Feature en Configuración → **Respaldo y Migración** (solo ADMIN).
 
 ## Qué incluye el paquete `.zip`
 
@@ -14,6 +14,31 @@ Feature añadida en Configuración → **Respaldo y Migración** (solo ADMIN).
 2. **Automático:** activar en el mismo panel (diario / 12h / semanal + hora).
 3. **Restaurar (PC con datos):** validar zip → escribir `CONFIRMAR` → restaurar (crea backup de seguridad previo).
 4. **PC nueva vacía:** en el wizard inicial elegir **Restaurar backup**.
+
+## Windows 10 / 11 (instalación local en clínica)
+
+El caso de uso real es **1 SQLite por PC** (no una BD compartida por Wi‑Fi/RJ45). El zip sirve para migrar o clonar una PC a otra.
+
+| Tema | Requisito |
+|------|-----------|
+| Datos escribibles | **No** instalar DB/backups/uploads bajo `Program Files`. Usar `%LOCALAPPDATA%\DentalSimple\` (o `DENTALSIMPLE_DATA_DIR`). |
+| `DATABASE_URL` | Preferir ruta **absoluta** en el `.env` del instalador. |
+| Rutas de medios | Misma raíz de datos: `TOOTH_MEDIA_ROOT`, `COMPLEMENTARY_TESTS_ROOT`, `HISTORICAL_DOCUMENTS_ROOT`, `BACKUP_DIRECTORY`. |
+| Restore | Cierra sesiones, pausa scheduler, limpia `-wal`/`-shm`, `os.replace`. Si Windows bloquea el archivo → restore pendiente al reiniciar. |
+| Tras restaurar | Reiniciar el backend/app (`restart_required: true`) e iniciar sesión de nuevo. |
+| 3 PCs en red | Cada PC tiene su copia local. Migración = USB/zip. **No** montar `clinica.db` en un recurso SMB compartido. |
+| Zona horaria | Dependencia `tzdata` (America/Lima); hay fallback UTC−5 si falta. |
+
+Ejemplo `.env` de instalador:
+
+```env
+DATABASE_URL=sqlite:///C:/Users/Clinica/AppData/Local/DentalSimple/clinica.db
+BACKUP_DIRECTORY=C:/Users/Clinica/AppData/Local/DentalSimple/backups
+TOOTH_MEDIA_ROOT=C:/Users/Clinica/AppData/Local/DentalSimple/tooth_media
+COMPLEMENTARY_TESTS_ROOT=C:/Users/Clinica/AppData/Local/DentalSimple/complementary_tests
+HISTORICAL_DOCUMENTS_ROOT=C:/Users/Clinica/AppData/Local/DentalSimple/historical_documents
+DENTALSIMPLE_DATA_DIR=C:/Users/Clinica/AppData/Local/DentalSimple
+```
 
 ## API
 
@@ -32,7 +57,7 @@ Feature añadida en Configuración → **Respaldo y Migración** (solo ADMIN).
 
 - Pensado para **SQLite local** (caso clínica offline / 3 PCs).
 - Durante restore: API responde `503` (excepto `/api/health`).
-- Tras restore: se incrementa `token_version` de usuarios → deben volver a iniciar sesión.
-- Carpeta de salida: `backend/app/backups/` (gitignored).
+- Tras restore: se incrementa `token_version` → deben volver a iniciar sesión.
+- Carpeta de salida por defecto: `backend/app/backups/` (gitignored).
 
 Prompt de origen: `Recursos DentalSoft/PROMPT_BACKUP_RESTORE_DENTALSIMPLE.md`

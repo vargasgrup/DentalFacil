@@ -54,12 +54,21 @@ def _to_clinic(dt: datetime) -> datetime:
     return dt.astimezone(CLINIC_TZ)
 
 
+def _fmt_time_12h(local: datetime) -> str:
+    """Native system clock: 12h with es-PE markers (e.g. '1:37 p. m.')."""
+    h = local.hour
+    m = local.minute
+    period = "p. m." if h >= 12 else "a. m."
+    h12 = h % 12 or 12
+    return f"{h12}:{m:02d} {period}"
+
+
 def _fmt_dt(dt: datetime | None) -> tuple[str, str]:
     if not dt:
         return "—", "—"
     try:
         local = _to_clinic(dt)
-        return local.strftime("%d/%m/%Y"), local.strftime("%H:%M")
+        return local.strftime("%d/%m/%Y"), _fmt_time_12h(local)
     except Exception:
         return "—", "—"
 

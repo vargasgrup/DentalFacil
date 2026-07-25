@@ -15,12 +15,13 @@ import {
   RotateCw,
   ZoomIn,
   ZoomOut,
-  Expand,
+  ScanSearch,
 } from "lucide-react";
 
-const MIN_ZOOM = 0.25;
+const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 5;
-const ZOOM_STEP = 0.25;
+const ZOOM_STEP = 0.15;
+const STAGE_PAD = 32;
 
 export interface DigitizedDocumentViewerProps {
   title: string;
@@ -35,7 +36,7 @@ export interface DigitizedDocumentViewerProps {
 }
 
 function clampZoom(z: number): number {
-  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(z * 100) / 100));
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(z * 1000) / 1000));
 }
 
 function ToolBtn({
@@ -70,7 +71,8 @@ function ToolBtn({
 }
 
 /**
- * Professional digitized document viewer: zoom, pan, rotate, fit, fullscreen.
+ * Professional digitized document viewer: zoom, pan, rotate, fit-to-screen, fullscreen.
+ * Opens in "Ver completo" so the whole page is visible in one view.
  */
 export function DigitizedDocumentViewer({
   title,
@@ -84,31 +86,76 @@ export function DigitizedDocumentViewer({
   const shellRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
+  const [fitZoom, setFitZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [natural, setNatural] = useState({ w: 0, h: 0 });
+  const [fitMode, setFitMode] = useState(true);
   const dragOrigin = useRef<{ x: number; y: number; ox: number; oy: number } | null>(
     null
   );
+  const rotationRef = useRef(rotation);
+  rotationRef.current = rotation;
 
-  const resetView = useCallback(() => {
-    setZoom(1);
-    setRotation(0);
-    setOffset({ x: 0, y: 0 });
-  }, []);
+  const computeFitZoom = useCallback(
+    (natW: number, natH: number, rot: number) => {
+      const stage = stageRef.current;
+      if (!stage || natW <= 0 || natH <= 0) return 1;
+      const sw = Math.max(40, stage.clientWidth - STAGE_PAD);
+      const sh = Math.max(40, stage.clientHeight - STAGE_PAD);
+      const rotated = Math.abs(rot % 180) === 90;
+      const iw = rotated ? natH : natW;
+      const ih = rotated ? natW : natH;
+      return clampZoom(Math.min(sw / iw, sh / ih));
+    },
+    []
+  );
+
+  const applyFit = useCallback(
+    (opts?: { resetRotation?: boolean }) => {
+      const rot = opts?.resetRotation ? 0 : rotationRef.current;
+      if (opts?.resetRotation) setRotation(0);
+      const next =
+        kind === "pdf"
+          ? 1
+          : computeFitZoom(natural.w, natural.h, rot);
+      setFitZoom(next);
+      setZoom(next);
+      setOffset({ x: 0, y: 0 });
+      setFitMode(true);
+    },
+    [computeFitZoom, kind, natural.h, natural.w]
+  );
 
   const zoomBy = useCallback((delta: number) => {
+    setFitMode(false);
     setZoom((z) => clampZoom(z + delta));
   }, []);
 
   const zoomAt = useCallback((next: number) => {
+    setFitMode(false);
     setZoom(clampZoom(next));
+    setOffset({ x: 0, y: 0 });
   }, []);
 
-  const rotateBy = useCallback((deg: number) => {
-    setRotation((r) => ((r + deg) % 360 + 360) % 360);
-  }, []);
+  const rotateBy = useCallback(
+    (deg: number) => {
+      setRotation((r) => {
+        const next = ((r + deg) % 360 + 360) % 360;
+        // Keep whole page visible after rotate when in fit mode
+        if (fitMode && kind === "image" && natural.w > 0) {
+          const z = computeFitZoom(natural.w, natural.h, next);
+          setFitZoom(z);
+          setZoom(z);
+          setOffset({ x: 0, y: 0 });
+        }
+        return next;
+      });
+    },
+    [computeFitZoom, fitMode, kind, natural.h, natural.w]
+  );
 
   const toggleFullscreen = useCallback(async () => {
     const el = shellRef.current;
@@ -124,11 +171,51 @@ export function DigitizedDocumentViewer({
     }
   }, []);
 
+  const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    const w = img.naturalWidth;
+    const h = img.naturalHeight;
+    setNatural({ w, h });
+    // Defer so stage has layout
+    requestAnimationFrame(() => {
+      const z = computeFitZoom(w, h, rotationRef.current);
+      setFitZoom(z);
+      setZoom(z);
+      setOffset({ x: 0, y: 0 });
+      setFitMode(true);
+    });
+  };
+
   useEffect(() => {
-    const onFs = () => setFullscreen(Boolean(document.fullscreenElement));
+    const onFs = () => {
+      const fs = Boolean(document.fullscreenElement);
+      setFullscreen(fs);
+      // Re-fit after chrome changes size
+      requestAnimationFrame(() => {
+        if (fitMode && kind === "image" && natural.w > 0) {
+          const z = computeFitZoom(natural.w, natural.h, rotationRef.current);
+          setFitZoom(z);
+          setZoom(z);
+          setOffset({ x: 0, y: 0 });
+        }
+      });
+    };
     document.addEventListener("fullscreenchange", onFs);
     return () => document.removeEventListener("fullscreenchange", onFs);
-  }, []);
+  }, [computeFitZoom, fitMode, kind, natural.h, natural.w]);
+
+  useEffect(() => {
+    if (kind !== "image" || natural.w <= 0) return;
+    const onResize = () => {
+      if (!fitMode) return;
+      const z = computeFitZoom(natural.w, natural.h, rotationRef.current);
+      setFitZoom(z);
+      setZoom(z);
+      setOffset({ x: 0, y: 0 });
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [computeFitZoom, fitMode, kind, natural.h, natural.w]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -149,7 +236,7 @@ export function DigitizedDocumentViewer({
         zoomBy(-ZOOM_STEP);
       } else if (e.key === "0") {
         e.preventDefault();
-        resetView();
+        applyFit();
       } else if (e.key.toLowerCase() === "r") {
         e.preventDefault();
         rotateBy(90);
@@ -160,7 +247,7 @@ export function DigitizedDocumentViewer({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, resetView, rotateBy, toggleFullscreen, zoomBy]);
+  }, [applyFit, onClose, rotateBy, toggleFullscreen, zoomBy]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -177,7 +264,6 @@ export function DigitizedDocumentViewer({
   }, [zoomBy]);
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (kind === "pdf" && zoom <= 1) return;
     if (e.button !== 0) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     dragOrigin.current = {
@@ -212,7 +298,7 @@ export function DigitizedDocumentViewer({
   };
 
   const zoomPct = Math.round(zoom * 100);
-  const canPan = kind === "image" || zoom > 1;
+  const isFitActive = fitMode || Math.abs(zoom - fitZoom) < 0.01;
 
   return (
     <div
@@ -233,7 +319,6 @@ export function DigitizedDocumentViewer({
         }`}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-3 py-2.5 sm:px-4">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-slate-900">{title}</p>
@@ -263,9 +348,21 @@ export function DigitizedDocumentViewer({
           </div>
         </div>
 
-        {/* Toolbar */}
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 sm:px-4">
           <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => applyFit()}
+              title="Ver documento completo en pantalla (0)"
+              className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition-colors ${
+                isFitActive
+                  ? "border-brand-500 bg-brand-600 text-white"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700"
+              }`}
+            >
+              <ScanSearch className="h-3.5 w-3.5" />
+              Ver completo
+            </button>
             <ToolBtn label="Alejar (−)" onClick={() => zoomBy(-ZOOM_STEP)} disabled={zoom <= MIN_ZOOM}>
               <ZoomOut className="h-4 w-4" />
             </ToolBtn>
@@ -276,7 +373,7 @@ export function DigitizedDocumentViewer({
                   type="button"
                   onClick={() => zoomAt(z)}
                   className={`rounded-md px-2 py-1 text-[11px] font-semibold tabular-nums ${
-                    Math.abs(zoom - z) < 0.01
+                    !fitMode && Math.abs(zoom - z) < 0.02
                       ? "bg-brand-600 text-white"
                       : "text-slate-600 hover:bg-slate-100"
                   }`}
@@ -290,9 +387,6 @@ export function DigitizedDocumentViewer({
             </div>
             <ToolBtn label="Acercar (+)" onClick={() => zoomBy(ZOOM_STEP)} disabled={zoom >= MAX_ZOOM}>
               <ZoomIn className="h-4 w-4" />
-            </ToolBtn>
-            <ToolBtn label="Ajustar a la vista (0)" onClick={resetView}>
-              <Expand className="h-4 w-4" />
             </ToolBtn>
             <span className="mx-1 hidden h-5 w-px bg-slate-200 sm:inline-block" />
             <ToolBtn label="Rotar izquierda" onClick={() => rotateBy(-90)}>
@@ -314,16 +408,15 @@ export function DigitizedDocumentViewer({
             </ToolBtn>
           </div>
           <p className="hidden text-[11px] text-slate-400 md:block">
-            Ctrl + rueda · arrastra para mover · +/− · F pantalla completa · Esc cerrar
+            Ver completo · Ctrl+rueda · arrastra · 0 ajustar · F pantalla completa
           </p>
         </div>
 
-        {/* Stage */}
         <div
           ref={stageRef}
           className={`relative min-h-0 flex-1 overflow-hidden bg-slate-950 ${
             fullscreen ? "h-full" : "h-[min(78vh,720px)]"
-          } ${canPan ? (dragging ? "cursor-grabbing" : "cursor-grab") : "cursor-default"}`}
+          } ${dragging ? "cursor-grabbing" : "cursor-grab"}`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -346,11 +439,7 @@ export function DigitizedDocumentViewer({
                   transformOrigin: "center center",
                 }}
               >
-                <iframe
-                  title={title}
-                  src={src}
-                  className="h-full w-full border-0"
-                />
+                <iframe title={title} src={src} className="h-full w-full border-0" />
               </div>
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
@@ -358,19 +447,24 @@ export function DigitizedDocumentViewer({
                 src={src}
                 alt={title}
                 draggable={false}
-                className="max-h-full max-w-full select-none object-contain shadow-lg"
+                onLoad={onImageLoad}
+                className="select-none shadow-lg"
                 style={{
+                  width: natural.w || "auto",
+                  height: natural.h || "auto",
+                  maxWidth: "none",
+                  maxHeight: "none",
+                  opacity: natural.w ? 1 : 0,
                   transform: `scale(${zoom}) rotate(${rotation}deg)`,
                   transformOrigin: "center center",
-                  transition: dragging ? "none" : "transform 0.12s ease-out",
+                  transition: dragging ? "none" : "transform 0.12s ease-out, opacity 0.15s ease",
                 }}
               />
             )}
           </div>
 
-          {/* Corner zoom chip */}
           <div className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-white backdrop-blur-sm">
-            {zoomPct}%
+            {fitMode ? `Completo · ${zoomPct}%` : `${zoomPct}%`}
             {rotation ? ` · ${rotation}°` : ""}
           </div>
         </div>

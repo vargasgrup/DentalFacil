@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     PDF_CACHE_MAX_SIZE: int = 50
     MAX_RETRY_ATTEMPTS: int = 3
 
+    # Vendor-only key to reset the 6-month preventive maintenance cycle.
+    # Generate: openssl rand -hex 32 — never share with clinic ADMIN users.
+    MAINTENANCE_ACCESS_KEY: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("DATABASE_URL", mode="before")

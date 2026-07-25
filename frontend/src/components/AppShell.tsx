@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { BrandLogo } from "./BrandLogo";
+import { MaintenanceAlert } from "./MaintenanceAlert";
 import { SHELL_HEADER_CLASS } from "./shell";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -13,6 +14,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-surface-muted">
+      <MaintenanceAlert />
       {/* Desktop sidebar */}
       <aside className="fixed left-0 top-0 z-30 hidden h-screen w-56 flex-col border-r border-slate-200 bg-white lg:flex">
         <div className={`${SHELL_HEADER_CLASS} px-3`}>

@@ -34,6 +34,12 @@ class ClinicSettings(Base):
     reminder_hours_before: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reminder_template: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Vendor maintenance cycle (6 months). Not exposed in clinic Config UI.
+    maintenance_cycle_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

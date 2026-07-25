@@ -142,7 +142,7 @@ async function refreshAccessToken(): Promise<boolean> {
   return refreshPromise;
 }
 
-type ApiFetchOptions = RequestInit & { _retryAuth?: boolean };
+type ApiFetchOptions = RequestInit & { _retryAuth?: boolean; skipAuth?: boolean };
 
 /** Login/setup/refresh: never treat their 401 as "sesión expirada" ni reintentar refresh. */
 function isAuthCredentialPath(path: string): boolean {
@@ -150,7 +150,8 @@ function isAuthCredentialPath(path: string): boolean {
     path.startsWith("/api/auth/login") ||
     path.startsWith("/api/auth/setup") ||
     path.startsWith("/api/auth/refresh") ||
-    path.startsWith("/api/auth/setup-status")
+    path.startsWith("/api/auth/setup-status") ||
+    path.startsWith("/api/system/maintenance/reset")
   );
 }
 
@@ -158,7 +159,7 @@ export async function apiFetch<T>(
   path: string,
   options: ApiFetchOptions = {}
 ): Promise<T> {
-  const { _retryAuth, ...fetchOptions } = options;
+  const { _retryAuth, skipAuth, ...fetchOptions } = options;
   const token = getToken();
   const headers: Record<string, string> = {
     ...(fetchOptions.headers as Record<string, string>),
@@ -168,7 +169,7 @@ export async function apiFetch<T>(
     headers["Content-Type"] = "application/json";
   }
   // No enviar Bearer en login/setup: evita interferir con credenciales nuevas
-  if (token && !isAuthCredentialPath(path)) {
+  if (token && !skipAuth && !isAuthCredentialPath(path)) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 

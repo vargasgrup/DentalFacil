@@ -238,3 +238,44 @@ def test_backup_settings_heals_missing_directory_column(
             for r in conn.execute(text("PRAGMA table_info(backup_settings)")).fetchall()
         }
     assert "backup_directory" in cols
+
+
+def test_backup_choose_directory_saves_path(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    tmp_path: Path,
+    monkeypatch,
+):
+    chosen = tmp_path / "picked_backups"
+    chosen.mkdir()
+
+    def _fake_pick(*, title: str = "", initial_dir: str | None = None):
+        _ = title, initial_dir
+        return str(chosen)
+
+    monkeypatch.setattr(
+        "app.services.backup_service.pick_backup_directory_interactive",
+        _fake_pick,
+    )
+    r = client.post("/api/backup/choose-directory", headers=admin_headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["cancelled"] is False
+    assert Path(body["path"]) == chosen.resolve()
+    assert body["settings"]["backup_directory"]
+    assert Path(body["settings"]["effective_backup_directory"]) == chosen.resolve()
+
+
+def test_backup_choose_directory_cancelled(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "app.services.backup_service.pick_backup_directory_interactive",
+        lambda **_: None,
+    )
+    r = client.post("/api/backup/choose-directory", headers=admin_headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["cancelled"] is True
+    assert r.json()["settings"] is None

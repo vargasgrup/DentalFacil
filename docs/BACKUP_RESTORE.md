@@ -45,6 +45,7 @@ DENTALSIMPLE_DATA_DIR=C:/Users/Clinica/AppData/Local/DentalSimple
 | Método | Ruta | Auth |
 |--------|------|------|
 | GET/PATCH | `/api/backup/settings` | ADMIN |
+| POST | `/api/backup/choose-directory` | ADMIN — abre el selector nativo de carpeta (escritorio) y guarda la ruta |
 | POST | `/api/backup/generate` | ADMIN |
 | GET | `/api/backup/history` | ADMIN |
 | GET | `/api/backup/{id}/download` | ADMIN |

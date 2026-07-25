@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
   Archive,
   Download,
+  FolderOpen,
   RefreshCw,
   Trash2,
   Upload,
@@ -25,6 +26,12 @@ interface BackupSettings {
   backup_directory: string;
   effective_backup_directory: string;
   last_backup_at: string | null;
+}
+
+interface ChooseDirectoryResult {
+  cancelled: boolean;
+  path: string | null;
+  settings: BackupSettings | null;
 }
 
 interface BackupRow {
@@ -67,6 +74,7 @@ export function BackupMigrationPanel() {
   const [err, setErr] = useState("");
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [pickingFolder, setPickingFolder] = useState(false);
 
   const [autoEnabled, setAutoEnabled] = useState(false);
   const [frequency, setFrequency] = useState("daily");
@@ -80,18 +88,22 @@ export function BackupMigrationPanel() {
   const [restoring, setRestoring] = useState(false);
   const [restoreReport, setRestoreReport] = useState<string>("");
 
+  const applySettings = (s: BackupSettings) => {
+    setSettings(s);
+    setAutoEnabled(s.auto_backup_enabled);
+    setFrequency(s.frequency);
+    setPreferredHour(s.preferred_hour);
+    setRetention(s.retention_count);
+    setBackupDirectory(s.backup_directory || "");
+  };
+
   const load = useCallback(async () => {
     setLoading(true);
     setErr("");
     const errors: string[] = [];
     try {
       const s = await apiFetch<BackupSettings>("/api/backup/settings");
-      setSettings(s);
-      setAutoEnabled(s.auto_backup_enabled);
-      setFrequency(s.frequency);
-      setPreferredHour(s.preferred_hour);
-      setRetention(s.retention_count);
-      setBackupDirectory(s.backup_directory || "");
+      applySettings(s);
     } catch (e) {
       errors.push(
         e instanceof Error ? e.message : "No se pudo cargar la configuración de respaldo"
@@ -129,11 +141,57 @@ export function BackupMigrationPanel() {
           backup_directory: backupDirectory.trim(),
         }),
       });
-      setSettings(s);
-      setBackupDirectory(s.backup_directory || "");
+      applySettings(s);
       setMsg("Configuración de respaldo guardada.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error al guardar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const chooseFolder = async () => {
+    setPickingFolder(true);
+    setMsg("");
+    setErr("");
+    try {
+      const result = await apiFetch<ChooseDirectoryResult>("/api/backup/choose-directory", {
+        method: "POST",
+      });
+      if (result.cancelled) {
+        setMsg("No se cambió la carpeta (selección cancelada).");
+        return;
+      }
+      if (result.settings) {
+        applySettings(result.settings);
+      } else if (result.path) {
+        setBackupDirectory(result.path);
+      }
+      setMsg(
+        result.path
+          ? `Carpeta de backups guardada: ${result.path}`
+          : "Carpeta de backups guardada."
+      );
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "No se pudo elegir la carpeta");
+    } finally {
+      setPickingFolder(false);
+    }
+  };
+
+  const useDefaultFolder = async () => {
+    setSaving(true);
+    setMsg("");
+    setErr("");
+    try {
+      const s = await apiFetch<BackupSettings>("/api/backup/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ backup_directory: "" }),
+      });
+      applySettings(s);
+      setMsg("Se usará la carpeta predeterminada del sistema.");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Error al restablecer la carpeta");
     } finally {
       setSaving(false);
     }
@@ -358,35 +416,62 @@ export function BackupMigrationPanel() {
             />
           </label>
         </div>
-        <div className="space-y-1.5">
-          <label className="block text-sm">
-            <span className="mb-1 block text-slate-600">
-              Carpeta de almacenamiento (escritorio)
-            </span>
-            <input
-              type="text"
-              spellCheck={false}
-              autoComplete="off"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-[13px]"
-              placeholder="D:\Backups\DentalSimple"
-              value={backupDirectory}
-              onChange={(e) => setBackupDirectory(e.target.value)}
-            />
-          </label>
+        <div className="space-y-2 rounded-lg border border-slate-200 bg-surface-subtle/60 p-3">
+          <p className="text-sm font-medium text-slate-800">Dónde guardar los backups</p>
           <p className="text-help text-slate-500">
-            Ruta absoluta donde se guardarán los backups manuales y automáticos. Preferible un disco
-            externo o carpeta fuera de Program Files, por ejemplo{" "}
-            <code className="rounded bg-slate-100 px-1">D:\Backups\DentalSimple</code>
-            {" · "}
-            <code className="rounded bg-slate-100 px-1">
-              %LOCALAPPDATA%\DentalSimple\backups
-            </code>
-            . Deje vacío para usar la carpeta predeterminada
-            {settings?.effective_backup_directory
-              ? ` (ahora: ${settings.effective_backup_directory})`
-              : ""}
-            .
+            Pulse el botón y elija la carpeta (USB, disco D:, Documentos, etc.). Se guarda al
+            instante; no hace falta escribir la ruta a mano.
           </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="primary"
+              loading={pickingFolder}
+              icon={<FolderOpen className="h-4 w-4" />}
+              onClick={() => void chooseFolder()}
+            >
+              Elegir carpeta…
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={saving || pickingFolder || !backupDirectory}
+              onClick={() => void useDefaultFolder()}
+            >
+              Usar predeterminada
+            </Button>
+          </div>
+          <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+            <p className="text-help text-slate-500">Carpeta actual</p>
+            <p
+              className="break-all font-mono text-[13px] text-slate-800"
+              title={settings?.effective_backup_directory || backupDirectory || undefined}
+            >
+              {settings?.effective_backup_directory ||
+                backupDirectory ||
+                "Carpeta predeterminada del sistema"}
+            </p>
+          </div>
+          <details className="text-sm text-slate-600">
+            <summary className="cursor-pointer select-none text-slate-500 hover:text-slate-700">
+              Escribir ruta manualmente (avanzado)
+            </summary>
+            <div className="mt-2 space-y-1">
+              <input
+                type="text"
+                spellCheck={false}
+                autoComplete="off"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-[13px]"
+                placeholder="D:\Backups\DentalSimple"
+                value={backupDirectory}
+                onChange={(e) => setBackupDirectory(e.target.value)}
+              />
+              <p className="text-help text-slate-500">
+                Si escribe la ruta aquí, pulse «Guardar configuración» abajo. Preferible un disco
+                externo; no use Program Files.
+              </p>
+            </div>
+          </details>
         </div>
         <Button type="submit" variant="secondary" loading={saving}>
           Guardar configuración

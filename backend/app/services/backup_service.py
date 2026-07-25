@@ -105,6 +105,127 @@ def validate_backup_directory(raw: str, *, create: bool = True) -> Path:
     return path
 
 
+_pick_lock = threading.Lock()
+
+
+def _pick_directory_tk(title: str, initial_dir: str | None) -> str | None:
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        root.attributes("-topmost", True)
+    except tk.TclError:
+        pass
+    root.update_idletasks()
+    chosen = filedialog.askdirectory(
+        parent=root,
+        title=title,
+        initialdir=initial_dir or str(Path.home()),
+        mustexist=True,
+    )
+    root.destroy()
+    return chosen or None
+
+
+def _pick_directory_windows(title: str, initial_dir: str | None) -> str | None:
+    """Native FolderBrowserDialog via PowerShell (STA-safe on Windows desktop)."""
+    import json
+    import subprocess
+    import tempfile
+
+    initial = initial_dir or str(Path.home())
+    # Write a small script to avoid quoting hell with Spanish titles / paths
+    script = f"""
+Add-Type -AssemblyName System.Windows.Forms | Out-Null
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = {json.dumps(title)}
+$dialog.SelectedPath = {json.dumps(initial)}
+$dialog.ShowNewFolderButton = $true
+$dialog.RootFolder = [Environment+SpecialFolder]::MyComputer
+$r = $dialog.ShowDialog()
+if ($r -eq [System.Windows.Forms.DialogResult]::OK -and $dialog.SelectedPath) {{
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  Write-Output $dialog.SelectedPath
+}}
+"""
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".ps1", delete=False, encoding="utf-8-sig"
+    ) as fh:
+        fh.write(script)
+        script_path = fh.name
+    try:
+        proc = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-WindowStyle",
+                "Hidden",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                script_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+    finally:
+        try:
+            os.unlink(script_path)
+        except OSError:
+            pass
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(err or "No se pudo abrir el selector de carpetas de Windows")
+    line = (proc.stdout or "").strip().splitlines()
+    if not line:
+        return None
+    return line[-1].strip() or None
+
+
+def pick_backup_directory_interactive(
+    *,
+    title: str = "Seleccione la carpeta donde se guardarán los backups",
+    initial_dir: str | None = None,
+) -> str | None:
+    """
+    Open a native folder picker on the clinic PC (desktop mode).
+    Returns absolute path or None if the user cancels.
+    """
+    if not _pick_lock.acquire(blocking=False):
+        raise HTTPException(
+            status_code=409,
+            detail="Ya hay un selector de carpeta abierto. Termine esa ventana e intente de nuevo.",
+        )
+    try:
+        start = None
+        if initial_dir:
+            try:
+                start = str(expand_backup_path(initial_dir))
+            except Exception:  # noqa: BLE001
+                start = initial_dir
+        if os.name == "nt":
+            try:
+                return _pick_directory_windows(title, start)
+            except Exception as win_exc:  # noqa: BLE001
+                logger.warning("Windows folder dialog failed (%s); trying tkinter", win_exc)
+        try:
+            return _pick_directory_tk(title, start)
+        except Exception as tk_exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "No se pudo abrir el selector de carpetas en este equipo. "
+                    "Escriba la ruta manualmente o reinicie DentalSimple. "
+                    f"({tk_exc})"
+                ),
+            ) from tk_exc
+    finally:
+        _pick_lock.release()
+
+
 def _default_backup_dir(*, create: bool = True) -> Path:
     path = _DEFAULT_BACKUP_DIR
     if create:

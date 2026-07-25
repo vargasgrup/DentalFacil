@@ -123,31 +123,21 @@ class ChooseDirectoryOut(BaseModel):
 
 @router.post("/choose-directory", response_model=ChooseDirectoryOut)
 def choose_directory(
-    db: Session = Depends(get_db),
     admin: User = Depends(require_roles(Rol.ADMIN)),
 ):
     """
-    Desktop: opens the Windows folder dialog, validates writability and saves
-    the path as the backup storage location in one step.
+    Desktop: opens the Windows folder dialog without holding a DB connection,
+    then validates writability and saves the path in a fresh session.
     """
     _ = admin
-    row = svc.get_or_create_backup_settings(db)
-    initial = (getattr(row, "backup_directory", None) or "").strip() or None
-    if not initial:
-        initial = svc.resolve_effective_backup_dir_safe(db)
-
-    chosen = svc.pick_backup_directory_interactive(initial_dir=initial)
-    if not chosen:
+    result = svc.choose_and_persist_backup_directory()
+    if result.get("cancelled"):
         return ChooseDirectoryOut(cancelled=True)
-
-    resolved = svc.validate_backup_directory(chosen, create=True)
-    row.backup_directory = str(resolved)
-    db.commit()
-    db.refresh(row)
+    settings_dict = result.get("settings") or {}
     return ChooseDirectoryOut(
         cancelled=False,
-        path=str(resolved),
-        settings=BackupSettingsOut(**svc.settings_public_dict(row, db)),
+        path=result.get("path"),
+        settings=BackupSettingsOut(**settings_dict) if settings_dict else None,
     )
 
 

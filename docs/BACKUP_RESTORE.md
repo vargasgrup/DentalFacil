@@ -60,7 +60,8 @@ DENTALSIMPLE_DATA_DIR=C:/Users/Clinica/AppData/Local/DentalSimple
 - Durante restore: API responde `503` (excepto `/api/health`).
 - Tras restore: se incrementa `token_version` → deben volver a iniciar sesión.
 - Carpeta de salida por defecto: `backend/app/backups/` (gitignored).
-- **Prioridad de carpeta:** `backup_settings.backup_directory` (UI) → env `BACKUP_DIRECTORY` → `backend/app/backups/`.
-- En escritorio Windows puede configurar p. ej. `D:\Backups\DentalSimple` o `%LOCALAPPDATA%\DentalSimple\backups`. Vacío en la UI vuelve al default/env. No usar Program Files.
+- **Prioridad de carpeta:** `backup_settings.backup_directory` (UI / «Elegir carpeta…») → env `BACKUP_DIRECTORY` → `backend/app/backups/`.
+- En escritorio Windows use **Elegir carpeta…** (selector nativo). El diálogo no retiene la conexión SQLite; si no aparece delante, revise la barra de tareas.
+- Vacío / «Usar predeterminada» vuelve al default/env. No use Program Files ni `C:\Windows`.
 
 Prompt de origen: `Recursos DentalSoft/PROMPT_BACKUP_RESTORE_DENTALSIMPLE.md`

@@ -279,3 +279,16 @@ def test_backup_choose_directory_cancelled(
     assert r.status_code == 200, r.text
     assert r.json()["cancelled"] is True
     assert r.json()["settings"] is None
+
+
+def test_backup_rejects_program_files_path(
+    client: TestClient,
+    admin_headers: dict[str, str],
+):
+    r = client.patch(
+        "/api/backup/settings",
+        headers=admin_headers,
+        json={"backup_directory": r"C:\Program Files\DentalSimple\backups"},
+    )
+    assert r.status_code == 400
+    assert "Program Files" in r.json()["detail"]

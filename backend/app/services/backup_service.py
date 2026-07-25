@@ -87,7 +87,24 @@ def validate_backup_directory(raw: str, *, create: bool = True) -> Path:
                 status_code=400,
                 detail="Ruta de backup no permitida",
             )
-    path = path.resolve()
+    try:
+        path = path.resolve()
+    except OSError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ruta de backup inválida: {exc}",
+        ) from exc
+
+    norm = str(path).lower().replace("/", "\\")
+    if "\\program files" in norm or norm.startswith("c:\\windows"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No use Program Files ni carpetas de Windows para backups. "
+                "Elija Documentos, un disco de datos (D:) o un USB."
+            ),
+        )
+
     if create:
         try:
             path.mkdir(parents=True, exist_ok=True)
@@ -108,10 +125,38 @@ def validate_backup_directory(raw: str, *, create: bool = True) -> Path:
 _pick_lock = threading.Lock()
 
 
+def _normalize_initial_dir(initial_dir: str | None) -> str:
+    """FolderBrowserDialog requires an existing SelectedPath on many Windows builds."""
+    candidates: list[str] = []
+    if initial_dir:
+        try:
+            candidates.append(str(expand_backup_path(initial_dir)))
+        except Exception:  # noqa: BLE001
+            candidates.append(initial_dir)
+    try:
+        candidates.append(str(_DEFAULT_BACKUP_DIR))
+    except Exception:  # noqa: BLE001
+        pass
+    candidates.append(str(Path.home() / "Documents"))
+    candidates.append(str(Path.home()))
+    for raw in candidates:
+        try:
+            p = Path(raw)
+            if p.is_dir():
+                return str(p.resolve())
+            p.mkdir(parents=True, exist_ok=True)
+            if p.is_dir():
+                return str(p.resolve())
+        except OSError:
+            continue
+    return str(Path.home())
+
+
 def _pick_directory_tk(title: str, initial_dir: str | None) -> str | None:
     import tkinter as tk
     from tkinter import filedialog
 
+    start = _normalize_initial_dir(initial_dir)
     root = tk.Tk()
     root.withdraw()
     try:
@@ -122,32 +167,56 @@ def _pick_directory_tk(title: str, initial_dir: str | None) -> str | None:
     chosen = filedialog.askdirectory(
         parent=root,
         title=title,
-        initialdir=initial_dir or str(Path.home()),
-        mustexist=True,
+        initialdir=start,
+        mustexist=False,
     )
     root.destroy()
     return chosen or None
 
 
 def _pick_directory_windows(title: str, initial_dir: str | None) -> str | None:
-    """Native FolderBrowserDialog via PowerShell (STA-safe on Windows desktop)."""
+    """Native FolderBrowserDialog via PowerShell (STA + foreground owner form)."""
     import json
     import subprocess
     import tempfile
 
-    initial = initial_dir or str(Path.home())
-    # Write a small script to avoid quoting hell with Spanish titles / paths
+    start = _normalize_initial_dir(initial_dir)
+    # Invisible TopMost owner so the dialog appears above the browser on desktop
     script = f"""
+$ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms | Out-Null
+[System.Windows.Forms.Application]::EnableVisualStyles()
+$start = {json.dumps(start)}
+if (-not (Test-Path -LiteralPath $start)) {{
+  $start = [Environment]::GetFolderPath('MyDocuments')
+}}
 $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
 $dialog.Description = {json.dumps(title)}
-$dialog.SelectedPath = {json.dumps(initial)}
+$dialog.SelectedPath = $start
 $dialog.ShowNewFolderButton = $true
-$dialog.RootFolder = [Environment+SpecialFolder]::MyComputer
-$r = $dialog.ShowDialog()
-if ($r -eq [System.Windows.Forms.DialogResult]::OK -and $dialog.SelectedPath) {{
-  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-  Write-Output $dialog.SelectedPath
+try {{
+  $dialog.RootFolder = [Environment+SpecialFolder]::MyComputer
+}} catch {{ }}
+$form = New-Object System.Windows.Forms.Form
+$form.TopMost = $true
+$form.ShowInTaskbar = $false
+$form.Opacity = 0
+$form.Width = 1
+$form.Height = 1
+$form.StartPosition = 'Manual'
+$form.Location = New-Object System.Drawing.Point(-2000, -2000)
+[void]$form.Show()
+$form.BringToFront()
+try {{
+  $r = $dialog.ShowDialog($form)
+  if ($r -eq [System.Windows.Forms.DialogResult]::OK -and $dialog.SelectedPath) {{
+    [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+    Write-Output $dialog.SelectedPath
+  }}
+}} finally {{
+  $form.Close()
+  $form.Dispose()
+  $dialog.Dispose()
 }}
 """
     with tempfile.NamedTemporaryFile(
@@ -160,8 +229,7 @@ if ($r -eq [System.Windows.Forms.DialogResult]::OK -and $dialog.SelectedPath) {{
             [
                 "powershell",
                 "-NoProfile",
-                "-WindowStyle",
-                "Hidden",
+                "-STA",
                 "-ExecutionPolicy",
                 "Bypass",
                 "-File",
@@ -169,6 +237,8 @@ if ($r -eq [System.Windows.Forms.DialogResult]::OK -and $dialog.SelectedPath) {{
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=600,
         )
     finally:
@@ -179,10 +249,10 @@ if ($r -eq [System.Windows.Forms.DialogResult]::OK -and $dialog.SelectedPath) {{
     if proc.returncode != 0:
         err = (proc.stderr or proc.stdout or "").strip()
         raise RuntimeError(err or "No se pudo abrir el selector de carpetas de Windows")
-    line = (proc.stdout or "").strip().splitlines()
-    if not line:
+    lines = [ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip()]
+    if not lines:
         return None
-    return line[-1].strip() or None
+    return lines[-1] or None
 
 
 def pick_backup_directory_interactive(
@@ -193,6 +263,7 @@ def pick_backup_directory_interactive(
     """
     Open a native folder picker on the clinic PC (desktop mode).
     Returns absolute path or None if the user cancels.
+    Must NOT be called while holding an open SQLAlchemy session (SQLite lock risk).
     """
     if not _pick_lock.acquire(blocking=False):
         raise HTTPException(
@@ -200,12 +271,7 @@ def pick_backup_directory_interactive(
             detail="Ya hay un selector de carpeta abierto. Termine esa ventana e intente de nuevo.",
         )
     try:
-        start = None
-        if initial_dir:
-            try:
-                start = str(expand_backup_path(initial_dir))
-            except Exception:  # noqa: BLE001
-                start = initial_dir
+        start = _normalize_initial_dir(initial_dir)
         if os.name == "nt":
             try:
                 return _pick_directory_windows(title, start)
@@ -218,12 +284,44 @@ def pick_backup_directory_interactive(
                 status_code=500,
                 detail=(
                     "No se pudo abrir el selector de carpetas en este equipo. "
-                    "Escriba la ruta manualmente o reinicie DentalSimple. "
+                    "Use «Escribir ruta manualmente» o reinicie DentalSimple. "
                     f"({tk_exc})"
                 ),
             ) from tk_exc
     finally:
         _pick_lock.release()
+
+
+def choose_and_persist_backup_directory() -> dict[str, Any]:
+    """
+    Desktop one-shot: read initial path → native dialog (no DB held) → validate + save.
+    """
+    from app.database import SessionLocal
+
+    with SessionLocal() as db:
+        ensure_backup_ready()
+        row = get_or_create_backup_settings(db)
+        initial = (getattr(row, "backup_directory", None) or "").strip() or None
+        if not initial:
+            initial = resolve_effective_backup_dir_safe(db)
+        db.commit()
+
+    chosen = pick_backup_directory_interactive(initial_dir=initial)
+    if not chosen:
+        return {"cancelled": True, "path": None, "settings": None}
+
+    resolved = validate_backup_directory(chosen, create=True)
+
+    with SessionLocal() as db:
+        row = get_or_create_backup_settings(db)
+        row.backup_directory = str(resolved)
+        db.commit()
+        db.refresh(row)
+        return {
+            "cancelled": False,
+            "path": str(resolved),
+            "settings": settings_public_dict(row, db),
+        }
 
 
 def _default_backup_dir(*, create: bool = True) -> Path:
@@ -438,12 +536,10 @@ def create_backup(
     clinic_name = settings.CLINIC_NAME or settings.APP_NAME or "clinica"
     stamp = datetime.now(CLINIC_TZ).strftime("%Y%m%d_%H%M%S")
     filename = f"dentalsimple_backup_{_slug(clinic_name)}_{stamp}.zip"
-    out_path = get_backup_dir(db) / filename
-    tmp_db = get_backup_dir(db) / f"_snap_{new_uuid()}.db"
     history = BackupHistory(
         id=new_uuid(),
         filename=filename,
-        abs_path=str(out_path),
+        abs_path="",
         triggered_by=triggered_by,
         status="error",
         keep=keep or triggered_by == "manual",
@@ -451,7 +547,15 @@ def create_backup(
     db.add(history)
     db.commit()
 
+    out_path: Path | None = None
+    tmp_db: Path | None = None
     try:
+        backup_dir = get_backup_dir(db, create=True)
+        out_path = backup_dir / filename
+        tmp_db = backup_dir / f"_snap_{new_uuid()}.db"
+        history.abs_path = str(out_path)
+        db.commit()
+
         _snapshot_sqlite(db_path, tmp_db)
         rows = _row_counts(db)
         file_count = 0
@@ -475,6 +579,7 @@ def create_backup(
                 "db_sha256": _sha256_file(tmp_db),
                 "generated_by": triggered_by,
                 "app_instance_id": BACKUP_SETTINGS_ID,
+                "backup_directory": str(backup_dir),
             }
             zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
 
@@ -499,20 +604,33 @@ def create_backup(
         apply_retention(db)
         logger.info("backup ok %s (%s bytes)", filename, history.size_bytes)
         return history
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        history.status = "error"
+        history.error_message = detail[:2000]
+        history.duration_ms = int((time.perf_counter() - t0) * 1000)
+        db.commit()
+        logger.error("backup failed (http): %s", detail)
+        if out_path is not None and out_path.exists():
+            try:
+                out_path.unlink()
+            except OSError:
+                pass
+        raise
     except Exception as exc:  # noqa: BLE001
         history.status = "error"
         history.error_message = str(exc)[:2000]
         history.duration_ms = int((time.perf_counter() - t0) * 1000)
         db.commit()
         logger.error("backup failed: %s", exc, exc_info=True)
-        if out_path.exists():
+        if out_path is not None and out_path.exists():
             try:
                 out_path.unlink()
             except OSError:
                 pass
         raise HTTPException(status_code=500, detail=f"Error al generar backup: {exc}") from exc
     finally:
-        if tmp_db.exists():
+        if tmp_db is not None and tmp_db.exists():
             try:
                 tmp_db.unlink()
             except OSError:

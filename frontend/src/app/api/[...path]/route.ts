@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+/** Desktop folder picker can stay open several minutes. */
+export const maxDuration = 600;
 
 function backendBase(): string {
   const raw =

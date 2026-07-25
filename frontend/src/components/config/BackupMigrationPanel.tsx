@@ -152,7 +152,9 @@ export function BackupMigrationPanel() {
 
   const chooseFolder = async () => {
     setPickingFolder(true);
-    setMsg("");
+    setMsg(
+      "Se abrió el selector de carpetas de Windows. Si no lo ve, revise la barra de tareas."
+    );
     setErr("");
     try {
       const result = await apiFetch<ChooseDirectoryResult>("/api/backup/choose-directory", {
@@ -174,6 +176,7 @@ export function BackupMigrationPanel() {
       );
     } catch (e) {
       setErr(e instanceof Error ? e.message : "No se pudo elegir la carpeta");
+      setMsg("");
     } finally {
       setPickingFolder(false);
     }
@@ -419,18 +422,19 @@ export function BackupMigrationPanel() {
         <div className="space-y-2 rounded-lg border border-slate-200 bg-surface-subtle/60 p-3">
           <p className="text-sm font-medium text-slate-800">Dónde guardar los backups</p>
           <p className="text-help text-slate-500">
-            Pulse el botón y elija la carpeta (USB, disco D:, Documentos, etc.). Se guarda al
-            instante; no hace falta escribir la ruta a mano.
+            Pulse <strong>Elegir carpeta…</strong> y seleccione USB, disco D: o Documentos. La ruta
+            se guarda al confirmar. Si la ventana no aparece delante, mírela en la barra de tareas.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="primary"
               loading={pickingFolder}
+              disabled={saving}
               icon={<FolderOpen className="h-4 w-4" />}
               onClick={() => void chooseFolder()}
             >
-              Elegir carpeta…
+              {pickingFolder ? "Esperando carpeta…" : "Elegir carpeta…"}
             </Button>
             <Button
               type="button"

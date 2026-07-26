@@ -126,6 +126,21 @@ def _ensure_path() -> None:
 
 def run_uvicorn() -> None:
     _ensure_path()
+    # One long-lived API process per session (installer + Open-UI can race).
+    if sys.platform == "win32":
+        import ctypes
+
+        ERROR_ALREADY_EXISTS = 183
+        handle = ctypes.windll.kernel32.CreateMutexW(
+            None, False, "Local\\NKDentalSoftServerForeground"
+        )
+        if handle and ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+            ctypes.windll.kernel32.CloseHandle(handle)
+            _boot_log("[foreground] another instance already holds mutex — exiting")
+            return
+        # Keep handle alive for process lifetime (prevent GC closing mutex).
+        run_uvicorn._instance_mutex = handle  # type: ignore[attr-defined]
+
     from server_entry import run_server
 
     run_server()
@@ -144,6 +159,10 @@ def _port_open(port: int, host: str = "127.0.0.1", timeout: float = 0.8) -> bool
 def _start_foreground_detached() -> None:
     """Start a hidden long-lived server process (user session)."""
     import subprocess
+
+    port = int(os.environ.get("BACKEND_PORT", "8001"))
+    if _port_open(port):
+        return
 
     exe = Path(sys.executable).resolve()
     creation = 0

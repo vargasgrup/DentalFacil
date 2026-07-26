@@ -98,8 +98,15 @@ Section "Install"
   Pop $0
   DetailPrint "register_desktop_autostart exit=$0"
   ${If} $0 != 0
+    DetailPrint "Reintento de arranque (antivirus / primer escaneo del EXE)..."
+    Sleep 4000
+    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\register_desktop_autostart.ps1" -InstallDir "$INSTDIR"'
+    Pop $0
+    DetailPrint "register_desktop_autostart retry exit=$0"
+  ${EndIf}
+  ${If} $0 != 0
     MessageBox MB_ICONEXCLAMATION \
-      "El servidor no arranco automaticamente.$\r$\n$\r$\nEjecute como Administrador:$\r$\n$INSTDIR\scripts\repair_startup.cmd"
+      "El servidor no arranco automaticamente.$\r$\n$\r$\nEjecute como Administrador:$\r$\n$INSTDIR\scripts\repair_startup.cmd$\r$\n$\r$\nDetalle: $COMMONPROGRAMDATA\NKDentalSoft\logs\install_autostart.log"
   ${EndIf}
 
   ; Desktop = open UI (what clinic staff expect)

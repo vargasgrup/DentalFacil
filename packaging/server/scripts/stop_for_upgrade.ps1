@@ -1,8 +1,14 @@
 # Stop N&K DentalSoft Server before overwrite/upgrade installs.
 # Also frees TCP 8001 so a stale API process cannot keep serving {"detail":"Not Found"}.
+#
+# IMPORTANT: Always invoke this script via `powershell -File ...` (child process),
+# never with the call operator `&` from another script that must continue afterward —
+# bare `exit` would terminate the parent PowerShell host.
 param(
   [int]$WaitSeconds = 25,
-  [int]$Port = 8001
+  [int]$Port = 8001,
+  # Post-install autostart: files are already written; skip exe lock wait (Defender).
+  [switch]$SkipWritableCheck
 )
 
 $ErrorActionPreference = "Continue"
@@ -79,7 +85,7 @@ while ((Get-Date) -lt $deadline) {
   Start-Sleep -Milliseconds 400
 }
 
-if (Test-Path $installExe) {
+if (-not $SkipWritableCheck -and (Test-Path $installExe)) {
   Write-Host "[upgrade] Waiting until $installExe is writable..."
   $ok = $false
   while ((Get-Date) -lt $deadline) {
@@ -101,6 +107,8 @@ if (Test-Path $installExe) {
     Write-Host "[upgrade] WARNING: exe still locked. Close any open Server console and retry."
     exit 2
   }
+} elseif ($SkipWritableCheck) {
+  Write-Host "[upgrade] SkipWritableCheck — not waiting on exe lock."
 }
 
 Write-Host "[upgrade] Ready to overwrite installation files."

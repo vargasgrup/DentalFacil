@@ -46,8 +46,11 @@ Section "Install"
   Pop $0
 
   CreateDirectory "$SMPROGRAMS\N&K DentalSoft"
-  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\N&K DentalSoft Server.lnk" "$INSTDIR\nkdentalsoft-server.exe" "--foreground" "$INSTDIR\assets\icons\icon.ico" 0
-  CreateShortCut "$DESKTOP\N&K DentalSoft Server.lnk" "$INSTDIR\nkdentalsoft-server.exe" "--foreground" "$INSTDIR\assets\icons\icon.ico" 0
+  ; BAT launcher keeps the console open if startup fails (shows the real error)
+  File "Start-Server.bat"
+  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\N&K DentalSoft Server.lnk" "$INSTDIR\Start-Server.bat" "" "$INSTDIR\assets\icons\icon.ico" 0
+  CreateShortCut "$DESKTOP\N&K DentalSoft Server.lnk" "$INSTDIR\Start-Server.bat" "" "$INSTDIR\assets\icons\icon.ico" 0
+  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Abrir en navegador.lnk" "https://127.0.0.1:8001/" "" "$INSTDIR\assets\icons\icon.ico" 0
 
   SetOutPath "$INSTDIR\assets\icons"
   File /nonfatal "assets\icons\icon.ico"

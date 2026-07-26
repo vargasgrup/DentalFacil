@@ -4,9 +4,7 @@ Windows Service + foreground runner for N&K DentalSoft Server.
 Frozen EXE (clinic):
   nkdentalsoft-server.exe install | start | stop | remove
   nkdentalsoft-server.exe --foreground
-
-Dev:
-  python packaging/server/windows_service.py --foreground
+  nkdentalsoft-server.exe --init-clinic
 """
 
 from __future__ import annotations
@@ -14,6 +12,7 @@ from __future__ import annotations
 import os
 import sys
 import threading
+import traceback
 from pathlib import Path
 
 
@@ -26,8 +25,9 @@ def _install_dir() -> Path:
 def _ensure_path() -> None:
     install = _install_dir()
     os.environ.setdefault("NKDENTALSOFT_INSTALL_DIR", str(install))
-    for p in (install, Path(__file__).resolve().parent):
-        if p.exists() and str(p) not in sys.path:
+    meipass = getattr(sys, "_MEIPASS", None)
+    for p in (Path(meipass) if meipass else None, install, Path(__file__).resolve().parent):
+        if p and p.exists() and str(p) not in sys.path:
             sys.path.insert(0, str(p))
 
 
@@ -78,58 +78,13 @@ if win32serviceutil is not None:
             win32event.WaitForSingleObject(self.stop_event, win32event.INFINITE)
 
 
-def _detect_lan_ip() -> str:
+def _pause() -> None:
     try:
-        import socket
-
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        if ip and not ip.startswith("127."):
-            return ip
+        input("\nPresione Enter para cerrar...")
     except Exception:
-        pass
-    return "127.0.0.1"
+        import time
 
-
-def init_clinic(host: str | None = None) -> None:
-    """Generate unique .env + self-signed cert under ProgramData (installer step)."""
-    _ensure_path()
-    from pathlib import Path as P
-
-    scripts = _install_dir() / "scripts"
-    if str(scripts) not in sys.path:
-        sys.path.insert(0, str(scripts))
-
-    try:
-        import generate_production_secrets as gps
-        import generate_selfsigned_cert as gsc
-    except ImportError:
-        pkg = Path(__file__).resolve().parent / "scripts"
-        sys.path.insert(0, str(pkg))
-        import generate_production_secrets as gps
-        import generate_selfsigned_cert as gsc
-
-    out_env = gps._default_env_path()
-    jwt_secret, maint = gps.generate_secrets()
-    gps.write_env(out_env, jwt_secret=jwt_secret, maintenance_key=maint)
-    print(f"Wrote {out_env}")
-
-    lan = (host or "").strip() or _detect_lan_ip()
-    hosts = ["127.0.0.1", "localhost", "nkdentalsoft-server.local", lan]
-    certs = (
-        P(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
-        / "NKDentalSoft"
-        / "certs"
-    )
-    info = gsc.generate_cert(
-        certs,
-        common_name="nkdentalsoft-server.local",
-        extra_hosts=hosts,
-    )
-    print(f"lan_ip={lan}")
-    print(f"fingerprint_sha256={info['fingerprint_sha256']}")
+        time.sleep(15)
 
 
 def main() -> None:
@@ -137,42 +92,54 @@ def main() -> None:
     argv = sys.argv[1:]
     lowered = [a.lower() for a in argv]
 
-    if "--init-clinic" in lowered:
-        host = None
-        for i, a in enumerate(argv):
-            if a.lower() == "--host" and i + 1 < len(argv):
-                host = argv[i + 1]
-                break
-        init_clinic(host)
-        return
+    try:
+        if "--init-clinic" in lowered:
+            from server_entry import init_clinic
 
-    if "--foreground" in lowered or "-f" in lowered:
-        run_uvicorn()
-        return
-
-    if win32serviceutil is None:
-        print("pywin32 not installed — running foreground server")
-        run_uvicorn()
-        return
-
-    svc_cmds = {"install", "remove", "start", "stop", "restart", "update", "debug"}
-    if svc_cmds.intersection(lowered) or "--startup" in lowered:
-        if getattr(sys, "frozen", False):
-            sys.argv[0] = sys.executable
-        win32serviceutil.HandleCommandLine(NKDentalSoftServerService)
-        return
-
-    if getattr(sys, "frozen", False) and not argv:
-        try:
-            servicemanager.Initialize()
-            servicemanager.PrepareToHostSingle(NKDentalSoftServerService)
-            servicemanager.StartServiceCtrlDispatcher()
+            host = None
+            for i, a in enumerate(argv):
+                if a.lower() == "--host" and i + 1 < len(argv):
+                    host = argv[i + 1]
+                    break
+            init_clinic(host)
+            print("Init clinic OK", flush=True)
             return
-        except Exception:
+
+        if "--foreground" in lowered or "-f" in lowered:
             run_uvicorn()
             return
 
-    run_uvicorn()
+        if win32serviceutil is None:
+            print("pywin32 not installed — running foreground server", flush=True)
+            run_uvicorn()
+            return
+
+        svc_cmds = {"install", "remove", "start", "stop", "restart", "update", "debug"}
+        if svc_cmds.intersection(lowered) or "--startup" in lowered:
+            if getattr(sys, "frozen", False):
+                sys.argv[0] = sys.executable
+            win32serviceutil.HandleCommandLine(NKDentalSoftServerService)
+            return
+
+        if getattr(sys, "frozen", False) and not argv:
+            try:
+                servicemanager.Initialize()
+                servicemanager.PrepareToHostSingle(NKDentalSoftServerService)
+                servicemanager.StartServiceCtrlDispatcher()
+                return
+            except Exception:
+                run_uvicorn()
+                return
+
+        run_uvicorn()
+    except Exception as exc:
+        print(f"[nkdentalsoft-server] FATAL: {exc}", flush=True)
+        traceback.print_exc()
+        log_hint = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "NKDentalSoft" / "logs" / "startup.log"
+        print(f"\nRevise el log: {log_hint}\n", flush=True)
+        if "--foreground" in lowered or "-f" in lowered or not argv:
+            _pause()
+        sys.exit(1)
 
 
 if __name__ == "__main__":

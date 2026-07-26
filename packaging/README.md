@@ -55,7 +55,9 @@ mDNS: servicio `_nkdentalsoft._tcp.local.` con propiedad `fp` = fingerprint SHA-
 
 ## Iconos de marca
 
-Arte N&K DentalSoft (diente chrome/azul). Regenerar todos los tamaños:
+Arte N&K DentalSoft (PNG transparente). Fuente preferida:
+
+`C:\PROYECTOS\Recursos DentalSoft\Icono.png`
 
 ```powershell
 python packaging\scripts\generate_icons.py

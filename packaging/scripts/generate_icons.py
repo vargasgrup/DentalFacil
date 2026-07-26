@@ -1,13 +1,28 @@
-"""Generate Windows/Tauri/web icons from N&K DentalSoft brand art."""
+"""Generate Windows/Tauri/web icons from N&K DentalSoft brand art.
+
+Prefers the transparent master PNG under Recursos DentalSoft when present.
+"""
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "packaging" / "client" / "icons" / "icon-source.png"
+BRAND_SRC = Path(r"C:\PROYECTOS\Recursos DentalSoft\Icono.png")
+CLIENT_SRC = ROOT / "packaging" / "client" / "icons" / "icon-source.png"
+
+
+def resolve_source() -> Path:
+    if BRAND_SRC.is_file():
+        return BRAND_SRC
+    if CLIENT_SRC.is_file():
+        return CLIENT_SRC
+    raise FileNotFoundError(
+        f"No se encontró el icono de marca. Esperado: {BRAND_SRC} o {CLIENT_SRC}"
+    )
 
 
 def center_square(img: Image.Image) -> Image.Image:
@@ -19,7 +34,8 @@ def center_square(img: Image.Image) -> Image.Image:
 
 
 def main() -> None:
-    img = Image.open(SRC).convert("RGBA")
+    src_path = resolve_source()
+    img = Image.open(src_path).convert("RGBA")
     sq = center_square(img)
 
     client_icons = ROOT / "packaging" / "client" / "icons"
@@ -27,6 +43,10 @@ def main() -> None:
     public = ROOT / "frontend" / "public"
     for d in (client_icons, server_icons, public):
         d.mkdir(parents=True, exist_ok=True)
+
+    # Keep a repo copy of the transparent master for builds without Recursos.
+    shutil.copy2(src_path, CLIENT_SRC)
+    shutil.copy2(src_path, server_icons / "icon-source.png")
 
     master = client_icons / "icon-master.png"
     sq.resize((1024, 1024), Image.Resampling.LANCZOS).save(master, "PNG")
@@ -38,7 +58,7 @@ def main() -> None:
     # Tauri expected extras
     sq.resize((256, 256), Image.Resampling.LANCZOS).save(client_icons / "128x128@2x.png", "PNG")
 
-    # Web / PWA favicons
+    # Web / PWA favicons (RGBA preserved — no black matte)
     sq.resize((32, 32), Image.Resampling.LANCZOS).save(public / "favicon.png", "PNG")
     sq.resize((32, 32), Image.Resampling.LANCZOS).save(public / "icon.png", "PNG")
     sq.resize((180, 180), Image.Resampling.LANCZOS).save(public / "apple-icon.png", "PNG")
@@ -65,6 +85,9 @@ def main() -> None:
     (ui_assets / "icon-32.png").write_bytes((client_icons / "32x32.png").read_bytes())
     (ui_assets / "icon-128.png").write_bytes((client_icons / "128x128.png").read_bytes())
 
+    corner_a = sq.getpixel((2, 2))[3]
+    print(f"Source: {src_path}")
+    print(f"Corner alpha (expect 0 on transparent PNG): {corner_a}")
     print(f"Wrote icons under {client_icons} and {server_icons}")
     print(f"Copied Tauri icons to {tauri_icons}")
     print(f"Web favicons updated in {public}")

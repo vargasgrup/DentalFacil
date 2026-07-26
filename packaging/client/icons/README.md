@@ -1,6 +1,5 @@
-# Placeholder histórico — los iconos de marca ya están generados aquí.
-#
-# Fuente: branding N&K DentalSoft (diente chrome/azul).
+# Fuente preferida (transparente):
+#   C:\PROYECTOS\Recursos DentalSoft\Icono.png
 # Regenerar:
 #   python packaging/scripts/generate_icons.py
 #

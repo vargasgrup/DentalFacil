@@ -1,6 +1,6 @@
 @echo off
-REM Clinic desktop launcher: ensure server is up, then open Edge/Chrome --app UI
-REM (dedicated taskbar button with clinic favicon).
+REM Clinic desktop launcher: start API if needed, then open native WebView2
+REM window (branded N&K DentalSoft taskbar icon — not the Edge browser icon).
 setlocal EnableExtensions
 cd /d "%~dp0"
 

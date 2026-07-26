@@ -385,8 +385,63 @@ def _open_clinic_ui(url: str) -> str:
     return "webbrowser"
 
 
+def run_clinic_webview(url: str) -> int:
+    """
+    Host the clinic UI in a native WebView2 window owned by our EXE.
+
+    Edge ``--app`` always shows the Edge taskbar icon. A pywebview host keeps
+    the process as ``nkdentalsoft-server.exe`` (branded icon.ico).
+    Returns 0 on clean close, 1 on failure (caller may fall back to browser).
+    """
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(  # type: ignore[attr-defined]
+            "NKDentalSoft.ClinicUI"
+        )
+    except Exception:
+        pass
+
+    try:
+        import webview
+    except ImportError:
+        return 1
+
+    icon = _resolve_brand_icon()
+    try:
+        window = webview.create_window(
+            "N&K DentalSoft",
+            url,
+            width=1360,
+            height=900,
+            min_size=(960, 640),
+            text_select=True,
+            confirm_close=False,
+        )
+    except TypeError:
+        # Older pywebview signature
+        window = webview.create_window("N&K DentalSoft", url, width=1360, height=900)
+
+    start_kwargs: dict = {}
+    if icon and icon.is_file():
+        # Some backends accept private_mode / storage; icon is process-level on Win.
+        start_kwargs["private_mode"] = False
+    try:
+        webview.start(**start_kwargs) if start_kwargs else webview.start()
+        _ = window
+        return 0
+    except Exception as exc:
+        try:
+            from server_entry import log
+
+            log(f"webview failed: {exc}")
+        except Exception:
+            pass
+        return 1
+
+
 def run_desktop(open_browser: bool = True) -> int:
-    """Ensure the API/UI is reachable, then open the clinic app window."""
+    """Ensure the API/UI is reachable, then open the branded clinic window."""
     _ensure_path()
     from server_entry import prepare_environment, log
 
@@ -426,9 +481,24 @@ def run_desktop(open_browser: bool = True) -> int:
             )
             return 1
 
-    if open_browser:
-        how = _open_clinic_ui(url)
-        log(f"desktop: opened UI via {how} → {url}")
+    if not open_browser:
+        return 0
+
+    # Prefer native WebView2 host (branded taskbar icon). Fall back to Edge --app.
+    force_browser = (os.environ.get("NKDENTALSOFT_FORCE_BROWSER") or "").strip() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if not force_browser:
+        log("desktop: opening native WebView2 clinic window")
+        code = run_clinic_webview(url)
+        if code == 0:
+            return 0
+        log("desktop: webview unavailable — falling back to browser app mode")
+
+    how = _open_clinic_ui(url)
+    log(f"desktop: opened UI via {how} → {url}")
     return 0
 
 

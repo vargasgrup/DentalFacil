@@ -350,8 +350,8 @@ def generate_pdf(
 
     # Margins scale with format
     if fmt == "80mm":
-        # Rollo 80mm / TSP700II: zona segura ~3–4 mm por lado (evita borde cortado)
-        margin = 4 * mm
+        # Comprobante térmico: 2 mm reduce banda blanca superior; otros docs 4 mm
+        margin = 2 * mm if doc_type == "comprobante" else 4 * mm
     elif fmt == "A5":
         margin = 8 * mm
     else:

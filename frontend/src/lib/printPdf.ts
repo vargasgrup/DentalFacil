@@ -1,10 +1,8 @@
 /**
  * Impresión fiel de PDF.
  *
- * - A4/A5: raster (pdf.js → imagen) para control de tamaño de página.
- * - 80mm (tiquetera): imprime el PDF nativo. Evita el pipeline HTML que
- *   Chrome etiqueta con la URL de /caja, fecha y 2ª hoja en blanco
- *   (Star TSP700II / encabezados del navegador).
+ * Raster (pdf.js → imagen) con @page del tamaño MediaBox real.
+ * Evita bandas blancas al imprimir tickets 80mm y encabezados de Chrome.
  */
 
 const PT_TO_MM = 25.4 / 72;
@@ -304,24 +302,25 @@ function printPdfNative(blob: Blob): Promise<void> {
 }
 
 /**
- * Imprime un PDF (Blob). Ticket 80mm = PDF nativo; A4/A5 = raster.
+ * Imprime un PDF (Blob).
+ * Tickets 80mm usan raster a tamaño MediaBox exacto (evita banda blanca superior
+ * al encajar un PDF corto en un iframe de 297 mm / “ajustar a página”).
+ * A4/A5: mismo pipeline.
  */
 export async function printPdfBlob(
   blob: Blob,
   options?: { title?: string; formatHint?: PrintFormatHint }
 ): Promise<void> {
-  if (options?.formatHint === "80mm") {
-    await printPdfNative(blob);
-    return;
-  }
-
   const pdfjs = await loadPdfJs();
   const data = new Uint8Array(await blob.arrayBuffer());
   const pdf = await pdfjs.getDocument({ data }).promise;
   const pages = await renderAllPages(pdf);
   if (!pages.length) throw new Error("El PDF no tiene páginas");
 
-  const html = buildPrintHtml(pages, options);
+  const html = buildPrintHtml(pages, {
+    ...options,
+    title: options?.title || (options?.formatHint === "80mm" ? " " : options?.title),
+  });
   await printHtmlInHiddenIframe(html);
 }
 

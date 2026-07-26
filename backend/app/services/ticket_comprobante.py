@@ -320,24 +320,28 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
     }
 
 
-def _line(content_w: float) -> HRFlowable:
+def _line(content_w: float, *, tight: bool = False) -> HRFlowable:
+    before = 1.5 if tight else 3
+    after = 1.5 if tight else 3
     return HRFlowable(
         width=content_w,
         thickness=0.6,
         color=colors.black,
-        spaceBefore=3,
-        spaceAfter=3,
+        spaceBefore=before,
+        spaceAfter=after,
         hAlign="CENTER",
     )
 
 
-def _dash(content_w: float) -> HRFlowable:
+def _dash(content_w: float, *, tight: bool = False) -> HRFlowable:
+    before = 1 if tight else 2
+    after = 1 if tight else 2
     return HRFlowable(
         width=content_w,
         thickness=0.4,
         color=colors.HexColor("#94a3b8"),
-        spaceBefore=2,
-        spaceAfter=2,
+        spaceBefore=before,
+        spaceAfter=after,
         dash=(1, 1.5),
         hAlign="CENTER",
     )
@@ -379,11 +383,12 @@ def build_comprobante_story(
     qr_payload = build_qr_payload(qr_data)
 
     # --- Cabecera clínica ---
+    tight = fmt == "80mm"
     profile = get_clinic_profile()
     logo = _logo(logo_size_mm_for_ticket(fmt))
     if logo:
         story.append(logo)
-        story.append(Spacer(1, 1.5 * mm))
+        story.append(Spacer(1, 0.5 * mm if tight else 1.5 * mm))
     story.append(_p(profile.nombre_publico.upper(), styles["center_bold"]))
     if profile.ruc:
         story.append(_p(f"RUC {profile.ruc}", styles["center"]))
@@ -398,10 +403,10 @@ def build_comprobante_story(
             dir_txt += f" · COP {profile.cop_registro}"
         story.append(_p(dir_txt, styles["center_small"]))
 
-    story.append(_line(content_w))
+    story.append(_line(content_w, tight=tight))
     story.append(_p("COMPROBANTE DE PAGO", styles["center_bold"]))
     story.append(_p(serie, styles["center_bold"]))
-    story.append(_dash(content_w))
+    story.append(_dash(content_w, tight=tight))
 
     story.append(
         _p_html(f"<b>F. Emisión:</b> {_esc(f_emision)}", styles["left"])
@@ -420,67 +425,69 @@ def build_comprobante_story(
             _p_html(f"<b>Dirección:</b> {_esc(direccion)}", styles["left"])
         )
 
-    story.append(_dash(content_w))
+    story.append(_dash(content_w, tight=tight))
 
-    # --- Ítems (columnas con padding interno; no pegar al borde del rollo) ---
+    # --- Ítems: anchos fijos en mm + ALIGN de tabla (evita desfase Cant./precios) ---
     header_fs = 6.5 if fmt == "80mm" else 8
     body_fs = 7 if fmt == "80mm" else 9
-    pad = 2.0 if fmt == "80mm" else 3.0
-    # Ancho útil dentro del padding de celda
-    col_cant = content_w * 0.11
-    col_desc = content_w * 0.45
-    col_pu = content_w * 0.22
-    col_tot = content_w * 0.22
+    if fmt == "80mm":
+        col_cant = 7 * mm
+        col_pu = 15 * mm
+        col_tot = 15 * mm
+        col_desc = max(content_w - col_cant - col_pu - col_tot, 20 * mm)
+    else:
+        col_cant = content_w * 0.12
+        col_desc = content_w * 0.44
+        col_pu = content_w * 0.22
+        col_tot = content_w * 0.22
+
+    hdr_style = ParagraphStyle(
+        "tick_hdr",
+        fontName="Helvetica-Bold",
+        fontSize=header_fs,
+        leading=header_fs + 1,
+    )
+    hdr_right = ParagraphStyle(
+        "tick_hdr_r",
+        fontName="Helvetica-Bold",
+        fontSize=header_fs,
+        leading=header_fs + 1,
+        alignment=2,
+    )
+    body_left = ParagraphStyle(
+        "tick_body",
+        fontName="Helvetica",
+        fontSize=body_fs,
+        leading=body_fs + 2,
+        wordWrap="CJK",
+    )
+    body_center = ParagraphStyle(
+        "tick_qty",
+        fontName="Helvetica",
+        fontSize=body_fs,
+        leading=body_fs + 2,
+        alignment=1,
+    )
+    body_right = ParagraphStyle(
+        "tick_num",
+        fontName="Helvetica",
+        fontSize=body_fs,
+        leading=body_fs + 2,
+        alignment=2,
+    )
 
     item_rows = [
         [
-            Paragraph(
-                "<b>Cant.</b>",
-                ParagraphStyle("h", fontSize=header_fs, fontName="Helvetica-Bold"),
-            ),
-            Paragraph(
-                "<b>Descripción</b>",
-                ParagraphStyle("h2", fontSize=header_fs, fontName="Helvetica-Bold"),
-            ),
-            Paragraph(
-                "<b>P.Unit</b>",
-                ParagraphStyle(
-                    "h3", fontSize=header_fs, fontName="Helvetica-Bold", alignment=2
-                ),
-            ),
-            Paragraph(
-                "<b>Total</b>",
-                ParagraphStyle(
-                    "h4", fontSize=header_fs, fontName="Helvetica-Bold", alignment=2
-                ),
-            ),
+            Paragraph("Cant.", hdr_style),
+            Paragraph("Descripción", hdr_style),
+            Paragraph("P.Unit", hdr_right),
+            Paragraph("Total", hdr_right),
         ],
         [
-            Paragraph("1", ParagraphStyle("b", fontSize=body_fs)),
-            Paragraph(
-                _esc(concepto[:120]),
-                ParagraphStyle(
-                    "b2", fontSize=body_fs, leading=body_fs + 2, wordWrap="CJK"
-                ),
-            ),
-            Paragraph(
-                _esc(format_price_plain(monto)),
-                ParagraphStyle(
-                    "b3",
-                    fontSize=body_fs,
-                    alignment=2,
-                    leading=body_fs + 2,
-                ),
-            ),
-            Paragraph(
-                _esc(format_price_plain(monto)),
-                ParagraphStyle(
-                    "b4",
-                    fontSize=body_fs,
-                    alignment=2,
-                    leading=body_fs + 2,
-                ),
-            ),
+            Paragraph("1", body_center),
+            Paragraph(_esc(concepto[:120]), body_left),
+            Paragraph(_esc(format_price_plain(monto)), body_right),
+            Paragraph(_esc(format_price_plain(monto)), body_right),
         ],
     ]
     items_table = Table(
@@ -490,16 +497,24 @@ def build_comprobante_story(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), pad),
-                ("RIGHTPADDING", (0, 0), (-1, -1), pad),
-                ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+                ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                ("ALIGN", (1, 0), (1, -1), "LEFT"),
+                ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+                # Padding asimétrico: Cant. estrecha no empuja el texto fuera
+                ("LEFTPADDING", (0, 0), (0, -1), 0.5),
+                ("RIGHTPADDING", (0, 0), (0, -1), 0.5),
+                ("LEFTPADDING", (1, 0), (1, -1), 1.5),
+                ("RIGHTPADDING", (1, 0), (1, -1), 1.5),
+                ("LEFTPADDING", (2, 0), (-1, -1), 1),
+                ("RIGHTPADDING", (2, 0), (-1, -1), 0.5),
+                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
                 ("LINEBELOW", (0, 0), (-1, 0), 0.4, colors.black),
             ]
         )
     )
     story.append(items_table)
-    story.append(_dash(content_w))
+    story.append(_dash(content_w, tight=tight))
 
     # --- Totales ---
     story.append(
@@ -542,7 +557,7 @@ def build_comprobante_story(
 
     story.append(_p_html(f"<b>Atendido por:</b> {_esc(vendedor)}", styles["left"]))
 
-    story.append(_dash(content_w))
+    story.append(_dash(content_w, tight=tight))
     story.append(_p("Código hash:", styles["left"]))
     story.append(_p(codigo_hash, styles["center_small"]))
     story.append(Spacer(1, 1.5 * mm))

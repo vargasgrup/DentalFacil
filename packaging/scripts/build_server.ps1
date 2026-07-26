@@ -62,7 +62,7 @@ if (-not $SkipDeps) {
     Write-Host "==> Installing backend + packaging deps"
     & $VenvPython -m pip install --upgrade pip
     & $VenvPython -m pip install -r (Join-Path $Backend "requirements.txt")
-    & $VenvPython -m pip install pyinstaller pywin32
+    & $VenvPython -m pip install pyinstaller pywin32 pywebview
 }
 
 Write-Host "==> Regenerating brand icons (if Recursos available)"
@@ -90,6 +90,8 @@ if (-not $SkipFrontend) {
 }
 
 Write-Host "==> PyInstaller onedir (clean)"
+# Ensure WebView2 UI host is available even when -SkipDeps
+& $VenvPython -m pip install "pywebview>=5.3.2" -q
 Remove-Item (Join-Path $ServerPkg "build") -Recurse -Force -ErrorAction SilentlyContinue
 Push-Location $Root
 try {

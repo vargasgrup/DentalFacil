@@ -151,6 +151,23 @@ def prepare_environment() -> Path:
         init_clinic()
         _load_env_file(env_file)
 
+    # TLS certs may be missing even when .env exists (partial install)
+    cert = root / "certs" / "server.crt"
+    key = root / "certs" / "server.key"
+    if not cert.is_file() or not key.is_file():
+        log("TLS certs missing — regenerating self-signed certificate")
+        try:
+            _, gsc = _import_init_helpers()
+            lan = _detect_lan_ip()
+            info = gsc.generate_cert(
+                root / "certs",
+                common_name="nkdentalsoft-server.local",
+                extra_hosts=["127.0.0.1", "localhost", "nkdentalsoft-server.local", lan],
+            )
+            log(f"fingerprint_sha256={info['fingerprint_sha256']}")
+        except Exception as exc:  # noqa: BLE001
+            log(f"WARNING: could not generate TLS certs: {exc}")
+
     os.environ.setdefault("APP_ENV", "production")
     os.environ.setdefault("HOST", "0.0.0.0")
     os.environ.setdefault("BACKEND_PORT", "8001")
@@ -160,8 +177,14 @@ def prepare_environment() -> Path:
     os.environ.setdefault("NKDENTALSOFT_INSTALL_DIR", str(_install_dir()))
     os.environ.setdefault("NKDENTALSOFT_UI_DIR", str(_install_dir() / "web"))
 
-    install = _install_dir()
+    # Help Alembic find bundled ini when cwd differs
     meipass = _meipass()
+    for candidate in (meipass, _install_dir()):
+        if candidate and (candidate / "alembic.ini").is_file():
+            os.environ.setdefault("ALEMBIC_CONFIG", str(candidate / "alembic.ini"))
+            break
+
+    install = _install_dir()
     for p in (meipass, install):
         if p and p.exists() and str(p) not in sys.path:
             sys.path.insert(0, str(p))

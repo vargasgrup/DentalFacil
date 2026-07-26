@@ -85,13 +85,13 @@ fn validate_fingerprint(fingerprint: String) -> Result<String, ClientError> {
     normalize_fp_hex(&fingerprint)
 }
 
-/// Navigate the main webview to the clinic UI (HTTPS only).
+/// Navigate the main webview to the clinic UI (HTTP or HTTPS LAN).
 #[tauri::command]
 fn navigate_to_server(app: tauri::AppHandle, url: String) -> Result<(), ClientError> {
     let url = url.trim().trim_end_matches('/').to_string();
-    if !url.starts_with("https://") {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
         return Err(ClientError::Message(
-            "En producción el servidor debe usar https://".into(),
+            "Use http:// o https:// con la IP del servidor (ej. http://192.168.1.10:8001)".into(),
         ));
     }
     let parsed: url::Url = url

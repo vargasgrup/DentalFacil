@@ -136,18 +136,18 @@
       </div>
       <h1>Conectar al servidor</h1>
       <p>
-        Descubra el servidor en la red local (mDNS) o ingrese IP/host y puerto.
-        Solo HTTPS con verificación TOFU del certificado.
+        En PCs de caja, doctor o asistente: conecte al servidor principal de la clínica
+        (misma red Wi‑Fi/LAN). Use la URL HTTP que muestra Configuración en el servidor.
       </p>
       <button type="button" id="discover">Buscar servidor en la LAN</button>
       <div class="list" id="found" hidden></div>
-      <label for="host">Servidor (https://IP:puerto)</label>
-      <input id="host" placeholder="https://192.168.1.10:8001" />
-      <label>Huella SHA-256 del certificado</label>
+      <label for="host">Servidor (http://IP:8001)</label>
+      <input id="host" placeholder="http://192.168.1.10:8001" />
+      <label>Huella SHA-256 (solo si el servidor usa HTTPS)</label>
       <div class="fp" id="fp">—</div>
       <p class="err" id="err" hidden></p>
       <p class="ok" id="ok" hidden></p>
-      <button type="button" id="connect">Confiar y conectar</button>
+      <button type="button" id="connect">Conectar</button>
       <button type="button" class="secondary" id="change">Cambiar servidor</button>
     </div>
     <script>
@@ -189,7 +189,7 @@
         const inv = tauriInvoke("discover_servers");
         if (!inv) {
           showOk(
-            "Shell Tauri no disponible. Ingrese la URL HTTPS del servidor manualmente."
+            "Shell Tauri no disponible. Ingrese la URL del servidor manualmente (http://IP:8001)."
           );
           return;
         }
@@ -197,7 +197,7 @@
           const list = await inv;
           if (!list || !list.length) {
             showOk(
-              "No se encontró ningún servidor mDNS. Ingrese la URL manualmente (https://IP:8001)."
+              "No se encontró ningún servidor mDNS. Ingrese la URL manualmente (http://IP:8001)."
             );
             return;
           }
@@ -222,14 +222,19 @@
       document.getElementById("connect").onclick = async () => {
         errEl.hidden = true;
         okEl.hidden = true;
-        const url = hostEl.value.trim().replace(/\/$/, "");
-        if (!url.starts_with("https://")) {
-          showErr("En producción el servidor debe usar https://");
+        let url = hostEl.value.trim().replace(/\/$/, "");
+        // Allow bare IP or IP:port from Configuración copy field
+        if (url && !/^https?:\/\//i.test(url)) {
+          url = "http://" + url;
+        }
+        if (!(url.starts_with("https://") || url.starts_with("http://"))) {
+          showErr("Use http:// o https:// con la IP del servidor (ej. http://192.168.1.10:8001)");
           return;
         }
+        const isHttp = url.starts_with("http://");
         let fp = fpEl.textContent.trim();
         try {
-          if (fp && fp !== "—") {
+          if (!isHttp && fp && fp !== "—") {
             const normalized = tauriInvoke("validate_fingerprint", {
               fingerprint: fp,
             });
@@ -240,6 +245,7 @@
           const data = await r.json();
           const prev = JSON.parse(localStorage.getItem(KEY) || "null");
           if (
+            !isHttp &&
             prev?.fingerprint &&
             fp &&
             fp !== "—" &&
@@ -249,7 +255,11 @@
               "La huella del certificado no coincide con la guardada. Posible reinstalación o MITM — confirme solo si confía en este servidor."
             );
           }
-          const storeFp = fp === "—" ? prev?.fingerprint || "" : fp;
+          const storeFp = isHttp
+            ? ""
+            : fp === "—"
+              ? prev?.fingerprint || ""
+              : fp;
           localStorage.setItem(
             KEY,
             JSON.stringify({ url, fingerprint: storeFp })

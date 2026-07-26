@@ -61,21 +61,6 @@ function FormTitle({ title, hint }: { title: string; hint?: string }) {
   );
 }
 
-function EmailTab() {
-  return (
-    <div className="mb-5 border-b border-slate-200" role="tablist" aria-label="Método de acceso">
-      <button
-        type="button"
-        role="tab"
-        aria-selected
-        className="-mb-px border-b-2 border-slate-900 pb-2.5 text-sm font-semibold text-slate-900"
-      >
-        Correo electrónico
-      </button>
-    </div>
-  );
-}
-
 export default function LoginPage() {
   const { needsSetup, loading, login, setup, user } = useAuth();
 
@@ -385,7 +370,6 @@ export default function LoginPage() {
             </form>
           ) : view === "forgot" ? (
             <form onSubmit={handleForgot} className="flex flex-col gap-3.5" autoComplete="off">
-              <EmailTab />
               <LoginField
                 id="forgot-email"
                 type="email"
@@ -481,8 +465,6 @@ export default function LoginPage() {
             </form>
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-3.5" autoComplete="off">
-              {!needsSetup ? <EmailTab /> : null}
-
               {needsSetup && (
                 <LoginField
                   id="login-nombre"

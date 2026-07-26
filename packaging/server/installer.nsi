@@ -28,19 +28,20 @@ Function StopRunningServer
   DetailPrint "Deteniendo servicio / proceso en ejecucion para permitir actualizacion..."
   SetOutPath "$PLUGINSDIR"
   File "scripts\stop_for_upgrade.ps1"
-  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\stop_for_upgrade.ps1"'
+  ; AllowRename: if the EXE stays locked, move it aside so File can write a new one
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\stop_for_upgrade.ps1" -WaitSeconds 45 -AllowRename'
   Pop $0
   DetailPrint "stop_for_upgrade exit=$0"
   ${If} $0 == 2
     MessageBox MB_ICONEXCLAMATION|MB_RETRYCANCEL \
-      "No se pudo liberar nkdentalsoft-server.exe.$\r$\n$\r$\nCierre la ventana del Servidor (si esta abierta) y pulse Reintentar." \
+      "No se pudo liberar nkdentalsoft-server.exe.$\r$\n$\r$\n1) Cierre la ventana de N&K DentalSoft$\r$\n2) En el Administrador de tareas finalice 'nkdentalsoft-server.exe'$\r$\n3) Pulse Reintentar$\r$\n$\r$\nO ejecute como Administrador:$\r$\n$INSTDIR\scripts\stop_for_upgrade.ps1" \
       IDRETRY retry_stop IDCANCEL abort_stop
     abort_stop:
       Abort "Instalacion cancelada: el servidor sigue en uso."
     retry_stop:
       Call StopRunningServer
   ${EndIf}
-  Sleep 1500
+  Sleep 2000
 FunctionEnd
 
 Section "Install"
@@ -53,12 +54,20 @@ Section "Install"
   IfErrors 0 files_ok
     DetailPrint "Reintento de copia tras liberar archivos..."
     Call StopRunningServer
-    Sleep 2000
+    Sleep 3000
     ClearErrors
     File /r "dist\nkdentalsoft-server\*.*"
     IfErrors 0 files_ok
+      ; Last resort: rename locked EXE then copy again
+      DetailPrint "Renombrando EXE bloqueado y reintentando..."
+      nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$$p=\"$INSTDIR\nkdentalsoft-server.exe\"; if (Test-Path $$p) { Move-Item -LiteralPath $$p -Destination (\"$$p.old_\" + (Get-Date -Format yyyyMMdd_HHmmss)) -Force -ErrorAction SilentlyContinue }; Get-Process nkdentalsoft-server -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue; taskkill /F /IM nkdentalsoft-server.exe /T 2>$$null"'
+      Pop $0
+      Sleep 2000
+      ClearErrors
+      File /r "dist\nkdentalsoft-server\*.*"
+      IfErrors 0 files_ok
       MessageBox MB_ICONSTOP \
-        "No se pudieron escribir archivos en:$\r$\n$INSTDIR$\r$\n$\r$\nCierre N&K DentalSoft Server y vuelva a ejecutar el instalador."
+        "No se pudieron escribir archivos en:$\r$\n$INSTDIR$\r$\n$\r$\nCierre N&K DentalSoft (tarea nkdentalsoft-server.exe) y vuelva a ejecutar el instalador.$\r$\n$\r$\nSi sigue fallando, reinicie el PC e instale de nuevo."
       Abort "Error abriendo archivo para escritura (proceso en uso)."
   files_ok:
 
@@ -84,7 +93,7 @@ Section "Install"
   skip_init:
 
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft Server 8001"'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NKDentalSoft Server 8001" dir=in action=allow protocol=TCP localport=8001 profile=private,domain'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NKDentalSoft Server 8001" dir=in action=allow protocol=TCP localport=8001 profile=private,domain,public'
 
   ; Delete stale loose modules that shadowed the frozen PYZ (caused HTTPS-only / dead UI)
   Delete "$INSTDIR\server_entry.py"

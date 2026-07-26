@@ -15,6 +15,7 @@ import {
   LockOpen,
   MessageCircle,
   Plus,
+  RefreshCw,
   Stethoscope,
   UserPlus,
   Wallet,
@@ -25,6 +26,7 @@ import { formatTime } from "@/lib/datetime";
 import { canAccessModule } from "@/lib/roles";
 import { openWhatsAppText, isValidPhone } from "@/lib/whatsapp";
 import { PageContainer } from "@/components/ui";
+import { Button } from "@/components/ui/Button";
 import { PacienteFichaLink } from "@/components/PacienteFichaLink";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import {
@@ -166,10 +168,12 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [data, setData] = useState<DashboardHome | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [sendingId, setSendingId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { soft?: boolean }) => {
+    if (opts?.soft) setRefreshing(true);
     try {
       const home = await apiFetch<DashboardHome>("/api/dashboard/home");
       setData(home);
@@ -178,11 +182,37 @@ export default function DashboardPage() {
       setError(err instanceof Error ? err.message : "No se pudo cargar el dashboard");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    const onReconnect = () => {
+      void load({ soft: true });
+    };
+    const onRealtime = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ type?: string }>).detail;
+      const t = detail?.type || "";
+      if (
+        t.startsWith("appointment") ||
+        t.startsWith("caja") ||
+        t.startsWith("patient") ||
+        t.startsWith("clinical") ||
+        t === "dashboard.invalidate"
+      ) {
+        void load({ soft: true });
+      }
+    };
+    window.addEventListener("nk:realtime-reconnect", onReconnect);
+    window.addEventListener("nk:realtime", onRealtime);
+    return () => {
+      window.removeEventListener("nk:realtime-reconnect", onReconnect);
+      window.removeEventListener("nk:realtime", onRealtime);
+    };
   }, [load]);
 
   const markReminderSent = async (id: string) => {
@@ -276,37 +306,50 @@ export default function DashboardPage() {
             .
           </p>
         </div>
-        {canCaja && (
-          <div className="flex flex-wrap items-center gap-3">
-            <div
-              className={`flex items-center gap-2 rounded-xl border px-4 py-2 ${
-                cash.open
-                  ? "border-success-200 bg-success-50"
-                  : "border-warning-200 bg-warning-50"
-              }`}
-            >
-              {cash.open ? (
-                <Check className="h-4 w-4 text-success-600" />
-              ) : (
-                <Clock className="h-4 w-4 text-warning-500" />
-              )}
-              <span
-                className={`text-sm font-medium ${
-                  cash.open ? "text-success-700" : "text-warning-700"
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="secondary"
+            loading={refreshing}
+            icon={<RefreshCw className="h-4 w-4" />}
+            onClick={() => void load({ soft: true })}
+            aria-label="Actualizar dashboard"
+            title="Actualizar datos del sistema"
+          >
+            Actualizar
+          </Button>
+          {canCaja && (
+            <>
+              <div
+                className={`flex items-center gap-2 rounded-xl border px-4 py-2 ${
+                  cash.open
+                    ? "border-success-200 bg-success-50"
+                    : "border-warning-200 bg-warning-50"
                 }`}
               >
-                {cash.open ? "Caja abierta" : "Caja cerrada"}
-              </span>
-            </div>
-            <Link
-              href="/caja"
-              className="btn-float-brand inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-            >
-              <LockOpen className="h-3.5 w-3.5" />
-              {cash.open ? "Ir a Caja" : "Abrir Caja"}
-            </Link>
-          </div>
-        )}
+                {cash.open ? (
+                  <Check className="h-4 w-4 text-success-600" />
+                ) : (
+                  <Clock className="h-4 w-4 text-warning-500" />
+                )}
+                <span
+                  className={`text-sm font-medium ${
+                    cash.open ? "text-success-700" : "text-warning-700"
+                  }`}
+                >
+                  {cash.open ? "Caja abierta" : "Caja cerrada"}
+                </span>
+              </div>
+              <Link
+                href="/caja"
+                className="btn-float-brand inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+              >
+                <LockOpen className="h-3.5 w-3.5" />
+                {cash.open ? "Ir a Caja" : "Abrir Caja"}
+              </Link>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="dash-slide-up grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

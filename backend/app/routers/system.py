@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import socket
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -172,3 +174,73 @@ def client_manifest():
             "notes": "No client update package published on this server yet.",
         }
     )
+
+
+def _lan_ipv4_addresses() -> list[str]:
+    """Non-loopback IPv4 addresses for clinic LAN clients."""
+    found: list[str] = []
+    try:
+        hostname = socket.gethostname()
+        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            ip = info[4][0]
+            if ip and not ip.startswith("127.") and ip not in found:
+                found.append(ip)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        # UDP trick: discover preferred outbound interface without sending
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            if ip and not ip.startswith("127.") and ip not in found:
+                found.insert(0, ip)
+        finally:
+            s.close()
+    except Exception:  # noqa: BLE001
+        pass
+    return found
+
+
+@router.get("/lan")
+def system_lan_info(
+    admin: User = Depends(require_roles(Rol.ADMIN)),
+):
+    """
+    How other PCs join this clinic server (ADMIN).
+    Bind is typically 0.0.0.0:8001 — clients use http://<LAN-IP>:8001/
+    """
+    _ = admin
+    port = int(os.environ.get("BACKEND_PORT") or 8001)
+    host = (os.environ.get("HOST") or "0.0.0.0").strip() or "0.0.0.0"
+    ips = _lan_ipv4_addresses()
+    urls = [f"http://{ip}:{port}/" for ip in ips]
+    return {
+        "host_bind": host,
+        "port": port,
+        "listening_all_interfaces": host in {"0.0.0.0", "::", "*"},
+        "lan_ips": ips,
+        "client_urls": urls,
+        "local_url": f"http://127.0.0.1:{port}/",
+        "firewall_rule": "NKDentalSoft Server 8001",
+        "hint": (
+            "En cada PC de la clínica abra el navegador o el cliente N&K e ingrese "
+            "una de las URLs de la red local. Todos comparten la misma base de datos "
+            "del servidor principal."
+        ),
+    }
+
+
+@router.get("/connections")
+def system_connections(
+    admin: User = Depends(require_roles(Rol.ADMIN)),
+):
+    """Live users connected via WebSocket (ADMIN) — Caja / Doctor / Asistente, etc."""
+    _ = admin
+    from app.realtime.connection_manager import manager
+
+    snap = manager.snapshot()
+    return {
+        **snap,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }

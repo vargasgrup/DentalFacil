@@ -37,14 +37,23 @@ export function useRealtimeSync(options: Options = {}) {
   const wsRef = useRef<WebSocket | null>(null);
   const attemptRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
+
+  const clearPing = useCallback(() => {
+    if (pingRef.current) {
+      clearTimeout(pingRef.current);
+      pingRef.current = null;
+    }
+  }, []);
 
   const cleanup = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
+    clearPing();
     if (wsRef.current) {
       try {
         wsRef.current.close();
@@ -53,7 +62,7 @@ export function useRealtimeSync(options: Options = {}) {
       }
       wsRef.current = null;
     }
-  }, []);
+  }, [clearPing]);
 
   const connect = useCallback(() => {
     if (!enabled || typeof window === "undefined") return;
@@ -80,11 +89,24 @@ export function useRealtimeSync(options: Options = {}) {
       attemptRef.current = 0;
       setStatus("online");
       window.dispatchEvent(new CustomEvent("nk:realtime-reconnect"));
+      clearPing();
+      const beat = () => {
+        if (ws.readyState === WebSocket.OPEN) {
+          try {
+            ws.send("ping");
+          } catch {
+            /* ignore */
+          }
+          pingRef.current = setTimeout(beat, 25_000);
+        }
+      };
+      pingRef.current = setTimeout(beat, 25_000);
     };
     ws.onmessage = (ev) => {
       try {
         const data = JSON.parse(String(ev.data)) as RealtimeEvent;
         if (!data?.type) return;
+        if (data.type === "pong") return;
         setLastEvent(data);
         onEventRef.current?.(data);
         window.dispatchEvent(new CustomEvent("nk:realtime", { detail: data }));
@@ -93,6 +115,7 @@ export function useRealtimeSync(options: Options = {}) {
       }
     };
     ws.onclose = () => {
+      clearPing();
       setStatus("reconnecting");
       attemptRef.current += 1;
       const delay = Math.min(30_000, 1000 * 2 ** Math.min(attemptRef.current, 5));
@@ -105,7 +128,7 @@ export function useRealtimeSync(options: Options = {}) {
         /* ignore */
       }
     };
-  }, [cleanup, enabled]);
+  }, [cleanup, clearPing, enabled]);
 
   useEffect(() => {
     connect();

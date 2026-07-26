@@ -19,6 +19,8 @@ async def websocket_endpoint(
 ):
     user_id = ""
     role = ""
+    nombre = ""
+    email = ""
     try:
         payload = decode_token(token)
         if payload.get("type") != "access":
@@ -40,17 +42,27 @@ async def websocket_endpoint(
                 await websocket.close(code=4401)
                 return
             role = user.rol or role
+            nombre = str(user.nombre or "")
+            email = str(user.email or "")
     except Exception:  # noqa: BLE001
         await websocket.close(code=4401)
         return
 
-    conn_id = await manager.connect(websocket, user_id=user_id, role=role)
+    conn_id = await manager.connect(
+        websocket,
+        user_id=user_id,
+        role=role,
+        nombre=nombre,
+        email=email,
+        client_ip=(websocket.client.host if websocket.client else "") or "",
+    )
     try:
         await websocket.send_json({"type": "realtime.connected", "payload": {"userId": user_id}})
         while True:
             # Keepalive / ignore client pings; server is push-only for v1
             data = await websocket.receive_text()
             if data in ("ping", '{"type":"ping"}'):
+                await manager.touch(conn_id)
                 await websocket.send_json({"type": "pong"})
     except WebSocketDisconnect:
         pass

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -21,15 +22,25 @@ from app.models import (
 from app.services.payment_allocation import _evo_saldo
 from app.utils.ficha import format_ficha_code
 
+CLINIC_TZ = ZoneInfo("America/Lima")
+
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _clinic_today() -> date:
+    return datetime.now(CLINIC_TZ).date()
+
+
 def _day_bounds(d: date) -> tuple[datetime, datetime]:
-    start = datetime(d.year, d.month, d.day, 0, 0, 0)
-    end = datetime(d.year, d.month, d.day, 23, 59, 59)
-    return start, end
+    """Inclusive clinic-day bounds in naive UTC (matches DB timestamps)."""
+    start_local = datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=CLINIC_TZ)
+    end_local = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=CLINIC_TZ)
+    return (
+        start_local.astimezone(timezone.utc).replace(tzinfo=None),
+        end_local.astimezone(timezone.utc).replace(tzinfo=None),
+    )
 
 
 def _week_start(d: date) -> date:
@@ -64,25 +75,23 @@ def _relative_es(dt: datetime | None, now: datetime) -> str:
 
 def build_dashboard_home(db: Session) -> dict[str, Any]:
     now = _utc_now()
-    today = now.date()
+    today = _clinic_today()
     today_start, today_end = _day_bounds(today)
     yesterday = today - timedelta(days=1)
     y_start, y_end = _day_bounds(yesterday)
 
-    month_start = datetime(today.year, today.month, 1)
+    month_start = _day_bounds(date(today.year, today.month, 1))[0]
     if today.month == 1:
-        prev_month_start = datetime(today.year - 1, 12, 1)
-        prev_month_end = datetime(today.year, 1, 1) - timedelta(seconds=1)
+        prev_month_start = _day_bounds(date(today.year - 1, 12, 1))[0]
+        prev_month_end = month_start - timedelta(seconds=1)
     else:
-        prev_month_start = datetime(today.year, today.month - 1, 1)
+        prev_month_start = _day_bounds(date(today.year, today.month - 1, 1))[0]
         prev_month_end = month_start - timedelta(seconds=1)
 
     week_start = _week_start(today)
-    week_start_dt = datetime(week_start.year, week_start.month, week_start.day)
+    week_start_dt = _day_bounds(week_start)[0]
     prev_week_start = week_start - timedelta(days=7)
-    prev_week_start_dt = datetime(
-        prev_week_start.year, prev_week_start.month, prev_week_start.day
-    )
+    prev_week_start_dt = _day_bounds(prev_week_start)[0]
     prev_week_end_dt = week_start_dt - timedelta(seconds=1)
 
     # --- Caja ---

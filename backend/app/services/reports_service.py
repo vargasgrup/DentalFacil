@@ -20,6 +20,28 @@ from app.models import (
 CLINIC_TZ = ZoneInfo("America/Lima")
 
 
+def normalize_report_bounds(start: datetime, end: datetime) -> tuple[datetime, datetime]:
+    """
+    Report filters compare against UTC wall-clock stored in DB (often naive UTC).
+
+    - Timezone-aware query params: convert to UTC.
+    - Naive params: interpret as America/Lima clinic day (Perú), then UTC.
+      This matches how receptionistas pick "hoy" and avoids empty evening reports
+      when UTC date has already rolled forward (Lima UTC-5).
+    """
+
+    def _to_utc_naive(dt: datetime) -> datetime:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=CLINIC_TZ)
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+    lo = _to_utc_naive(start)
+    hi = _to_utc_naive(end)
+    if hi < lo:
+        lo, hi = hi, lo
+    return lo, hi
+
+
 def _money(v: float) -> str:
     return f"S/ {float(v):.2f}"
 
@@ -100,6 +122,7 @@ class ReportPayload:
 
 
 def build_caja_report(db: Session, start: datetime, end: datetime) -> ReportPayload:
+    start, end = normalize_report_bounds(start, end)
     transactions = (
         db.query(CashTransaction)
         .filter(
@@ -172,6 +195,7 @@ def build_pacientes_report(
     - Evolución clínica (no migración)
     - Cobros en Caja con paciente
     """
+    start, end = normalize_report_bounds(start, end)
     events: list[dict[str, Any]] = []
 
     appt_q = db.query(Appointment).filter(
@@ -309,6 +333,7 @@ def build_pacientes_report(
 def build_tratamientos_report(
     db: Session, start: datetime, end: datetime
 ) -> ReportPayload:
+    start, end = normalize_report_bounds(start, end)
     entries = (
         db.query(ClinicalEvolutionEntry)
         .filter(

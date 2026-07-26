@@ -28,6 +28,7 @@ Function StopRunningServer
   DetailPrint "Deteniendo servicio / proceso en ejecucion para permitir actualizacion..."
   SetOutPath "$PLUGINSDIR"
   File "scripts\stop_for_upgrade.ps1"
+  File "scripts\rename_locked_exe.ps1"
   ; AllowRename: if the EXE stays locked, move it aside so File can write a new one
   nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\stop_for_upgrade.ps1" -WaitSeconds 45 -AllowRename'
   Pop $0
@@ -58,16 +59,17 @@ Section "Install"
     ClearErrors
     File /r "dist\nkdentalsoft-server\*.*"
     IfErrors 0 files_ok
-      ; Last resort: rename locked EXE then copy again
+      ; Last resort: rename locked EXE then copy again (dedicated ASCII script)
       DetailPrint "Renombrando EXE bloqueado y reintentando..."
-      nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$$p=\"$INSTDIR\nkdentalsoft-server.exe\"; if (Test-Path $$p) { Move-Item -LiteralPath $$p -Destination (\"$$p.old_\" + (Get-Date -Format yyyyMMdd_HHmmss)) -Force -ErrorAction SilentlyContinue }; Get-Process nkdentalsoft-server -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue; taskkill /F /IM nkdentalsoft-server.exe /T 2>$$null"'
+      nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\rename_locked_exe.ps1" -InstallDir "$INSTDIR"'
       Pop $0
+      DetailPrint "rename_locked_exe exit=$0"
       Sleep 2000
       ClearErrors
       File /r "dist\nkdentalsoft-server\*.*"
       IfErrors 0 files_ok
       MessageBox MB_ICONSTOP \
-        "No se pudieron escribir archivos en:$\r$\n$INSTDIR$\r$\n$\r$\nCierre N&K DentalSoft (tarea nkdentalsoft-server.exe) y vuelva a ejecutar el instalador.$\r$\n$\r$\nSi sigue fallando, reinicie el PC e instale de nuevo."
+        "No se pudieron escribir archivos en:$\r$\n$INSTDIR$\r$\n$\r$\n1) Pulse Anular$\r$\n2) Cierre N&K DentalSoft$\r$\n3) En Administrador de tareas finalice nkdentalsoft-server.exe$\r$\n4) Vuelva a ejecutar el Setup."
       Abort "Error abriendo archivo para escritura (proceso en uso)."
   files_ok:
 
@@ -75,6 +77,7 @@ Section "Install"
   File "Open-UI.bat"
   SetOutPath "$INSTDIR\scripts"
   File "scripts\stop_for_upgrade.ps1"
+  File "scripts\rename_locked_exe.ps1"
   File "scripts\post_install_healthcheck.ps1"
   File /nonfatal "scripts\*.*"
 

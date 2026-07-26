@@ -349,23 +349,33 @@ def run_server() -> None:
     _assert_port_free(port)
     cert = root / "certs" / "server.crt"
     key = root / "certs" / "server.key"
-    disable_tls = (os.environ.get("NKDENTALSOFT_DISABLE_TLS") or "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
     force_tls = (os.environ.get("NKDENTALSOFT_FORCE_TLS") or "").strip().lower() in {
         "1",
         "true",
         "yes",
     }
+    disable_tls = (os.environ.get("NKDENTALSOFT_DISABLE_TLS") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    # Frozen desktop default: HTTP on :8001 (Firefox / no cert warnings).
+    # Opt-in HTTPS for LAN hardening: NKDENTALSOFT_FORCE_TLS=1
+    if force_tls:
+        use_tls = cert.is_file() and key.is_file()
+        if not use_tls:
+            log("FORCE_TLS set but cert/key missing — falling back to HTTP")
+    elif disable_tls or getattr(sys, "frozen", False):
+        use_tls = False
+    else:
+        use_tls = cert.is_file() and key.is_file()
+
     kwargs: dict = {
         "app": fastapi_app,  # object import — required for PyInstaller frozen EXE
         "host": host,
         "port": port,
         "log_level": "info",
     }
-    use_tls = (not disable_tls or force_tls) and cert.is_file() and key.is_file()
     if use_tls:
         kwargs["ssl_certfile"] = str(cert)
         kwargs["ssl_keyfile"] = str(key)

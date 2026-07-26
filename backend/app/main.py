@@ -267,3 +267,8 @@ from app.frontend_static import mount_frontend_static  # noqa: E402
 _ui_root = mount_frontend_static(app)
 if _ui_root is not None:
     logger.info("frontend UI mounted from %s", _ui_root)
+else:
+    logger.error(
+        "frontend UI missing (no web/index.html). "
+        "API-only mode — browser / returns setup HTML, not the clinic app."
+    )

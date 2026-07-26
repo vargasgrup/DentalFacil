@@ -21,3 +21,11 @@ def test_pick_ui_file_index_and_patient_fallback(tmp_path: Path):
     assert pick_ui_file(tmp_path, "/pacientes/nuevo/").parent.name == "nuevo"
     assert pick_ui_file(tmp_path, "/pacientes/abc-uuid-1/").parent.name == "_"
     assert pick_ui_file(tmp_path, "/missing-asset.js") is None
+
+
+def test_pick_ui_file_next_static_chunk(tmp_path: Path):
+    chunk = tmp_path / "_next" / "static" / "chunks"
+    chunk.mkdir(parents=True)
+    f = chunk / "main-app.js"
+    f.write_text("/*js*/", encoding="utf-8")
+    assert pick_ui_file(tmp_path, "/_next/static/chunks/main-app.js") == f.resolve()

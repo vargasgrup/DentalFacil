@@ -339,6 +339,20 @@ p {
   -webkit-backdrop-filter: blur(18px) saturate(1.35);
 }
 
+/* Focus dental chair (left of frame); crop out the hand on the right */
+.login-hero-img {
+  object-position: 8% 42%;
+  transform: scale(1.08);
+  transform-origin: left center;
+}
+
+@media (min-width: 1280px) {
+  .login-hero-img {
+    object-position: 4% 40%;
+    transform: scale(1.12);
+  }
+}
+
 .login-premium__card {
   animation: login-card-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }

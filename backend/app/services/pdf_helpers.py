@@ -5,6 +5,7 @@ Formato de fechas/moneda, limpieza de textos de tratamiento y tamaños de logo.
 
 from __future__ import annotations
 
+import io
 import re
 from datetime import date, datetime
 from pathlib import Path
@@ -183,11 +184,52 @@ def clinic_contact_line(
     return " · ".join(bits)
 
 
+def _trim_logo_bytes(path: Path) -> tuple[io.BytesIO, float] | None:
+    """
+    Recorta bordes casi blancos/transparentes del logo.
+    Devuelve (PNG en memoria, aspect w/h) o None si falla.
+    """
+    try:
+        from PIL import Image, ImageChops
+
+        with Image.open(path) as src:
+            im = src.convert("RGBA")
+        # Alpha bbox
+        bbox = im.getbbox()
+        if not bbox:
+            return None
+        im = im.crop(bbox)
+        # Near-white crop (logo often has large white padding inside PNG)
+        bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
+        diff = ImageChops.difference(im, bg)
+        # Also treat very light gray as empty
+        diff_gray = diff.convert("L")
+        mask = diff_gray.point(lambda p: 255 if p > 12 else 0)
+        bbox2 = mask.getbbox()
+        if bbox2:
+            # small padding so we don't clip anti-alias
+            pad = 2
+            l, t, r, b = bbox2
+            l = max(0, l - pad)
+            t = max(0, t - pad)
+            r = min(im.width, r + pad)
+            b = min(im.height, b + pad)
+            im = im.crop((l, t, r, b))
+        buf = io.BytesIO()
+        im.save(buf, format="PNG", optimize=True)
+        buf.seek(0)
+        aspect = (im.width / im.height) if im.height else _DEFAULT_LOGO_ASPECT
+        return buf, aspect
+    except Exception:
+        return None
+
+
 def logo_image(
     path: Path | None,
     *,
     max_pt: float = MAX_LOGO_PT,
     h_align: str = "LEFT",
+    trim_whitespace: bool = False,
 ) -> RLImage | None:
     """
     Logo acotado a max_pt × max_pt, preservando aspecto.
@@ -195,12 +237,24 @@ def logo_image(
     """
     if not path or not path.is_file():
         return None
+
+    src: str | io.BytesIO = str(path)
+    aspect = _DEFAULT_LOGO_ASPECT
     try:
         from reportlab.lib.utils import ImageReader
 
-        ir = ImageReader(str(path))
-        iw, ih = ir.getSize()
-        aspect = (iw / ih) if ih else _DEFAULT_LOGO_ASPECT
+        if trim_whitespace:
+            trimmed = _trim_logo_bytes(path)
+            if trimmed:
+                src, aspect = trimmed
+            else:
+                ir = ImageReader(str(path))
+                iw, ih = ir.getSize()
+                aspect = (iw / ih) if ih else _DEFAULT_LOGO_ASPECT
+        else:
+            ir = ImageReader(str(path))
+            iw, ih = ir.getSize()
+            aspect = (iw / ih) if ih else _DEFAULT_LOGO_ASPECT
     except Exception:
         aspect = _DEFAULT_LOGO_ASPECT
 
@@ -218,7 +272,7 @@ def logo_image(
         width = float(max_pt)
         height = width / aspect
 
-    img = RLImage(str(path), width=width, height=height)
+    img = RLImage(src, width=width, height=height)
     img.hAlign = h_align
     return img
 

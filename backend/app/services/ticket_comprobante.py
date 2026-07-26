@@ -217,10 +217,15 @@ def _qr_image(payload: str, size_mm: float = 28) -> RLImage:
 
 
 def _logo(width_mm: float = 22) -> RLImage | None:
-    """Logo compacto para ticket (máx. ~80 pt), centrado en boleta térmica."""
+    """Logo compacto para ticket (máx. ~80 pt), centrado; recorta padding blanco."""
     profile = get_clinic_profile()
     max_pt = min(MAX_LOGO_PT, width_mm * mm)
-    img = logo_image(profile.logo_abs_path, max_pt=max_pt, h_align="CENTER")
+    img = logo_image(
+        profile.logo_abs_path,
+        max_pt=max_pt,
+        h_align="CENTER",
+        trim_whitespace=True,
+    )
     return img
 
 

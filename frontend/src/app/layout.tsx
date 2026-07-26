@@ -12,16 +12,18 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "M&D Odontología Especializada",
+  title: "N&K DentalSoft",
   description:
-    "Sistema de gestión odontológica — Dra. Maribel Condori Hilasaca, especialista en ortodoncia y ortopedia maxilar",
+    "Sistema de gestión odontológica — N&K DentalSoft / M&D Odontología Especializada",
+  applicationName: "N&K DentalSoft",
   icons: {
     icon: [
-      { url: "/favicon.png?v=nkdentalsoft-icon-transparent", type: "image/png", sizes: "any" },
-      { url: "/icon.png?v=nkdentalsoft-icon-transparent", type: "image/png" },
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon.png?v=nkdentalsoft-icon-v2", type: "image/png", sizes: "any" },
+      { url: "/icon.png?v=nkdentalsoft-icon-v2", type: "image/png" },
     ],
-    shortcut: "/favicon.png?v=nkdentalsoft-icon-transparent",
-    apple: "/apple-icon.png?v=nkdentalsoft-icon-transparent",
+    shortcut: "/favicon.ico",
+    apple: "/apple-icon.png?v=nkdentalsoft-icon-v2",
   },
 };
 

@@ -115,6 +115,14 @@ $ScriptsDest = Join-Path $DistServer "scripts"
 New-Item -ItemType Directory -Force -Path $ScriptsDest | Out-Null
 Copy-Item (Join-Path $ServerPkg "scripts\*") $ScriptsDest -Force
 
+# Brand icon next to EXE (taskbar .lnk IconLocation)
+$IconsDest = Join-Path $DistServer "assets\icons"
+New-Item -ItemType Directory -Force -Path $IconsDest | Out-Null
+$IconSrc = Join-Path $ServerPkg "assets\icons\icon.ico"
+if (Test-Path $IconSrc) {
+    Copy-Item $IconSrc $IconsDest -Force
+}
+
 # Ensure web/ sits next to the exe (PyInstaller also embeds under _internal)
 $WebSrc = Join-Path $Root "frontend\out"
 $WebDest = Join-Path $DistServer "web"

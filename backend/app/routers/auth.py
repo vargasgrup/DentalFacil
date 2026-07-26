@@ -28,6 +28,7 @@ from app.core.security import (
 from app.database import get_db
 from app.models import User
 from app.schemas.user import (
+    AccountUpdate,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     LoginRequest,
@@ -351,6 +352,52 @@ def create_user(
         modulos_acceso=modules_to_json(mods),
     )
     db.add(user)
+    db.commit()
+    db.refresh(user)
+    return _user_out(user)
+
+
+@users_router.patch("/me", response_model=UserOut)
+def update_me(
+    payload: AccountUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Self-service: change display name, login email and/or password."""
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Contraseña actual incorrecta")
+
+    changed = False
+    if payload.nombre is not None:
+        nombre = payload.nombre.strip()
+        if nombre != user.nombre:
+            user.nombre = nombre
+            changed = True
+
+    if payload.email is not None:
+        email = str(payload.email).strip().lower()
+        if email != (user.email or "").lower():
+            existing = (
+                db.query(User)
+                .filter(func.lower(User.email) == email, User.id != user.id)
+                .first()
+            )
+            if existing:
+                raise HTTPException(status_code=400, detail="Email ya registrado")
+            user.email = email
+            changed = True
+
+    if payload.new_password:
+        user.password_hash = hash_password(payload.new_password)
+        _bump_token_version(user)
+        changed = True
+
+    if not changed:
+        raise HTTPException(
+            status_code=400,
+            detail="No hay cambios que guardar (los datos son iguales a los actuales)",
+        )
+
     db.commit()
     db.refresh(user)
     return _user_out(user)

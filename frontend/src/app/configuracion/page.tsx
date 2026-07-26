@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { apiFetch, apiUpload, getToken } from "@/lib/api";
+import { apiFetch, apiUpload, getToken, setToken, setRefreshToken } from "@/lib/api";
 import { PageContainer } from "@/components/ui/PageContainer";
 import { ESPECIALIDADES_ODONTOLOGICAS } from "@/lib/especialidades";
 import { ClinicProfileForm } from "@/components/config/ClinicProfileForm";
-import { PasswordChangeForm } from "@/components/config/PasswordChangeForm";
+import {
+  AccountSettingsForm,
+  type AccountFormValues,
+} from "@/components/config/AccountSettingsForm";
 import { HoursConfigForm } from "@/components/config/HoursConfigForm";
 import { SpecialtiesConfig } from "@/components/config/SpecialtiesConfig";
 import { ReminderConfigForm } from "@/components/config/ReminderConfigForm";
@@ -21,7 +24,7 @@ import {
 } from "@/lib/roles";
 
 export default function ConfiguracionPage() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, refreshUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -40,9 +43,9 @@ export default function ConfiguracionPage() {
     setModulos(defaultModulesForRole(next));
   };
 
-  const [oldPwd, setOldPwd] = useState("");
-  const [newPwd, setNewPwd] = useState("");
-  const [pwdMsg, setPwdMsg] = useState("");
+  const [accountMsg, setAccountMsg] = useState("");
+  const [accountErr, setAccountErr] = useState("");
+  const [accountBusy, setAccountBusy] = useState(false);
 
   const [reminderHours, setReminderHours] = useState("24");
   const [reminderTemplate, setReminderTemplate] = useState("");
@@ -434,19 +437,51 @@ export default function ConfiguracionPage() {
     }
   };
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPwdMsg("");
+  const handleAccountUpdate = async (values: AccountFormValues) => {
+    setAccountMsg("");
+    setAccountErr("");
+    setAccountBusy(true);
     try {
-      await apiFetch("/api/auth/change-password", {
-        method: "POST",
-        body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }),
+      const body: Record<string, string> = {
+        current_password: values.currentPassword,
+        nombre: values.nombre,
+        email: values.email,
+      };
+      if (values.newPassword) {
+        body.new_password = values.newPassword;
+        body.confirm_new_password = values.confirmPassword;
+      }
+      await apiFetch("/api/users/me", {
+        method: "PATCH",
+        body: JSON.stringify(body),
       });
-      setPwdMsg("Contraseña cambiada correctamente");
-      setOldPwd("");
-      setNewPwd("");
+
+      if (values.newPassword) {
+        const login = await apiFetch<{
+          access_token: string;
+          refresh_token: string;
+        }>("/api/auth/login", {
+          method: "POST",
+          skipAuth: true,
+          body: JSON.stringify({
+            email: values.email,
+            password: values.newPassword,
+          }),
+        });
+        setToken(login.access_token);
+        setRefreshToken(login.refresh_token);
+      }
+
+      await refreshUser();
+      setAccountMsg(
+        values.newPassword
+          ? "Cuenta y contraseña actualizadas correctamente."
+          : "Cuenta actualizada correctamente."
+      );
     } catch (err: unknown) {
-      setPwdMsg(err instanceof Error ? err.message : "Error al cambiar contraseña");
+      setAccountErr(err instanceof Error ? err.message : "No se pudo actualizar la cuenta");
+    } finally {
+      setAccountBusy(false);
     }
   };
 
@@ -467,7 +502,7 @@ export default function ConfiguracionPage() {
       <div>
         <h1 className="text-page-title text-slate-800">Configuración</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Datos del centro, contraseña, horario, recordatorios y usuarios.
+          Datos del centro, cuenta de acceso, horario, recordatorios y usuarios.
         </p>
       </div>
       {error && (
@@ -490,13 +525,13 @@ export default function ConfiguracionPage() {
         />
       )}
 
-      <PasswordChangeForm
-        oldPwd={oldPwd}
-        setOldPwd={setOldPwd}
-        newPwd={newPwd}
-        setNewPwd={setNewPwd}
-        pwdMsg={pwdMsg}
-        onSubmit={handleChangePassword}
+      <AccountSettingsForm
+        initialNombre={currentUser?.nombre || ""}
+        initialEmail={currentUser?.email || ""}
+        busy={accountBusy}
+        msg={accountMsg}
+        err={accountErr}
+        onSubmit={handleAccountUpdate}
       />
 
       <HoursConfigForm

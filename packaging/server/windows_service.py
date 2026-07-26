@@ -175,11 +175,161 @@ def _browser_candidates() -> list[Path]:
     ]
 
 
+def _resolve_brand_icon() -> Path | None:
+    """Prefer installer icon.ico; fall back to embedded web favicon.ico."""
+    install = _install_dir()
+    candidates = [
+        install / "assets" / "icons" / "icon.ico",
+        install / "web" / "favicon.ico",
+        Path(getattr(sys, "_MEIPASS", "") or "") / "web" / "favicon.ico",
+    ]
+    for c in candidates:
+        if c and c.is_file():
+            return c.resolve()
+    return None
+
+
+def _write_branded_app_shortcut(url: str, browser: Path, profile: Path) -> Path | None:
+    """
+    Create/update a .lnk that launches Edge/Chrome --app with the clinic icon.
+    Launching via the .lnk (not the bare EXE) is what puts the brand icon on the
+    Windows taskbar for Chromium app windows.
+    """
+    import json
+    import subprocess
+    import tempfile
+
+    icon = _resolve_brand_icon()
+    local = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
+    app_dir = local / "NKDentalSoft"
+    try:
+        app_dir.mkdir(parents=True, exist_ok=True)
+        profile.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return None
+
+    lnk = app_dir / "N&K DentalSoft.lnk"
+    args = (
+        f'--app={url} --user-data-dir="{profile}" '
+        "--no-first-run --no-default-browser-check"
+    )
+    icon_loc = f"{icon},0" if icon else ""
+
+    # WScript shortcut + AppUserModelID so Windows groups/shows our icon.
+    ps = f"""
+$ErrorActionPreference = 'Stop'
+$lnkPath = {json.dumps(str(lnk))}
+$target = {json.dumps(str(browser))}
+$arguments = {json.dumps(args)}
+$workDir = {json.dumps(str(browser.parent))}
+$icon = {json.dumps(icon_loc)}
+$appId = 'NKDentalSoft.ClinicUI'
+
+$ws = New-Object -ComObject WScript.Shell
+$s = $ws.CreateShortcut($lnkPath)
+$s.TargetPath = $target
+$s.Arguments = $arguments
+$s.WorkingDirectory = $workDir
+$s.WindowStyle = 1
+$s.Description = 'N&K DentalSoft'
+if ($icon) {{ $s.IconLocation = $icon }}
+$s.Save()
+
+# Stamp System.AppUserModel.ID on the .lnk (taskbar identity)
+$code = @"
+using System;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+
+public static class LnkAppId {{
+  [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IPropertyStore {{
+    int GetCount(out uint cProps);
+    int GetAt(uint iProp, out PROPERTYKEY pkey);
+    int GetValue(ref PROPERTYKEY key, out PropVariant pv);
+    int SetValue(ref PROPERTYKEY key, ref PropVariant pv);
+    int Commit();
+  }}
+  [StructLayout(LayoutKind.Sequential, Pack=4)]
+  struct PROPERTYKEY {{ public Guid fmtid; public uint pid; }}
+  [StructLayout(LayoutKind.Explicit)]
+  struct PropVariant {{
+    [FieldOffset(0)] public ushort vt;
+    [FieldOffset(8)] public IntPtr pszVal;
+  }}
+  [DllImport("shell32.dll", CharSet=CharSet.Unicode, PreserveSig=false)]
+  static extern void SHGetPropertyStoreFromParsingName(
+    string pszPath, IntPtr pbc, uint flags, [MarshalAs(UnmanagedType.LPStruct)] Guid riid, out IPropertyStore ppv);
+  [DllImport("ole32.dll")] static extern int PropVariantClear(ref PropVariant pvar);
+  public static void Set(string path, string appId) {{
+    var key = new PROPERTYKEY {{
+      fmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"),
+      pid = 5
+    }};
+    IPropertyStore store;
+    SHGetPropertyStoreFromParsingName(path, IntPtr.Zero, 2 /*GPS_READWRITE*/,
+      typeof(IPropertyStore).GUID, out store);
+    var pv = new PropVariant {{ vt = 31 /*VT_LPWSTR*/ }};
+    pv.pszVal = Marshal.StringToCoTaskMemUni(appId);
+    try {{
+      store.SetValue(ref key, ref pv);
+      store.Commit();
+    }} finally {{
+      PropVariantClear(ref pv);
+      Marshal.ReleaseComObject(store);
+    }}
+  }}
+}}
+"@
+try {{
+  Add-Type -TypeDefinition $code -ErrorAction Stop | Out-Null
+  [LnkAppId]::Set($lnkPath, $appId)
+}} catch {{
+  # Shortcut still usable without AUMID
+}}
+"""
+    ps_exe = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    if not ps_exe.is_file():
+        return None
+    script_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".ps1", delete=False, encoding="utf-8-sig"
+        ) as fh:
+            fh.write(ps)
+            script_path = fh.name
+        proc = subprocess.run(
+            [
+                str(ps_exe),
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                script_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0,
+        )
+        if proc.returncode != 0 or not lnk.is_file():
+            return None
+        return lnk
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    finally:
+        if script_path:
+            try:
+                os.unlink(script_path)
+            except OSError:
+                pass
+
+
 def _open_clinic_ui(url: str) -> str:
     """
-    Open UI as a dedicated app window (Edge/Chrome --app) so Windows shows an
-    N&K DentalSoft-like taskbar button instead of a normal browser tab.
-    Falls back to the default browser if no Chromium browser is found.
+    Open UI as a dedicated app window with the N&K DentalSoft taskbar icon.
+    Prefer launching a branded .lnk (IconLocation + AppUserModelID); fall back
+    to Edge/Chrome --app, then the default browser.
     """
     import subprocess
 
@@ -196,6 +346,15 @@ def _open_clinic_ui(url: str) -> str:
     for browser in _browser_candidates():
         if not browser or not browser.is_file():
             continue
+
+        lnk = _write_branded_app_shortcut(url, browser, profile)
+        if lnk and lnk.is_file():
+            try:
+                os.startfile(str(lnk))  # type: ignore[attr-defined]
+                return f"lnk:{browser.name}"
+            except OSError:
+                pass
+
         args = [
             str(browser),
             f"--app={url}",
@@ -206,7 +365,7 @@ def _open_clinic_ui(url: str) -> str:
         try:
             creation = 0
             if sys.platform == "win32":
-                creation = 0x00000008 | 0x00000200  # DETACHED | NEW_PROCESS_GROUP
+                creation = 0x00000008 | 0x00000200
             subprocess.Popen(
                 args,
                 cwd=str(browser.parent),

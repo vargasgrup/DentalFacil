@@ -103,3 +103,70 @@ def test_change_password_bumps_token_version(client: TestClient, admin_tokens: d
         headers={"Authorization": f"Bearer {login.json()['access_token']}"},
     )
     assert me_new.status_code == 200
+
+
+def test_update_me_nombre_and_email(client: TestClient, admin_tokens: dict):
+    headers = {"Authorization": f"Bearer {admin_tokens['access_token']}"}
+    resp = client.patch(
+        "/api/users/me",
+        headers=headers,
+        json={
+            "current_password": ADMIN_PASSWORD,
+            "nombre": "Admin Clínica",
+            "email": ADMIN_EMAIL,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["nombre"] == "Admin Clínica"
+    assert body["email"].lower() == ADMIN_EMAIL.lower()
+
+
+def test_update_me_rejects_wrong_password(client: TestClient, admin_tokens: dict):
+    headers = {"Authorization": f"Bearer {admin_tokens['access_token']}"}
+    resp = client.patch(
+        "/api/users/me",
+        headers=headers,
+        json={
+            "current_password": "wrong-password",
+            "nombre": "Otro Nombre",
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_update_me_password_and_relogin(client: TestClient, admin_tokens: dict):
+    headers = {"Authorization": f"Bearer {admin_tokens['access_token']}"}
+    resp = client.patch(
+        "/api/users/me",
+        headers=headers,
+        json={
+            "current_password": ADMIN_PASSWORD,
+            "nombre": "Admin",
+            "email": ADMIN_EMAIL,
+            "new_password": "newerpass99",
+            "confirm_new_password": "newerpass99",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+    # Old token invalidated
+    assert client.get("/api/users/me", headers=headers).status_code == 401
+
+    login = client.post(
+        "/api/auth/login",
+        json={"email": ADMIN_EMAIL, "password": "newerpass99"},
+    )
+    assert login.status_code == 200
+    # restore for other tests that reuse admin password fixtures if any
+    new_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    reset = client.patch(
+        "/api/users/me",
+        headers=new_headers,
+        json={
+            "current_password": "newerpass99",
+            "new_password": ADMIN_PASSWORD,
+            "confirm_new_password": ADMIN_PASSWORD,
+        },
+    )
+    assert reset.status_code == 200, reset.text

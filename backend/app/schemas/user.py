@@ -57,6 +57,41 @@ class PasswordChange(BaseModel):
     new_password: str = Field(..., min_length=6)
 
 
+class AccountUpdate(BaseModel):
+    """Self-service update: nombre (usuario), email (login) y/o contraseña."""
+
+    current_password: str = Field(..., min_length=1)
+    nombre: Optional[str] = Field(None, min_length=2, max_length=120)
+    email: Optional[EmailStr] = None
+    new_password: Optional[str] = Field(None, min_length=6)
+    confirm_new_password: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_account_update(self) -> "AccountUpdate":
+        nombre = (self.nombre or "").strip() if self.nombre is not None else None
+        email = self.email
+        new_pwd = (self.new_password or "").strip() if self.new_password else ""
+        confirm = (self.confirm_new_password or "").strip() if self.confirm_new_password else ""
+
+        if self.nombre is not None:
+            object.__setattr__(self, "nombre", nombre)
+
+        if not nombre and email is None and not new_pwd:
+            raise ValueError("Indique un cambio: nombre, correo o nueva contraseña")
+
+        if new_pwd or confirm:
+            if len(new_pwd) < 6:
+                raise ValueError("La nueva contraseña debe tener al menos 6 caracteres")
+            if new_pwd != confirm:
+                raise ValueError("Las contraseñas nuevas no coinciden")
+            object.__setattr__(self, "new_password", new_pwd)
+            object.__setattr__(self, "confirm_new_password", confirm)
+        else:
+            object.__setattr__(self, "new_password", None)
+            object.__setattr__(self, "confirm_new_password", None)
+        return self
+
+
 class SetupRequest(BaseModel):
     nombre: str = Field(..., min_length=2, max_length=120)
     email: EmailStr

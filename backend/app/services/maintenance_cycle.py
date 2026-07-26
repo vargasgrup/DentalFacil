@@ -19,7 +19,7 @@ from app.models.ids import CLINIC_SETTINGS_ID
 
 MAINTENANCE_MONTHS = 12
 
-# Única clave de proveedor para renovar / apagar el aviso (no configurable por entorno).
+# Legacy literal kept for import compatibility in tests; runtime uses settings.
 MAINTENANCE_ACCESS_KEY = "Solo,yo1532"
 
 ALERT_TITLE = "Mantenimiento del sistema requerido"
@@ -87,8 +87,18 @@ def get_maintenance_status(db: Session) -> dict[str, Any]:
 
 
 def verify_maintenance_access_key(raw: str | None) -> None:
-    expected = MAINTENANCE_ACCESS_KEY
+    from app.config import settings
+
+    expected = settings.effective_maintenance_access_key()
     provided = (raw or "").strip()
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Clave de mantenimiento no configurada. "
+                "Defina MAINTENANCE_ACCESS_KEY en el entorno del servidor."
+            ),
+        )
     if not provided or not secrets.compare_digest(provided, expected):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

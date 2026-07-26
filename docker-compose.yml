@@ -25,8 +25,11 @@ services:
       - "8001:8001"
     environment:
       PORT: "8001"
+      APP_ENV: development
       DATABASE_URL: postgresql+psycopg://nk_dentalsoft:nk_dentalsoft@db:5432/nk_dentalsoft
+      # Never ship production with these defaults — generate per install:
       JWT_SECRET: change-me-in-production-please-use-a-long-random-string
+      MAINTENANCE_ACCESS_KEY: Solo,yo1532
       CORS_ORIGINS: '["http://localhost:3001"]'
       CLINIC_NAME: M&D Odontología Especializada
       CLINIC_TICKET_SERIE: T001

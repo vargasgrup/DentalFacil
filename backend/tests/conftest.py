@@ -27,6 +27,8 @@ TEST_DATABASE_URL = os.environ.get(
 )
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["JWT_SECRET"] = "pytest-jwt-secret-not-for-production"
+os.environ["APP_ENV"] = "test"
+os.environ["MAINTENANCE_ACCESS_KEY"] = "Solo,yo1532"
 os.environ["RATE_LIMIT_LOGIN_PER_MINUTE"] = "1000"
 os.environ["RATE_LIMIT_SETUP_PER_MINUTE"] = "1000"
 

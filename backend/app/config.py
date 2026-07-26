@@ -8,6 +8,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 JWT_SECRET_INSECURE_DEFAULT = "change-me-in-production-please-use-a-long-random-string"
 JWT_SECRET_MIN_LENGTH = 32
+# Legacy vendor key — never ship as production secret (installer must set a unique value).
+MAINTENANCE_ACCESS_KEY_DEV_DEFAULT = "Solo,yo1532"
+MAINTENANCE_ACCESS_KEY_MIN_LENGTH = 16
 
 
 def normalize_database_url(url: str) -> str:
@@ -77,6 +80,9 @@ class Settings(BaseSettings):
     # Local air-gapped only: return code in API response (never enable on public Railway)
     PASSWORD_RESET_INLINE_CODE: bool = False
 
+    # Vendor / maintenance break-glass (N&K ops). Required unique value in production.
+    MAINTENANCE_ACCESS_KEY: str = ""
+
     # App
     APP_NAME: str = "N&K Dental Soft"
     CORS_ORIGINS: str = "http://localhost:3001"
@@ -143,6 +149,34 @@ class Settings(BaseSettings):
             "No uses el valor por defecto del código."
         )
 
+    def effective_maintenance_access_key(self) -> str:
+        """
+        Production: only the configured env key (never the legacy literal).
+        Development/test: allow legacy fallback so local ops still work.
+        """
+        configured = (self.MAINTENANCE_ACCESS_KEY or "").strip()
+        if configured:
+            return configured
+        if self.is_production:
+            return ""
+        return MAINTENANCE_ACCESS_KEY_DEV_DEFAULT
+
+    def require_secure_maintenance_key_in_production(self) -> None:
+        if not self.is_production:
+            return
+        key = (self.MAINTENANCE_ACCESS_KEY or "").strip()
+        if (
+            not key
+            or key == MAINTENANCE_ACCESS_KEY_DEV_DEFAULT
+            or len(key) < MAINTENANCE_ACCESS_KEY_MIN_LENGTH
+        ):
+            raise RuntimeError(
+                "MAINTENANCE_ACCESS_KEY insegura en producción: defina un secreto "
+                f"único (≥{MAINTENANCE_ACCESS_KEY_MIN_LENGTH} caracteres) distinto "
+                "del valor histórico de desarrollo. "
+                "Ej.: `openssl rand -hex 24` → APP_ENV=production + MAINTENANCE_ACCESS_KEY."
+            )
+
     @property
     def cors_origins(self) -> list[str]:
         return parse_cors_origins(self.CORS_ORIGINS)
@@ -154,3 +188,4 @@ class Settings(BaseSettings):
 
 settings = Settings()
 settings.require_secure_jwt_in_production()
+settings.require_secure_maintenance_key_in_production()

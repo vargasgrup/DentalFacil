@@ -15,7 +15,10 @@ def test_maintenance_status_requires_auth(client: TestClient):
 
 
 def test_fixed_vendor_key_is_solo_yo1532():
+    from app.config import settings
+
     assert MAINTENANCE_ACCESS_KEY == "Solo,yo1532"
+    assert settings.effective_maintenance_access_key() == "Solo,yo1532"
 
 
 def test_maintenance_cycle_status_and_vendor_reset(

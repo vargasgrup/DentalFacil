@@ -45,3 +45,33 @@ def test_production_accepts_strong_jwt_secret(monkeypatch: pytest.MonkeyPatch):
     s = Settings(APP_ENV="production", JWT_SECRET=secret)
     assert s.jwt_secret_is_secure is True
     s.require_secure_jwt_in_production()
+
+
+def test_production_rejects_legacy_maintenance_key(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+    from app.config import MAINTENANCE_ACCESS_KEY_DEV_DEFAULT
+
+    s = Settings(
+        APP_ENV="production",
+        JWT_SECRET="a" * 32,
+        MAINTENANCE_ACCESS_KEY=MAINTENANCE_ACCESS_KEY_DEV_DEFAULT,
+    )
+    with pytest.raises(RuntimeError, match="MAINTENANCE_ACCESS_KEY insegura"):
+        s.require_secure_maintenance_key_in_production()
+
+
+def test_production_requires_maintenance_key(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+    s = Settings(APP_ENV="production", JWT_SECRET="a" * 32, MAINTENANCE_ACCESS_KEY="")
+    with pytest.raises(RuntimeError, match="MAINTENANCE_ACCESS_KEY insegura"):
+        s.require_secure_maintenance_key_in_production()
+
+
+def test_production_accepts_strong_maintenance_key(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+    s = Settings(
+        APP_ENV="production",
+        JWT_SECRET="a" * 32,
+        MAINTENANCE_ACCESS_KEY="clinic-unique-vendor-key-9f2a",
+    )
+    s.require_secure_maintenance_key_in_production()

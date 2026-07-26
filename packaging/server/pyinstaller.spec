@@ -1,25 +1,31 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller onedir build for N&K DentalSoft Server.
-# From repo root (with venv activated):
-#   pyinstaller packaging/server/pyinstaller.spec
+# Prefer: powershell packaging/scripts/build_server.ps1
+# Manual:
+#   pyinstaller packaging/server/pyinstaller.spec --noconfirm
 
-import sys
 from pathlib import Path
 
 block_cipher = None
 ROOT = Path(SPECPATH).resolve().parents[1]
 BACKEND = ROOT / "backend"
+SERVER_PKG = ROOT / "packaging" / "server"
+DIST_DIR = SERVER_PKG / "dist"
 
 a = Analysis(
-    [str(BACKEND / "boot.py") if (BACKEND / "boot.py").exists() else str(BACKEND / "app" / "main.py")],
-    pathex=[str(BACKEND)],
+    [str(SERVER_PKG / "windows_service.py")],
+    pathex=[str(BACKEND), str(SERVER_PKG)],
     binaries=[],
     datas=[
         (str(BACKEND / "alembic"), "alembic"),
         (str(BACKEND / "alembic.ini"), "."),
         (str(BACKEND / "app"), "app"),
+        (str(SERVER_PKG / "server_entry.py"), "."),
+        (str(SERVER_PKG / "assets" / "icons"), "assets/icons"),
+        (str(SERVER_PKG / "scripts"), "scripts"),
     ],
     hiddenimports=[
+        "server_entry",
         "uvicorn.logging",
         "uvicorn.loops",
         "uvicorn.loops.auto",
@@ -33,6 +39,14 @@ a = Analysis(
         "apscheduler",
         "reportlab",
         "zeroconf",
+        "cryptography",
+        "win32timezone",
+        "pythoncom",
+        "pywintypes",
+        "servicemanager",
+        "win32serviceutil",
+        "win32service",
+        "win32event",
     ],
     hookspath=[],
     hooksconfig={},
@@ -54,13 +68,14 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(SERVER_PKG / "assets" / "icons" / "icon.ico"),
 )
 coll = COLLECT(
     exe,
@@ -68,7 +83,7 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name="nkdentalsoft-server",
 )

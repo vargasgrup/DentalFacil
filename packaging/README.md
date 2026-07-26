@@ -34,20 +34,23 @@ powershell -ExecutionPolicy Bypass -File packaging/server/scripts/post_install_h
 ## Build Servidor
 
 ```powershell
-cd backend
-pyinstaller ..\packaging\server\pyinstaller.spec
-# Copiar salida a packaging/server/dist/nkdentalsoft-server/
-makensis packaging\server\installer.nsi
+# Una vez: winget install Python.Python.3.12 NSIS.NSIS
+powershell -ExecutionPolicy Bypass -File packaging\scripts\build_server.ps1
 ```
 
-Servicio (plan A pywin32):
+Salida: `dist\NKDentalSoft-Server-Setup-x64.exe` (+ onedir en `packaging\server\dist\nkdentalsoft-server\`).
+
+Servicio (plan A pywin32, embebido en el `.exe`):
 
 ```powershell
-python packaging\server\windows_service.py --startup auto install
-python packaging\server\windows_service.py start
+nkdentalsoft-server.exe --startup auto install
+nkdentalsoft-server.exe start
+# Depuración:
+nkdentalsoft-server.exe --foreground
+nkdentalsoft-server.exe --init-clinic
 ```
 
-Plan B: NSSM apuntando a `nkdentalsoft-server.exe` / `windows_service.py` foreground.
+Plan B: NSSM apuntando a `nkdentalsoft-server.exe --foreground`.
 
 Firewall: solo perfiles **Privado** y **Dominio**, puerto 8001.
 
@@ -68,14 +71,16 @@ Salida: `packaging/client/icons/`, `packaging/client/src-tauri/icons/`, `packagi
 ## Build Cliente (Tauri)
 
 ```powershell
-# Requisitos: rustup + `cargo install tauri-cli --version "^2"`
-cd packaging\client\src-tauri
-cargo tauri build
+# Una vez: winget install Rustlang.Rustup
+#          cargo install tauri-cli --version "^2"
+powershell -ExecutionPolicy Bypass -File packaging\scripts\build_client.ps1 -SkipInstallCli
 ```
+
+Salida: `dist\NKDentalSoft-Client-Setup-x64.exe`.
 
 Wizard (`packaging/client/ui/`): mDNS → IP + fingerprint TOFU → `https://`/`wss://` únicamente.  
 Comandos nativos: `discover_servers`, `validate_fingerprint`, `navigate_to_server`.  
-Updater: `GET /api/system/client-manifest.json` en el Servidor LAN.
+Updater: `GET /api/system/client-manifest.json` en el Servidor LAN (plugin Tauri opcional en v1.1).
 
 ## API de sistema
 

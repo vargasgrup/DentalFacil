@@ -38,13 +38,5 @@
         "installMode": "perMachine"
       }
     }
-  },
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://{{server}}/api/system/client-manifest.json"
-      ],
-      "pubkey": "REPLACE_WITH_TAURI_UPDATER_PUBKEY"
-    }
   }
 }

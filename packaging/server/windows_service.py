@@ -1,68 +1,52 @@
 """
-Windows Service wrapper for N&K DentalSoft Server (pywin32).
+Windows Service + foreground runner for N&K DentalSoft Server.
 
-Install (elevated):
-  python windows_service.py install
-  python windows_service.py start
+Frozen EXE (clinic):
+  nkdentalsoft-server.exe install | start | stop | remove
+  nkdentalsoft-server.exe --foreground
 
-Requires pywin32. Plan B: NSSM (documented in packaging/README.md).
+Dev:
+  python packaging/server/windows_service.py --foreground
 """
 
 from __future__ import annotations
 
 import os
 import sys
+import threading
 from pathlib import Path
 
 
-def _load_env_file(path: Path) -> None:
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, _, v = line.partition("=")
-        os.environ.setdefault(k.strip(), v.strip())
+def _install_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
 
 
-def _programdata() -> Path:
-    return Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "NKDentalSoft"
+def _ensure_path() -> None:
+    install = _install_dir()
+    os.environ.setdefault("NKDENTALSOFT_INSTALL_DIR", str(install))
+    for p in (install, Path(__file__).resolve().parent):
+        if p.exists() and str(p) not in sys.path:
+            sys.path.insert(0, str(p))
 
 
 def run_uvicorn() -> None:
-    root = _programdata()
-    _load_env_file(root / "config" / ".env")
-    os.environ.setdefault("APP_ENV", "production")
-    host = os.environ.get("HOST", "0.0.0.0")
-    port = int(os.environ.get("BACKEND_PORT", "8001"))
-    cert = root / "certs" / "server.crt"
-    key = root / "certs" / "server.key"
-    # Ensure backend package is importable when frozen / installed
-    install_dir = Path(os.environ.get("NKDENTALSOFT_INSTALL_DIR", Path(sys.executable).parent))
-    if str(install_dir) not in sys.path:
-        sys.path.insert(0, str(install_dir))
+    _ensure_path()
+    from server_entry import run_server
 
-    import uvicorn
-
-    kwargs: dict = {
-        "app": "app.main:app",
-        "host": host,
-        "port": port,
-        "log_level": "info",
-    }
-    if cert.is_file() and key.is_file():
-        kwargs["ssl_certfile"] = str(cert)
-        kwargs["ssl_keyfile"] = str(key)
-    uvicorn.run(**kwargs)
+    run_server()
 
 
 try:
+    import servicemanager
     import win32event
     import win32service
     import win32serviceutil
-    import servicemanager
 except ImportError:
+    servicemanager = None  # type: ignore
+    win32event = None  # type: ignore
+    win32service = None  # type: ignore
     win32serviceutil = None  # type: ignore
 
 
@@ -78,11 +62,11 @@ if win32serviceutil is not None:
         def __init__(self, args):
             win32serviceutil.ServiceFramework.__init__(self, args)
             self.stop_event = win32event.CreateEvent(None, 0, 0, None)
-            self.proc = None
 
         def SvcStop(self):
             self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
             win32event.SetEvent(self.stop_event)
+            os._exit(0)
 
         def SvcDoRun(self):
             servicemanager.LogMsg(
@@ -90,20 +74,105 @@ if win32serviceutil is not None:
                 servicemanager.PYS_SERVICE_STARTED,
                 (self._svc_name_, ""),
             )
-            run_uvicorn()
+            threading.Thread(target=run_uvicorn, daemon=True).start()
+            win32event.WaitForSingleObject(self.stop_event, win32event.INFINITE)
+
+
+def _detect_lan_ip() -> str:
+    try:
+        import socket
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        if ip and not ip.startswith("127."):
+            return ip
+    except Exception:
+        pass
+    return "127.0.0.1"
+
+
+def init_clinic(host: str | None = None) -> None:
+    """Generate unique .env + self-signed cert under ProgramData (installer step)."""
+    _ensure_path()
+    from pathlib import Path as P
+
+    scripts = _install_dir() / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+
+    try:
+        import generate_production_secrets as gps
+        import generate_selfsigned_cert as gsc
+    except ImportError:
+        pkg = Path(__file__).resolve().parent / "scripts"
+        sys.path.insert(0, str(pkg))
+        import generate_production_secrets as gps
+        import generate_selfsigned_cert as gsc
+
+    out_env = gps._default_env_path()
+    jwt_secret, maint = gps.generate_secrets()
+    gps.write_env(out_env, jwt_secret=jwt_secret, maintenance_key=maint)
+    print(f"Wrote {out_env}")
+
+    lan = (host or "").strip() or _detect_lan_ip()
+    hosts = ["127.0.0.1", "localhost", "nkdentalsoft-server.local", lan]
+    certs = (
+        P(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
+        / "NKDentalSoft"
+        / "certs"
+    )
+    info = gsc.generate_cert(
+        certs,
+        common_name="nkdentalsoft-server.local",
+        extra_hosts=hosts,
+    )
+    print(f"lan_ip={lan}")
+    print(f"fingerprint_sha256={info['fingerprint_sha256']}")
 
 
 def main() -> None:
-    if win32serviceutil is None:
-        print("pywin32 not installed — running foreground uvicorn instead")
+    _ensure_path()
+    argv = sys.argv[1:]
+    lowered = [a.lower() for a in argv]
+
+    if "--init-clinic" in lowered:
+        host = None
+        for i, a in enumerate(argv):
+            if a.lower() == "--host" and i + 1 < len(argv):
+                host = argv[i + 1]
+                break
+        init_clinic(host)
+        return
+
+    if "--foreground" in lowered or "-f" in lowered:
         run_uvicorn()
         return
-    if len(sys.argv) == 1:
-        servicemanager.Initialize()
-        servicemanager.PrepareToHostSingle(NKDentalSoftServerService)
-        servicemanager.StartServiceCtrlDispatcher()
-    else:
+
+    if win32serviceutil is None:
+        print("pywin32 not installed — running foreground server")
+        run_uvicorn()
+        return
+
+    svc_cmds = {"install", "remove", "start", "stop", "restart", "update", "debug"}
+    if svc_cmds.intersection(lowered) or "--startup" in lowered:
+        if getattr(sys, "frozen", False):
+            sys.argv[0] = sys.executable
         win32serviceutil.HandleCommandLine(NKDentalSoftServerService)
+        return
+
+    if getattr(sys, "frozen", False) and not argv:
+        try:
+            servicemanager.Initialize()
+            servicemanager.PrepareToHostSingle(NKDentalSoftServerService)
+            servicemanager.StartServiceCtrlDispatcher()
+            return
+        except Exception:
+            run_uvicorn()
+            return
+
+    run_uvicorn()
 
 
 if __name__ == "__main__":

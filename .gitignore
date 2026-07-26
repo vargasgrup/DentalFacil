@@ -37,6 +37,14 @@ backend/tests/_testdata/
 .claude/
 .impeccable/
 
+# Packaging / installer build outputs (generate locally)
+.venv-build/
+dist/
+packaging/server/dist/
+packaging/server/build/
+packaging/client/src-tauri/target/
+packaging/client/src-tauri/gen/
+
 
 # Uploaded assets
 backend/app/assets/uploads/*

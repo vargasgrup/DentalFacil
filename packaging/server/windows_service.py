@@ -408,6 +408,18 @@ def run_clinic_webview(url: str) -> int:
         return 1
 
     icon = _resolve_brand_icon()
+
+    def _go_fullscreen(win: object) -> None:
+        """Fill the monitor: prefer maximize (taskbar visible), else true fullscreen."""
+        for meth in ("maximize", "toggle_fullscreen"):
+            fn = getattr(win, meth, None)
+            if callable(fn):
+                try:
+                    fn()
+                    return
+                except Exception:
+                    continue
+
     try:
         window = webview.create_window(
             "N&K DentalSoft",
@@ -417,18 +429,35 @@ def run_clinic_webview(url: str) -> int:
             min_size=(960, 640),
             text_select=True,
             confirm_close=False,
+            maximized=True,
         )
     except TypeError:
-        # Older pywebview signature
-        window = webview.create_window("N&K DentalSoft", url, width=1360, height=900)
+        try:
+            window = webview.create_window(
+                "N&K DentalSoft",
+                url,
+                width=1920,
+                height=1080,
+                min_size=(960, 640),
+                fullscreen=True,
+            )
+        except TypeError:
+            window = webview.create_window("N&K DentalSoft", url, width=1360, height=900)
+
+    try:
+        # Ensure maximized/fullscreen even if create_window ignored the flag
+        if hasattr(window, "events") and hasattr(window.events, "loaded"):
+            window.events.loaded += lambda: _go_fullscreen(window)
+        else:
+            _go_fullscreen(window)
+    except Exception:
+        pass
 
     start_kwargs: dict = {}
     if icon and icon.is_file():
-        # Some backends accept private_mode / storage; icon is process-level on Win.
         start_kwargs["private_mode"] = False
     try:
         webview.start(**start_kwargs) if start_kwargs else webview.start()
-        _ = window
         return 0
     except Exception as exc:
         try:

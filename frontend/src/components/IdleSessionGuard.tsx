@@ -3,8 +3,8 @@
 import { useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth";
 
-/** Idle minutes before auto-logout (clinic PC left open overnight). */
-export const IDLE_LOGOUT_MINUTES = 120;
+/** Idle minutes before auto-logout (clinic PC left unattended). */
+export const IDLE_LOGOUT_MINUTES = 15;
 
 const ACTIVITY_EVENTS: (keyof WindowEventMap)[] = [
   "mousemove",

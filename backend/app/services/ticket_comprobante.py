@@ -246,10 +246,13 @@ def _p_html(text: str, style: ParagraphStyle) -> Paragraph:
 def _styles(fmt: str) -> dict[str, ParagraphStyle]:
     if fmt == "80mm":
         title_sz, body_sz, small_sz, tiny_sz = 9, 7.5, 6.5, 5.5
+        after = 0.5
     elif fmt == "A5":
         title_sz, body_sz, small_sz, tiny_sz = 12, 9, 8, 7
+        after = 1
     else:
         title_sz, body_sz, small_sz, tiny_sz = 14, 10, 9, 8
+        after = 1
 
     return {
         "center_bold": ParagraphStyle(
@@ -258,7 +261,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontSize=title_sz,
             alignment=1,
             leading=title_sz + 2,
-            spaceAfter=1,
+            spaceAfter=after,
             wordWrap="CJK",
         ),
         "center": ParagraphStyle(
@@ -267,7 +270,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontSize=small_sz,
             alignment=1,
             leading=small_sz + 2,
-            spaceAfter=1,
+            spaceAfter=after,
             wordWrap="CJK",
         ),
         "center_small": ParagraphStyle(
@@ -277,7 +280,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             alignment=1,
             leading=tiny_sz + 1.5,
             textColor=colors.HexColor("#334155"),
-            spaceAfter=1,
+            spaceAfter=after,
             wordWrap="CJK",
         ),
         "left": ParagraphStyle(
@@ -286,7 +289,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontSize=body_sz,
             alignment=0,
             leading=body_sz + 2,
-            spaceAfter=1,
+            spaceAfter=after,
             wordWrap="CJK",
         ),
         "left_bold": ParagraphStyle(
@@ -295,7 +298,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontSize=body_sz,
             alignment=0,
             leading=body_sz + 2,
-            spaceAfter=1,
+            spaceAfter=after,
             wordWrap="CJK",
         ),
         "tiny": ParagraphStyle(
@@ -305,7 +308,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             alignment=1,
             leading=tiny_sz + 1.5,
             textColor=colors.HexColor("#64748b"),
-            spaceAfter=1,
+            spaceAfter=after,
             wordWrap="CJK",
         ),
         "total": ParagraphStyle(
@@ -427,14 +430,14 @@ def build_comprobante_story(
 
     story.append(_dash(content_w, tight=tight))
 
-    # --- Ítems: anchos fijos en mm + ALIGN de tabla (evita desfase Cant./precios) ---
+    # --- Ítems: misma sangría izquierda que «F. Emisión»; Cant. alineada a la izquierda ---
     header_fs = 6.5 if fmt == "80mm" else 8
     body_fs = 7 if fmt == "80mm" else 9
     if fmt == "80mm":
-        col_cant = 7 * mm
-        col_pu = 15 * mm
-        col_tot = 15 * mm
-        col_desc = max(content_w - col_cant - col_pu - col_tot, 20 * mm)
+        col_cant = 10 * mm
+        col_pu = 14 * mm
+        col_tot = 14 * mm
+        col_desc = max(content_w - col_cant - col_pu - col_tot, 22 * mm)
     else:
         col_cant = content_w * 0.12
         col_desc = content_w * 0.44
@@ -446,6 +449,7 @@ def build_comprobante_story(
         fontName="Helvetica-Bold",
         fontSize=header_fs,
         leading=header_fs + 1,
+        alignment=0,
     )
     hdr_right = ParagraphStyle(
         "tick_hdr_r",
@@ -460,13 +464,7 @@ def build_comprobante_story(
         fontSize=body_fs,
         leading=body_fs + 2,
         wordWrap="CJK",
-    )
-    body_center = ParagraphStyle(
-        "tick_qty",
-        fontName="Helvetica",
-        fontSize=body_fs,
-        leading=body_fs + 2,
-        alignment=1,
+        alignment=0,
     )
     body_right = ParagraphStyle(
         "tick_num",
@@ -484,7 +482,7 @@ def build_comprobante_story(
             Paragraph("Total", hdr_right),
         ],
         [
-            Paragraph("1", body_center),
+            Paragraph("1", body_left),
             Paragraph(_esc(concepto[:120]), body_left),
             Paragraph(_esc(format_price_plain(monto)), body_right),
             Paragraph(_esc(format_price_plain(monto)), body_right),
@@ -497,16 +495,15 @@ def build_comprobante_story(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ALIGN", (0, 0), (0, -1), "CENTER"),
-                ("ALIGN", (1, 0), (1, -1), "LEFT"),
+                ("ALIGN", (0, 0), (1, -1), "LEFT"),
                 ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-                # Padding asimétrico: Cant. estrecha no empuja el texto fuera
-                ("LEFTPADDING", (0, 0), (0, -1), 0.5),
-                ("RIGHTPADDING", (0, 0), (0, -1), 0.5),
-                ("LEFTPADDING", (1, 0), (1, -1), 1.5),
-                ("RIGHTPADDING", (1, 0), (1, -1), 1.5),
+                # Misma sangría que el bloque Cliente / F. Emisión (margen del doc)
+                ("LEFTPADDING", (0, 0), (0, -1), 0),
+                ("RIGHTPADDING", (0, 0), (0, -1), 2),
+                ("LEFTPADDING", (1, 0), (1, -1), 2),
+                ("RIGHTPADDING", (1, 0), (1, -1), 2),
                 ("LEFTPADDING", (2, 0), (-1, -1), 1),
-                ("RIGHTPADDING", (2, 0), (-1, -1), 0.5),
+                ("RIGHTPADDING", (2, 0), (-1, -1), 0),
                 ("TOPPADDING", (0, 0), (-1, -1), 1),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
                 ("LINEBELOW", (0, 0), (-1, 0), 0.4, colors.black),

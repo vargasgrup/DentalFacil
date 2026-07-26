@@ -86,7 +86,7 @@ def _render_pdf_bytes(story: list, fmt: str, margin: float) -> bytes:
         usable_w = TICKET_WIDTH - 2 * margin
         content_h = _measure_story_height(story, usable_w)
         # wrap() suele subestimar Paragraph/Table/Image → padding moderado
-        page_h = max(60 * mm, content_h + 2 * margin + 8 * mm)
+        page_h = max(50 * mm, content_h + 2 * margin + 2 * mm)
         page_size = (TICKET_WIDTH, page_h)
 
         # Reintentos si ReportLab aún parte a 2ª página
@@ -351,7 +351,7 @@ def generate_pdf(
     # Margins scale with format
     if fmt == "80mm":
         # Comprobante térmico: 2 mm reduce banda blanca superior; otros docs 4 mm
-        margin = 2 * mm if doc_type == "comprobante" else 4 * mm
+        margin = 1.5 * mm if doc_type == "comprobante" else 4 * mm
     elif fmt == "A5":
         margin = 8 * mm
     else:

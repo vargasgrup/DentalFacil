@@ -1,8 +1,8 @@
 /**
  * Impresión fiel de PDF.
  *
- * Raster (pdf.js → imagen) con @page del tamaño MediaBox real.
- * Evita bandas blancas al imprimir tickets 80mm y encabezados de Chrome.
+ * - 80mm: PDF nativo (sin encabezados/pies del navegador: fecha, título, URL).
+ * - A4/A5: raster (pdf.js → imagen) con @page del MediaBox.
  */
 
 const PT_TO_MM = 25.4 / 72;
@@ -234,23 +234,31 @@ function printHtmlInHiddenIframe(html: string): Promise<void> {
 }
 
 /**
- * Imprime el PDF tal cual (MediaBox 80mm × alto del ticket).
- * No pasa por HTML → no aparece la URL de /caja ni se inventa una 2ª hoja vacía.
+ * Imprime el PDF nativo 80mm con iframe del tamaño MediaBox real
+ * (evita banda blanca por “ajustar” un ticket corto a 297 mm / carta).
  */
-function printPdfNative(blob: Blob): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const pdfBlob =
-      blob.type === "application/pdf"
-        ? blob
-        : new Blob([blob], { type: "application/pdf" });
-    const url = URL.createObjectURL(pdfBlob);
+async function printPdfNative80mm(blob: Blob): Promise<void> {
+  const pdfjs = await loadPdfJs();
+  const data = new Uint8Array(await blob.arrayBuffer());
+  const pdf = await pdfjs.getDocument({ data }).promise;
+  const page = await pdf.getPage(1);
+  const base = page.getViewport({ scale: 1 });
+  const widthMm = Math.max(70, base.width * PT_TO_MM);
+  const heightMm = Math.max(40, base.height * PT_TO_MM);
 
+  const pdfBlob =
+    blob.type === "application/pdf"
+      ? blob
+      : new Blob([blob], { type: "application/pdf" });
+  const url = URL.createObjectURL(pdfBlob);
+
+  return new Promise((resolve, reject) => {
     const iframe = document.createElement("iframe");
     iframe.setAttribute("title", "Ticket");
     iframe.setAttribute("aria-hidden", "true");
-    // Tamaño real off-screen: el visor PDF de Chrome necesita área no nula
     iframe.style.cssText =
-      "position:fixed;left:-10000px;top:0;width:80mm;height:297mm;border:0;opacity:0;pointer-events:none;";
+      `position:fixed;left:-10000px;top:0;width:${widthMm.toFixed(2)}mm;` +
+      `height:${heightMm.toFixed(2)}mm;border:0;opacity:0;pointer-events:none;`;
     document.body.appendChild(iframe);
 
     let cleaned = false;
@@ -291,8 +299,7 @@ function printPdfNative(blob: Blob): Promise<void> {
     iframe.addEventListener(
       "load",
       () => {
-        // El plugin PDF interno tarda un poco más que un HTML
-        setTimeout(triggerPrint, 600);
+        setTimeout(triggerPrint, 500);
       },
       { once: true }
     );
@@ -302,31 +309,30 @@ function printPdfNative(blob: Blob): Promise<void> {
 }
 
 /**
- * Imprime un PDF (Blob).
- * Tickets 80mm usan raster a tamaño MediaBox exacto (evita banda blanca superior
- * al encajar un PDF corto en un iframe de 297 mm / “ajustar a página”).
- * A4/A5: mismo pipeline.
+ * Imprime un PDF (Blob). Ticket 80mm = PDF nativo; A4/A5 = raster.
  */
 export async function printPdfBlob(
   blob: Blob,
   options?: { title?: string; formatHint?: PrintFormatHint }
 ): Promise<void> {
+  if (options?.formatHint === "80mm") {
+    await printPdfNative80mm(blob);
+    return;
+  }
+
   const pdfjs = await loadPdfJs();
   const data = new Uint8Array(await blob.arrayBuffer());
   const pdf = await pdfjs.getDocument({ data }).promise;
   const pages = await renderAllPages(pdf);
   if (!pages.length) throw new Error("El PDF no tiene páginas");
 
-  const html = buildPrintHtml(pages, {
-    ...options,
-    title: options?.title || (options?.formatHint === "80mm" ? " " : options?.title),
-  });
+  const html = buildPrintHtml(pages, options);
   await printHtmlInHiddenIframe(html);
 }
 
 export function resetPrintFormatPrefsIfNeeded(): void {
   if (typeof window === "undefined") return;
-  const FLAG = "ds_print_pipeline_v5";
+  const FLAG = "ds_print_pipeline_v6";
   if (localStorage.getItem(FLAG) === "1") return;
   localStorage.removeItem("pdf_format_pref");
   localStorage.setItem(FLAG, "1");

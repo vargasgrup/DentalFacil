@@ -226,7 +226,7 @@ def logo_image(
 def logo_size_mm_for_ticket(fmt: str) -> float:
     """Ancho máximo del logo en mm para tickets (más compacto que documentos A4)."""
     if fmt == "80mm":
-        return 14.0  # compacto: menos banda blanca superior en rollo térmico
+        return 12.0  # compacto: menos banda blanca superior en rollo térmico
     if fmt == "A5":
         return 26.0
     return 28.0  # ~80 pt

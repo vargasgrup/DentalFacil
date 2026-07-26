@@ -60,7 +60,6 @@ def write_connect_card(*, http_port: int = 8001) -> str | None:
     targets.append(program_data / "NKDentalSoft" / "connect.url")
     public = os.environ.get("PUBLIC") or r"C:\Users\Public"
     targets.append(Path(public) / "Desktop" / "NKDentalSoft-Servidor.url")
-    # Also a plain text card for non-technical staff
     targets.append(program_data / "NKDentalSoft" / "IP-DEL-SERVIDOR.txt")
 
     written = None
@@ -69,13 +68,16 @@ def write_connect_card(*, http_port: int = 8001) -> str | None:
             path.parent.mkdir(parents=True, exist_ok=True)
             if path.suffix.lower() == ".txt":
                 path.write_text(
-                    "N&K DentalSoft — URL para otros PCs de la clinica\r\n"
-                    f"Hostname: {hostname}\r\n"
-                    f"URL: {url}\r\n"
-                    f"IPs: {', '.join(ips)}\r\n"
+                    "N&K DentalSoft — URL para otros PCs (USE LA IP, NO EL NOMBRE DEL PC)\r\n"
+                    f"URL recomendada: {url}\r\n"
+                    f"IP del servidor: {ips[0]}\r\n"
+                    f"Puerto: {int(http_port)}\r\n"
+                    f"Nombre de este PC (NO usar en clientes): {hostname}\r\n"
+                    f"Otras IPs: {', '.join(ips)}\r\n"
                     "\r\n"
-                    "En el Client: pegue la URL o escriba solo la IP "
-                    f"({ips[0]}) y pulse Conectar.\r\n",
+                    "En el Client escriba solo la IP o pegue la URL con numeros.\r\n"
+                    "Ejemplo correcto: 192.168.100.28\r\n"
+                    "Ejemplo INCORRECTO: DESKTOP-XXXX\r\n",
                     encoding="utf-8",
                 )
             else:

@@ -73,17 +73,29 @@ namespace NkDentalSoft.Client
                     var saved = Config.LoadUrl();
                     if (!string.IsNullOrWhiteSpace(saved))
                     {
-                        var hit = Discovery.ProbeUrl(saved, 2000);
-                        if (hit != null)
+                        var preferred = UrlImport.PreferNumericIpUrl(saved) ?? UrlImport.Normalize(saved);
+                        // Drop legacy hostname bookmarks (DESKTOP-…) that break on other PCs
+                        if (string.IsNullOrEmpty(preferred) ||
+                            !Regex.IsMatch(preferred, @"https?://\d+\.\d+\.\d+\.\d+", RegexOptions.IgnoreCase))
                         {
-                            Launcher.Open(hit.Url);
-                            return;
+                            Logger.Info("Clearing non-IP saved URL: " + saved);
+                            Config.ClearUrl();
                         }
-                        Config.ClearUrl();
+                        else
+                        {
+                            var hit = Discovery.ProbeUrl(preferred, 2000);
+                            if (hit != null)
+                            {
+                                Launcher.Open(hit.Url);
+                                return;
+                            }
+                            Config.ClearUrl();
+                        }
                     }
                     // Clipboard may already have the Server "Copiar" URL
                     var clip = UrlImport.FromClipboard();
-                    if (!string.IsNullOrEmpty(clip))
+                    if (!string.IsNullOrEmpty(clip) &&
+                        Regex.IsMatch(clip, @"https?://\d+\.\d+\.\d+\.\d+", RegexOptions.IgnoreCase))
                     {
                         var hit = Discovery.ProbeUrl(clip, 2000);
                         if (hit != null)
@@ -173,12 +185,53 @@ namespace NkDentalSoft.Client
             if (string.IsNullOrWhiteSpace(raw)) return null;
             raw = raw.Trim().Trim('"');
             var mUrl = Regex.Match(raw, @"https?://[^\s<>""']+", RegexOptions.IgnoreCase);
-            if (mUrl.Success) return mUrl.Value.TrimEnd('/');
+            if (mUrl.Success) return PreferNumericIpUrl(mUrl.Value.TrimEnd('/'));
             var mIp = Regex.Match(raw, @"\b(\d{1,3}(?:\.\d{1,3}){3})(?::(\d+))?\b");
             if (mIp.Success)
             {
                 var port = mIp.Groups[2].Success ? mIp.Groups[2].Value : "8001";
                 return "http://" + mIp.Groups[1].Value + ":" + port;
+            }
+            // Reject bare hostnames like DESKTOP-XXXX — they break on clinic LAN
+            if (Regex.IsMatch(raw, @"^[A-Za-z][A-Za-z0-9\-.]{0,62}$") &&
+                raw.IndexOf('.') < 0)
+            {
+                var resolved = PreferNumericIpUrl("http://" + raw + ":8001/");
+                return resolved;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Clinic LAN clients must use IPv4 literals. NetBIOS names (DESKTOP-…)
+        /// almost never resolve on other Windows PCs.
+        /// </summary>
+        public static string PreferNumericIpUrl(string url)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(url)) return null;
+                if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                    !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    url = "http://" + url;
+                var u = new Uri(url);
+                var port = u.IsDefaultPort ? 8001 : u.Port;
+                if (Regex.IsMatch(u.Host, @"^\d+\.\d+\.\d+\.\d+$"))
+                    return "http://" + u.Host + ":" + port + "/";
+
+                // Hostname → try DNS/LLMNR to IPv4, skip loopback
+                foreach (var a in Dns.GetHostAddresses(u.Host))
+                {
+                    if (a.AddressFamily != AddressFamily.InterNetwork) continue;
+                    var ip = a.ToString();
+                    if (ip.StartsWith("127.") || ip.StartsWith("169.254.")) continue;
+                    Logger.Info("Resolved " + u.Host + " → " + ip);
+                    return "http://" + ip + ":" + port + "/";
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Info("PreferNumericIpUrl: " + ex.Message);
             }
             return null;
         }
@@ -324,13 +377,14 @@ namespace NkDentalSoft.Client
             try
             {
                 if (string.IsNullOrWhiteSpace(url)) return null;
-                url = url.Trim();
-                if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-                    !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                    url = "http://" + url;
-
-                var m = Regex.Match(url, @"^https?://(\d+\.\d+\.\d+\.\d+)/?$", RegexOptions.IgnoreCase);
-                if (m.Success) url = "http://" + m.Groups[1].Value + ":" + DefaultPort + "/";
+                // Force IP-literal URLs — hostname DESKTOP-… breaks across clinic PCs
+                var preferred = UrlImport.PreferNumericIpUrl(url) ?? UrlImport.Normalize(url);
+                if (string.IsNullOrEmpty(preferred))
+                {
+                    Logger.Info("ProbeUrl rejected non-IP URL: " + url);
+                    return null;
+                }
+                url = preferred;
 
                 var u = new Uri(url);
                 var host = u.Host;
@@ -534,13 +588,13 @@ namespace NkDentalSoft.Client
                                 var ip = m.Groups[1].Value;
                                 if (!candidates.Contains(ip)) candidates.Add(ip);
                             }
-                            var hostMatch = Regex.Match(text, "\"hostname\"\\s*:\\s*\"([^\"]+)\"");
-                            if (hostMatch.Success) candidates.Add(hostMatch.Groups[1].Value);
+                            // Do NOT probe Windows computer names (DESKTOP-…) — they fail on other PCs.
                             if (candidates.Count == 0 && remote.Address != null)
                                 candidates.Add(remote.Address.ToString());
 
                             foreach (var host in candidates)
                             {
+                                if (!Regex.IsMatch(host, @"^\d+\.\d+\.\d+\.\d+$")) continue;
                                 status("UDP -> verificando " + host + "...");
                                 var hit = ProbeHost(host, port, 1500);
                                 if (hit != null && seen.Add(hit.Url)) hits.Add(hit);
@@ -896,12 +950,21 @@ namespace NkDentalSoft.Client
 
         private void Connect()
         {
-            var url = (_manual.Text ?? "").Trim();
-            url = UrlImport.Normalize(url) ?? url;
-            if (string.IsNullOrEmpty(url))
+            var raw = (_manual.Text ?? "").Trim();
+            var looksLikeHostname = Regex.IsMatch(raw, @"DESKTOP-|http://[A-Za-z]", RegexOptions.IgnoreCase)
+                && !Regex.IsMatch(raw, @"\d+\.\d+\.\d+\.\d+");
+            var url = UrlImport.Normalize(raw) ?? raw;
+            if (string.IsNullOrEmpty(url) || looksLikeHostname && UrlImport.PreferNumericIpUrl(raw) == null)
             {
-                MessageBox.Show("Escriba la IP/URL del servidor o pulse Pegar URL.", "N&K DentalSoft",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(
+                    "Debe usar la IP numerica del servidor, no el nombre del PC.\n\n" +
+                    "Correcto:  192.168.100.28\n" +
+                    "Correcto:  http://192.168.100.28:8001/\n" +
+                    "Incorrecto: DESKTOP-HPLNJJ1\n\n" +
+                    "En el Server: Configuracion > Copiar la URL que dice \"Usar esta (IP)\".",
+                    "Use la IP, no el nombre",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
                 return;
             }
 
@@ -918,8 +981,9 @@ namespace NkDentalSoft.Client
                     "\n2) Misma Wi-Fi/LAN (perfil Privado, no Publico)" +
                     "\n3) Desactive VPN en este PC" +
                     "\n4) Firewall puerto TCP 8001" +
+                    "\n5) Use la IP (192.168.x.x), NUNCA el nombre DESKTOP-..." +
                     (string.IsNullOrEmpty(extra) ? "" : "\n\n" + extra) +
-                    "\n\nEn el Server: Configuracion > Copiar la URL e intentelo con Pegar URL.",
+                    "\n\nEn el Server: Configuracion > Copiar la URL con IP > aqui Pegar URL.",
                     "No se pudo conectar",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);

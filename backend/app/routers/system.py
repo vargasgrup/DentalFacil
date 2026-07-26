@@ -228,10 +228,9 @@ def _connect_info_payload() -> dict[str, Any]:
     host = (os.environ.get("HOST") or "0.0.0.0").strip() or "0.0.0.0"
     ips = _lan_ipv4_addresses()
     hostname = socket.gethostname()
+    # CRITICAL: other PCs must use numeric IP. Windows NetBIOS names
+    # (DESKTOP-XXXX) usually do NOT resolve on clinic LAN clients.
     urls = [f"http://{ip}:{port}/" for ip in ips]
-    if hostname:
-        urls.append(f"http://{hostname}:{port}/")
-    # de-dupe preserve order
     seen: set[str] = set()
     uniq_urls: list[str] = []
     for u in urls:
@@ -245,14 +244,14 @@ def _connect_info_payload() -> dict[str, Any]:
         "listening_all_interfaces": host in {"0.0.0.0", "::", "*"},
         "lan_ips": ips,
         "client_urls": uniq_urls,
+        "recommended_url": uniq_urls[0] if uniq_urls else f"http://127.0.0.1:{port}/",
         "local_url": f"http://127.0.0.1:{port}/",
         "firewall_rule": "NKDentalSoft Server 8001",
         "discovery_udp_port": 37020,
         "hint": (
-            "1) En el PC servidor la red Wi-Fi/Ethernet debe ser Privada (no Pública). "
-            "2) Desactive VPN en los PCs cliente. "
-            "3) En el Client pegue una URL de abajo o escriba la IP. "
-            "También puede abrir el acceso directo NKDentalSoft-Servidor.url del escritorio público."
+            "Use SIEMPRE la URL con IP numerica (ej. http://192.168.100.28:8001/). "
+            "No use el nombre del PC (DESKTOP-...) — no funciona en otros equipos de la clinica. "
+            "Misma Wi-Fi/LAN, perfil Privado, sin VPN. En el Client: Pegar URL o escriba solo la IP."
         ),
     }
 

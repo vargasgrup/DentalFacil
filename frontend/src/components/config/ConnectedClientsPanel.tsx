@@ -35,6 +35,8 @@ type LanPayload = {
   lan_ips: string[];
   client_urls: string[];
   local_url: string;
+  hostname?: string;
+  recommended_url?: string;
   firewall_rule: string;
   hint: string;
 };
@@ -220,12 +222,15 @@ export function ConnectedClientsPanel() {
               este PC.
             </li>
           ) : (
-            (lan?.client_urls || []).map((url) => (
+            (lan?.client_urls || []).map((url, idx) => (
               <li
                 key={url}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-100 bg-white px-3 py-2"
               >
-                <code className="text-sm text-slate-800">{url}</code>
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className="text-sm text-slate-800">{url}</code>
+                  {idx === 0 ? <Badge variant="success">Usar esta (IP)</Badge> : null}
+                </div>
                 <Button
                   type="button"
                   variant="secondary"
@@ -239,6 +244,12 @@ export function ConnectedClientsPanel() {
             ))
           )}
         </ul>
+        {lan?.hostname ? (
+          <p className="mt-2 text-xs text-amber-800">
+            No copie el nombre del PC (<span className="font-mono">{lan.hostname}</span>) en otros
+            equipos: en la clínica solo funciona la IP numerica.
+          </p>
+        ) : null}
       </div>
     </Card>
   );

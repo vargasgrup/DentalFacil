@@ -10,22 +10,28 @@ block_cipher = None
 ROOT = Path(SPECPATH).resolve().parents[1]
 BACKEND = ROOT / "backend"
 SERVER_PKG = ROOT / "packaging" / "server"
+FRONTEND_OUT = ROOT / "frontend" / "out"
 DIST_DIR = SERVER_PKG / "dist"
+
+_datas = [
+    (str(BACKEND / "alembic"), "alembic"),
+    (str(BACKEND / "alembic.ini"), "."),
+    (str(BACKEND / "app"), "app"),
+    (str(SERVER_PKG / "server_entry.py"), "."),
+    (str(SERVER_PKG / "assets" / "icons"), "assets/icons"),
+    (str(SERVER_PKG / "scripts"), "scripts"),
+]
+if (FRONTEND_OUT / "index.html").is_file():
+    _datas.append((str(FRONTEND_OUT), "web"))
 
 a = Analysis(
     [str(SERVER_PKG / "windows_service.py")],
     pathex=[str(BACKEND), str(SERVER_PKG)],
     binaries=[],
-    datas=[
-        (str(BACKEND / "alembic"), "alembic"),
-        (str(BACKEND / "alembic.ini"), "."),
-        (str(BACKEND / "app"), "app"),
-        (str(SERVER_PKG / "server_entry.py"), "."),
-        (str(SERVER_PKG / "assets" / "icons"), "assets/icons"),
-        (str(SERVER_PKG / "scripts"), "scripts"),
-    ],
+    datas=_datas,
     hiddenimports=[
         "server_entry",
+        "app.frontend_static",
         "uvicorn.logging",
         "uvicorn.loops",
         "uvicorn.loops.auto",

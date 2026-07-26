@@ -258,3 +258,12 @@ async def restore_maintenance_middleware(request, call_next):
             content={"detail": "Sistema en mantenimiento — restaurando backup"},
         )
     return await call_next(request)
+
+
+# Embed Next.js static export when present (desktop Server .exe / local out/).
+# Must be registered after API routers so /api/* keeps priority.
+from app.frontend_static import mount_frontend_static  # noqa: E402
+
+_ui_root = mount_frontend_static(app)
+if _ui_root is not None:
+    logger.info("frontend UI mounted from %s", _ui_root)

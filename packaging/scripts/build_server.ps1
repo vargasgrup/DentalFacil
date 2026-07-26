@@ -1,9 +1,10 @@
 # Build N&K DentalSoft Server: PyInstaller onedir + NSIS installer.
-# Requires: Python 3.12+, NSIS 3 (makensis), deps from backend/requirements.txt + pyinstaller + pywin32.
+# Requires: Python 3.12+, NSIS 3 (makensis), Node 20+ for UI embed, pyinstaller + pywin32.
 
 param(
     [switch]$SkipNsis,
-    [switch]$SkipDeps
+    [switch]$SkipDeps,
+    [switch]$SkipFrontend
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,7 +57,6 @@ if (-not (Test-Path $Venv)) {
 }
 
 $VenvPython = Join-Path $Venv "Scripts\python.exe"
-$VenvPip = Join-Path $Venv "Scripts\pip.exe"
 
 if (-not $SkipDeps) {
     Write-Host "==> Installing backend + packaging deps"
@@ -67,6 +67,27 @@ if (-not $SkipDeps) {
 
 Write-Host "==> Regenerating brand icons (if Recursos available)"
 & $VenvPython (Join-Path $Root "packaging\scripts\generate_icons.py")
+
+if (-not $SkipFrontend) {
+    Write-Host "==> Next.js static export (embed UI in server)"
+    $Frontend = Join-Path $Root "frontend"
+    Push-Location $Frontend
+    try {
+        if (-not (Test-Path (Join-Path $Frontend "node_modules"))) {
+            & npm install
+            if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+        }
+        & npm run build:desktop
+        if ($LASTEXITCODE -ne 0) { throw "npm run build:desktop failed" }
+    } finally {
+        Pop-Location
+    }
+    if (-not (Test-Path (Join-Path $Frontend "out\index.html"))) {
+        throw "frontend/out/index.html missing after static export"
+    }
+} elseif (-not (Test-Path (Join-Path $Root "frontend\out\index.html"))) {
+    Write-Warning "SkipFrontend set and frontend/out missing - server build will be API-only"
+}
 
 Write-Host "==> PyInstaller onedir"
 Push-Location $Root
@@ -81,15 +102,23 @@ try {
 }
 
 if (-not (Test-Path (Join-Path $DistServer "nkdentalsoft-server.exe"))) {
-    throw "PyInstaller no generó nkdentalsoft-server.exe en $DistServer"
+    throw "PyInstaller did not produce nkdentalsoft-server.exe in $DistServer"
 }
 
-# Ship service wrapper + post-install scripts beside the onedir tree
 Copy-Item (Join-Path $ServerPkg "windows_service.py") $DistServer -Force
 Copy-Item (Join-Path $ServerPkg "server_entry.py") $DistServer -Force
 $ScriptsDest = Join-Path $DistServer "scripts"
 New-Item -ItemType Directory -Force -Path $ScriptsDest | Out-Null
 Copy-Item (Join-Path $ServerPkg "scripts\*") $ScriptsDest -Force
+
+# Ensure web/ sits next to the exe (PyInstaller also embeds under _internal)
+$WebSrc = Join-Path $Root "frontend\out"
+$WebDest = Join-Path $DistServer "web"
+if (Test-Path (Join-Path $WebSrc "index.html")) {
+    if (Test-Path $WebDest) { Remove-Item $WebDest -Recurse -Force }
+    Copy-Item $WebSrc $WebDest -Recurse -Force
+    Write-Host "==> Copied UI to $WebDest"
+}
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
@@ -107,7 +136,7 @@ if (-not $SkipNsis) {
     Write-Host "OK Server installer: $Setup"
     Get-Item $Setup | Format-List Name, Length, LastWriteTime
 } else {
-    Write-Host "Skip NSIS. Onedir listo en: $DistServer"
+    Write-Host "Skip NSIS. Onedir ready at: $DistServer"
 }
 
 Write-Host "Done."

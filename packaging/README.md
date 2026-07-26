@@ -35,10 +35,15 @@ powershell -ExecutionPolicy Bypass -File packaging/server/scripts/post_install_h
 
 ```powershell
 # Una vez: winget install Python.Python.3.12 NSIS.NSIS
+# Requiere Node 20+ para embeber la UI (npm run build:desktop → frontend/out)
 powershell -ExecutionPolicy Bypass -File packaging\scripts\build_server.ps1
 ```
 
 Salida: `dist\NKDentalSoft-Server-Setup-x64.exe` (+ onedir en `packaging\server\dist\nkdentalsoft-server\`).
+
+El instalador del Servidor incluye la **UI Next.js exportada** (`web/`) servida por FastAPI en el mismo puerto HTTPS (8001). Los Clientes Tauri abren `https://SERVIDOR:8001/` y usan `/api/*` en el mismo origen.
+
+`-SkipFrontend` genera solo API (útil para depurar PyInstaller).
 
 Servicio (plan A pywin32, embebido en el `.exe`):
 

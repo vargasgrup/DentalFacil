@@ -44,6 +44,8 @@ packaging/server/dist/
 packaging/server/build/
 packaging/client/src-tauri/target/
 packaging/client/src-tauri/gen/
+frontend/out/
+frontend/.export-stash/
 
 
 # Uploaded assets

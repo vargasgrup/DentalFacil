@@ -1,8 +1,33 @@
 /** @type {import('next').NextConfig} */
+const isExport = process.env.NEXT_OUTPUT === "export";
+const backendUrl = (
+  process.env.BACKEND_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://127.0.0.1:8001"
+).replace(/\/$/, "");
+
 const nextConfig = {
-  // API calls use relative "/api/..." and are proxied at runtime by
-  // src/app/api/[...path]/route.ts using BACKEND_URL (Railway-friendly).
-  // Do not bake localhost rewrites into the production build.
+  // Desktop LAN installer: static HTML/JS served by FastAPI (same origin as /api).
+  ...(isExport
+    ? {
+        output: "export",
+        images: { unoptimized: true },
+        trailingSlash: true,
+      }
+    : {}),
+  // Dev / Railway (`next start`): proxy /api → FastAPI. Desktop export: same-origin FastAPI.
+  ...(!isExport
+    ? {
+        async rewrites() {
+          return [
+            {
+              source: "/api/:path*",
+              destination: `${backendUrl}/api/:path*`,
+            },
+          ];
+        },
+      }
+    : {}),
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,

@@ -8,6 +8,7 @@
     "start": "next start -H 0.0.0.0",
     "lint": "next lint && node scripts/check-no-direct-token-access.js",
     "typecheck": "tsc --noEmit",
+    "build:desktop": "node scripts/build-static-export.cjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

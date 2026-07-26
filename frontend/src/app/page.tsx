@@ -17,11 +17,10 @@ import {
   Upload,
   UserRound,
 } from "lucide-react";
+import { getApiBase } from "@/lib/api";
 
 type SetupMode = "new" | "restore";
 type AuthView = "login" | "forgot" | "reset";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "";
 
 function AlertBox({
   tone,
@@ -150,7 +149,7 @@ export default function LoginPage() {
     setInfo("");
     setInlineCode(null);
     try {
-      const res = await fetch(`${API}/api/auth/forgot-password`, {
+      const res = await fetch(`${getApiBase()}/api/auth/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
@@ -184,7 +183,7 @@ export default function LoginPage() {
       return;
     }
     try {
-      const res = await fetch(`${API}/api/auth/reset-password`, {
+      const res = await fetch(`${getApiBase()}/api/auth/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -228,7 +227,7 @@ export default function LoginPage() {
       const fd = new FormData();
       fd.append("file", restoreFile);
       fd.append("confirm_token", "CONFIRMAR");
-      const res = await fetch(`${API}/api/backup/restore-bootstrap`, {
+      const res = await fetch(`${getApiBase()}/api/backup/restore-bootstrap`, {
         method: "POST",
         body: fd,
       });

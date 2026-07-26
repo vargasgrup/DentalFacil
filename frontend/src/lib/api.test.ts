@@ -25,7 +25,7 @@ function installBrowserStubs() {
     sessionStorage,
     localStorage,
     document,
-    location: { protocol: "http:" },
+    location: { protocol: "http:", hostname: "localhost", port: "3001", host: "localhost:3001" },
   });
   vi.stubGlobal("sessionStorage", sessionStorage);
   vi.stubGlobal("localStorage", localStorage);

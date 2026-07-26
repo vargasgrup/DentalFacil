@@ -73,7 +73,20 @@ function restore() {
 }
 
 stashAway();
-const env = { ...process.env, NEXT_OUTPUT: "export", NEXT_TELEMETRY_DISABLED: "1" };
+// Desktop UI is served by FastAPI on the same origin as /api.
+// NEVER bake NEXT_PUBLIC_API_URL (frontend/.env often has localhost:8001 for Next
+// dev). That breaks Edge/WebView when the page is opened as http://127.0.0.1:8001
+// (localhost ≠ 127.0.0.1 → CORS / Failed to fetch on setup/login).
+const env = {
+  ...process.env,
+  NEXT_OUTPUT: "export",
+  NEXT_TELEMETRY_DISABLED: "1",
+  NEXT_PUBLIC_API_URL: "",
+  BACKEND_URL: "",
+};
+console.log(
+  "[build-static-export] NEXT_PUBLIC_API_URL forced empty (same-origin /api)"
+);
 let status = 1;
 try {
   const result = spawnSync(
@@ -95,4 +108,41 @@ if (!exists(path.join(outDir, "index.html"))) {
   console.error("[build-static-export] missing out/index.html");
   process.exit(1);
 }
+
+// Guard: refuse shipping a desktop UI that still points absolute API calls at localhost.
+// (UI copy like "http://127.0.0.1:8001/" in help text is OK; fetch(.../api) is not.)
+const chunksDir = path.join(outDir, "_next", "static", "chunks");
+if (exists(chunksDir)) {
+  const bad = [];
+  const markers = [
+    "http://localhost:8001/api",
+    "http://127.0.0.1:8001/api",
+    "https://localhost:8001/api",
+    "https://127.0.0.1:8001/api",
+  ];
+  const walk = (dir) => {
+    for (const name of fs.readdirSync(dir)) {
+      const p = path.join(dir, name);
+      if (fs.statSync(p).isDirectory()) walk(p);
+      else if (name.endsWith(".js")) {
+        const txt = fs.readFileSync(p, "utf8");
+        if (markers.some((m) => txt.includes(m))) {
+          bad.push(path.relative(outDir, p));
+        }
+      }
+    }
+  };
+  walk(chunksDir);
+  if (bad.length) {
+    console.error(
+      "[build-static-export] REFUSING desktop build: absolute /api URL still baked into:"
+    );
+    for (const f of bad.slice(0, 12)) console.error("  -", f);
+    console.error(
+      "Fix: ensure NEXT_PUBLIC_API_URL is empty during build:desktop (do not use frontend/.env)."
+    );
+    process.exit(1);
+  }
+}
+
 console.log(`[build-static-export] OK → ${outDir}`);

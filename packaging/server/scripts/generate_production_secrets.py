@@ -68,6 +68,7 @@ def write_env(
             f"BACKEND_PORT={port}",
             f"HOST={host}",
             "CORS_ORIGINS=*",
+            "# Desktop: UI is same-origin on :8001 — leave frontend NEXT_PUBLIC_API_URL empty",
             "PASSWORD_RESET_INLINE_CODE=false",
             "",
         ]

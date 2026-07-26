@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getToken } from "@/lib/api";
+import { getToken, getApiBase } from "@/lib/api";
 
 export type RealtimeStatus = "offline" | "connecting" | "online" | "reconnecting";
 
@@ -17,7 +17,7 @@ type Options = {
 };
 
 function wsUrlFromApi(): string {
-  const api = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
+  const api = getApiBase();
   if (api.startsWith("https://")) return api.replace(/^https/, "wss") + "/api/ws";
   if (api.startsWith("http://")) return api.replace(/^http/, "ws") + "/api/ws";
   // Same-origin / proxied

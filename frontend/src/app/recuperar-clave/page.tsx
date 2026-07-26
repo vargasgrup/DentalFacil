@@ -6,8 +6,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/Input";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "";
+import { getApiBase } from "@/lib/api";
 
 export default function RecuperarClavePage() {
   const [token, setToken] = useState("");
@@ -31,7 +30,7 @@ export default function RecuperarClavePage() {
     }
     void (async () => {
       try {
-        const res = await fetch(`${API}/api/auth/validate-reset`, {
+        const res = await fetch(`${getApiBase()}/api/auth/validate-reset`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token: t }),
@@ -62,7 +61,7 @@ export default function RecuperarClavePage() {
       return;
     }
     try {
-      const res = await fetch(`${API}/api/auth/reset-password`, {
+      const res = await fetch(`${getApiBase()}/api/auth/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -213,13 +213,26 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Desktop installs set CORS_ORIGINS=*. Starlette rejects allow_origins=["*"] with
+# allow_credentials=True, so reflect any origin via regex (LAN + localhost variants).
+_cors = settings.cors_origins
+if _cors == ["*"] or (len(_cors) == 1 and _cors[0] == "*"):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[],
+        allow_origin_regex=r"https?://.*",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 @app.get("/api/health")

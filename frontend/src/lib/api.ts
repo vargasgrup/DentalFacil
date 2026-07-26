@@ -1,6 +1,38 @@
 import { clearAuthCookie, looksLikeJwt, readAuthCookie, writeAuthCookie } from "./authCookie";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+/**
+ * API origin for fetch().
+ * Desktop Server embeds the UI on the same host/port as /api — always prefer
+ * same-origin (""). A baked NEXT_PUBLIC_API_URL=http://localhost:8001 breaks
+ * when the window opens as http://127.0.0.1:8001 or a LAN IP (cross-origin + CORS).
+ */
+export function getApiBase(): string {
+  const baked = (process.env.NEXT_PUBLIC_API_URL || "").trim().replace(/\/$/, "");
+  if (typeof window !== "undefined") {
+    const port = window.location.port;
+    const host = (window.location.hostname || "").toLowerCase();
+    // FastAPI desktop / LAN: UI and API share this origin
+    if (port === "8001" || host === "localhost" || host === "127.0.0.1") {
+      return "";
+    }
+    if (baked) {
+      try {
+        const u = new URL(baked);
+        const bakedHost = u.hostname.toLowerCase();
+        if (
+          bakedHost === "localhost" ||
+          bakedHost === "127.0.0.1" ||
+          u.port === "8001"
+        ) {
+          return "";
+        }
+      } catch {
+        /* ignore bad baked URL */
+      }
+    }
+  }
+  return baked;
+}
 
 const ACCESS_KEY = "access_token";
 const REFRESH_KEY = "refresh_token";
@@ -115,7 +147,7 @@ async function refreshAccessToken(): Promise<boolean> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+        const res = await fetch(`${getApiBase()}/api/auth/refresh`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ refresh_token: refresh }),
@@ -175,15 +207,19 @@ export async function apiFetch<T>(
 
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
+    res = await fetch(`${getApiBase()}${path}`, { ...fetchOptions, headers });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
       throw new ApiError("La solicitud fue cancelada o agotó el tiempo de espera.", 0);
     }
-    throw new ApiError(
-      "No se pudo conectar con el servidor. Si estás en Railway, borra NEXT_PUBLIC_API_URL y define BACKEND_URL en el Frontend.",
-      0
-    );
+    const hint =
+      typeof window !== "undefined" &&
+      (window.location.port === "8001" ||
+        window.location.hostname === "127.0.0.1" ||
+        window.location.hostname === "localhost")
+        ? " Compruebe que el servidor N&K DentalSoft esté en ejecución (puerto 8001)."
+        : " Si usa cloud, deje NEXT_PUBLIC_API_URL vacío y configure BACKEND_URL en el Frontend.";
+    throw new ApiError(`No se pudo conectar con el servidor.${hint}`, 0);
   }
 
   if (
@@ -268,7 +304,7 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${getApiBase()}${path}`, {
     method: "POST",
     headers,
     body: formData,
@@ -303,7 +339,7 @@ export async function apiFetchBlob(
 
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
+    res = await fetch(`${getApiBase()}${path}`, { ...fetchOptions, headers });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
       throw new ApiError("La solicitud fue cancelada o agotó el tiempo de espera.", 0);

@@ -10,7 +10,7 @@ import {
   Upload,
   ShieldAlert,
 } from "lucide-react";
-import { apiFetch, apiFetchBlob, ApiError, getToken } from "@/lib/api";
+import { apiFetch, apiFetchBlob, ApiError, getToken, getApiBase } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -312,7 +312,7 @@ export function BackupMigrationPanel() {
     const token = getToken();
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || ""}/api/backup/validate`,
+        `${getApiBase()}/api/backup/validate`,
         {
           method: "POST",
           headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -343,7 +343,7 @@ export function BackupMigrationPanel() {
     const token = getToken();
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || ""}/api/backup/restore`,
+        `${getApiBase()}/api/backup/restore`,
         {
           method: "POST",
           headers: token ? { Authorization: `Bearer ${token}` } : {},

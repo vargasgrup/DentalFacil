@@ -108,6 +108,7 @@ if (-not (Test-Path (Join-Path $DistServer "nkdentalsoft-server.exe"))) {
 Copy-Item (Join-Path $ServerPkg "windows_service.py") $DistServer -Force
 Copy-Item (Join-Path $ServerPkg "server_entry.py") $DistServer -Force
 Copy-Item (Join-Path $ServerPkg "Start-Server.bat") $DistServer -Force
+Copy-Item (Join-Path $ServerPkg "Open-UI.bat") $DistServer -Force
 $ScriptsDest = Join-Path $DistServer "scripts"
 New-Item -ItemType Directory -Force -Path $ScriptsDest | Out-Null
 Copy-Item (Join-Path $ServerPkg "scripts\*") $ScriptsDest -Force

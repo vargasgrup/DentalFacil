@@ -974,16 +974,37 @@ namespace NkDentalSoft.Client
             var hit = Discovery.ProbeUrl(url, 2500);
             if (hit == null)
             {
+                var pingOk = false;
+                var hostOnly = "";
+                try
+                {
+                    var u = new Uri(url.StartsWith("http") ? url : "http://" + url);
+                    hostOnly = u.Host;
+                    if (Regex.IsMatch(hostOnly, @"^\d+\.\d+\.\d+\.\d+$"))
+                    {
+                        using (var ping = new Ping())
+                        {
+                            var reply = ping.Send(hostOnly, 1500);
+                            pingOk = reply != null && reply.Status == IPStatus.Success;
+                        }
+                    }
+                }
+                catch { }
+
                 var extra = LanRepair.DetectVpnWarning() ?? LanRepair.DetectPublicNetworkWarning() ?? "";
+                var diag = pingOk
+                    ? "El PC servidor RESPONDE al ping, pero el puerto 8001 esta bloqueado (firewall del Server o antivirus). En el Server ejecute como Administrador: scripts\\repair_lan.ps1"
+                    : "El PC servidor NO responde ni al ping. Causa tipica: aislamiento Wi-Fi del router (AP/Client Isolation), VPN, o distinta red. Conecte el Server por cable Ethernet o desactive el aislamiento en el router.";
+
                 MessageBox.Show(
                     "No hay respuesta de N&K DentalSoft en:\n" + url +
+                    "\n\nDiagnostico: " + diag +
                     "\n\n1) Server encendido en el PC principal" +
-                    "\n2) Misma Wi-Fi/LAN (perfil Privado, no Publico)" +
+                    "\n2) Misma Wi-Fi/LAN (perfil Privado)" +
                     "\n3) Desactive VPN en este PC" +
-                    "\n4) Firewall puerto TCP 8001" +
-                    "\n5) Use la IP (192.168.x.x), NUNCA el nombre DESKTOP-..." +
-                    (string.IsNullOrEmpty(extra) ? "" : "\n\n" + extra) +
-                    "\n\nEn el Server: Configuracion > Copiar la URL con IP > aqui Pegar URL.",
+                    "\n4) Firewall + EXE permitidos (repair_lan.ps1 como Admin en el Server)" +
+                    "\n5) Use la IP (192.168.x.x), NUNCA DESKTOP-..." +
+                    (string.IsNullOrEmpty(extra) ? "" : "\n\n" + extra),
                     "No se pudo conectar",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);

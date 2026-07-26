@@ -27,16 +27,6 @@ if (-not (Test-Path $exe)) {
 
 Write-Boot "[desktop] InstallDir=$InstallDir"
 
-# Make LAN reachable from other PCs (Private profile + firewall TCP/UDP)
-$repairLan = Join-Path $InstallDir "scripts\repair_lan.ps1"
-if (Test-Path $repairLan) {
-  Write-Boot "[desktop] Running repair_lan.ps1..."
-  $lan = Start-Process -FilePath "powershell.exe" -ArgumentList @(
-    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $repairLan, "-Quiet"
-  ) -Wait -PassThru -WindowStyle Hidden
-  Write-Boot "[desktop] repair_lan exit=$($lan.ExitCode)"
-}
-
 # CRITICAL: run stop_for_upgrade in a *child* powershell.exe.
 # Calling it with & and its internal `exit` would terminate THIS script early
 # (or propagate exit 2 when Defender locks the fresh EXE) and skip Start-Process.
@@ -81,13 +71,28 @@ $taskName = "NKDentalSoft Server"
 Write-Boot "[desktop] Registering Scheduled Task '$taskName' (ONLOGON)..."
 schtasks.exe /Delete /TN $taskName /F 2>$null | Out-Null
 
-# Run as current interactive user at logon — avoids Session-0 zombie service
+# Run as current interactive user at logon — HIGHEST so firewall rules can be applied
 $tr = "`"$exe`" --foreground"
-schtasks.exe /Create /TN $taskName /TR $tr /SC ONLOGON /RL LIMITED /F
+schtasks.exe /Create /TN $taskName /TR $tr /SC ONLOGON /RL HIGHEST /F
+if ($LASTEXITCODE -ne 0) {
+  Write-Boot "[desktop] WARNING: schtasks HIGHEST failed — trying LIMITED"
+  schtasks.exe /Create /TN $taskName /TR $tr /SC ONLOGON /RL LIMITED /F
+}
 if ($LASTEXITCODE -ne 0) {
   Write-Boot "[desktop] WARNING: schtasks create failed exit=$LASTEXITCODE (continuing with Start-Process)"
 } else {
   Write-Boot "[desktop] Scheduled Task registered"
+}
+
+# Always run aggressive LAN firewall (elevated installer context)
+$repairLan = Join-Path $InstallDir "scripts\repair_lan.ps1"
+if (Test-Path $repairLan) {
+  Write-Boot "[desktop] repair_lan.ps1 (with ServerExe)..."
+  $lan = Start-Process -FilePath "powershell.exe" -ArgumentList @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $repairLan,
+    "-ServerExe", $exe, "-Quiet"
+  ) -Wait -PassThru -WindowStyle Hidden
+  Write-Boot "[desktop] repair_lan exit=$($lan.ExitCode)"
 }
 
 function Test-PortOpen([int]$Port = 8001) {

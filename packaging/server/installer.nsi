@@ -75,6 +75,7 @@ Section "Install"
 
   File "Start-Server.bat"
   File "Open-UI.bat"
+  File "Reparar-Red-LAN.bat"
   SetOutPath "$INSTDIR\scripts"
   File "scripts\stop_for_upgrade.ps1"
   File "scripts\rename_locked_exe.ps1"
@@ -132,6 +133,8 @@ Section "Install"
   CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Servidor (consola).lnk" "$SYSDIR\cmd.exe" '/k ""$INSTDIR\Start-Server.bat""' "$INSTDIR\assets\icons\icon.ico" 0
   CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Abrir en navegador.lnk" "$INSTDIR\Open-UI.bat" "" "$INSTDIR\assets\icons\icon.ico" 0 SW_SHOWMINIMIZED
   CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Reparar arranque.lnk" "$INSTDIR\scripts\repair_startup.cmd" "" "$INSTDIR\assets\icons\icon.ico" 0
+  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Reparar red LAN (Admin).lnk" "$INSTDIR\Reparar-Red-LAN.bat" "" "$INSTDIR\assets\icons\icon.ico" 0
+  CreateShortCut "$DESKTOP\Reparar red LAN - NKDentalSoft.lnk" "$INSTDIR\Reparar-Red-LAN.bat" "" "$INSTDIR\assets\icons\icon.ico" 0
 
   ; Remove obsolete desktop shortcut that launched the EXE and flashed closed
   Delete "$DESKTOP\N&K DentalSoft Server.lnk"
@@ -153,8 +156,12 @@ Section "Uninstall"
   nsExec::ExecToLog 'schtasks /Delete /TN "NKDentalSoft Server" /F'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft Server 8001"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft LAN Discovery 37020"'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft Server EXE"'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft Server EXE Out"'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft ICMP Allow"'
   Delete "$DESKTOP\N&K DentalSoft.lnk"
   Delete "$DESKTOP\N&K DentalSoft Server.lnk"
+  Delete "$DESKTOP\Reparar red LAN - NKDentalSoft.lnk"
   RMDir /r "$SMPROGRAMS\N&K DentalSoft"
   RMDir /r "$INSTDIR"
 SectionEnd

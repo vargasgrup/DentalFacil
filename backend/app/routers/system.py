@@ -250,8 +250,11 @@ def _connect_info_payload() -> dict[str, Any]:
         "discovery_udp_port": 37020,
         "hint": (
             "Use SIEMPRE la URL con IP numerica (ej. http://192.168.100.28:8001/). "
-            "No use el nombre del PC (DESKTOP-...) — no funciona en otros equipos de la clinica. "
-            "Misma Wi-Fi/LAN, perfil Privado, sin VPN. En el Client: Pegar URL o escriba solo la IP."
+            "No use el nombre del PC (DESKTOP-...). "
+            "Misma Wi-Fi/LAN, perfil Privado, sin VPN. "
+            "Si el Client no conecta: 1) En el Server ejecute como Admin "
+            "scripts\\repair_lan.ps1  2) Desactive Aislamiento de AP / Client Isolation "
+            "en el router  3) Conecte el PC servidor por cable Ethernet si puede."
         ),
     }
 

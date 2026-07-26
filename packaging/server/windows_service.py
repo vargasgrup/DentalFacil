@@ -509,7 +509,7 @@ def run_desktop(open_browser: bool = True) -> int:
         use_tls = False
 
     url = f"{'https' if use_tls else 'http'}://127.0.0.1:{port}/"
-    log(f"desktop ensure url={url}")
+    log(f"desktop ensure url={url} (local UI only; API binds HOST=0.0.0.0 for LAN)")
 
     if not _port_open(port):
         log("desktop: port closed — starting detached --foreground")

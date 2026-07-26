@@ -370,6 +370,14 @@ def run_server() -> None:
         log(f"HTTPS listening on https://{host}:{port}/")
     else:
         log(f"HTTP listening on http://{host}:{port}/ (desktop mode)")
+    # Open Windows Firewall for other clinic PCs (best-effort; needs admin for full effect)
+    try:
+        from app.services.firewall_lan import ensure_lan_firewall
+
+        ensure_lan_firewall(http_port=port)
+        log("firewall LAN rules applied (or attempted)")
+    except Exception as fw_exc:  # noqa: BLE001
+        log(f"firewall ensure skipped: {fw_exc}")
     try:
         uvicorn.run(**kwargs)
     except Exception as exc:

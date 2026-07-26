@@ -45,6 +45,9 @@ _DEFAULT_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "logo-m
 # Ticket térmico: ancho fijo 80mm. La altura se calcula al contenido
 # (evita página de 400mm que Chrome escala al imprimir en 80×200 y achica todo).
 TICKET_WIDTH = 80 * mm
+# Star TSP / 80mm roll: ~3–4 mm unprintable each side; keep content inside.
+# (L, R, T, B) — top tight to avoid empty band; sides protect Cant./líneas.
+TICKET_MARGINS_COMPROBANTE = (5 * mm, 5 * mm, 1.5 * mm, 3 * mm)
 PAGE_A5 = A5
 PAGE_A4 = A4
 
@@ -79,10 +82,20 @@ def _measure_story_height(story: list, avail_width: float) -> float:
     return total
 
 
+def _as_box_margins(
+    margin: float | tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    """Normalize to (left, right, top, bottom)."""
+    if isinstance(margin, (tuple, list)) and len(margin) == 4:
+        return float(margin[0]), float(margin[1]), float(margin[2]), float(margin[3])
+    m = float(margin)
+    return m, m, m, m
+
+
 def _render_pdf_bytes(
     story: list | Callable[[], list],
     fmt: str,
-    margin: float,
+    margin: float | tuple[float, float, float, float],
 ) -> bytes:
     """
     Renderiza el PDF. En 80mm la página tiene el alto del contenido (+ márgenes).
@@ -92,6 +105,8 @@ def _render_pdf_bytes(
     for 80mm so retries rebuild a fresh story — otherwise the PDF is empty
     (~1 KB) and browsers report «archivo dañado».
     """
+    left_m, right_m, top_m, bottom_m = _as_box_margins(margin)
+
     def _fresh_story() -> list:
         if callable(story):
             return list(story())
@@ -100,10 +115,11 @@ def _render_pdf_bytes(
     buf = io.BytesIO()
     if fmt == "80mm":
         measure_story = _fresh_story()
-        usable_w = TICKET_WIDTH - 2 * margin
+        usable_w = TICKET_WIDTH - left_m - right_m
         content_h = _measure_story_height(measure_story, usable_w)
-        # wrap() subestima; margen generoso evita 2ª página en el 1.er intento
-        page_h = max(60 * mm, content_h + 2 * margin + 12 * mm)
+        # wrap() subestima ligeramente; padding mínimo evita 2ª página sin
+        # inflar una banda blanca grande en la vista previa de impresión.
+        page_h = max(50 * mm, content_h + top_m + bottom_m + 4 * mm)
         page_size = (TICKET_WIDTH, page_h)
         pdf_bytes = b""
 
@@ -119,10 +135,10 @@ def _render_pdf_bytes(
             doc = SimpleDocTemplate(
                 buf,
                 pagesize=page_size,
-                leftMargin=margin,
-                rightMargin=margin,
-                topMargin=margin,
-                bottomMargin=margin,
+                leftMargin=left_m,
+                rightMargin=right_m,
+                topMargin=top_m,
+                bottomMargin=bottom_m,
             )
             doc.build(current, onFirstPage=_count_page, onLaterPages=_count_page)
             pdf_bytes = buf.getvalue()
@@ -132,7 +148,7 @@ def _render_pdf_bytes(
             if page_count[0] <= 1 and len(pdf_bytes) >= 2500:
                 return pdf_bytes
 
-            page_h = min(page_h * 1.4, 2000 * mm)
+            page_h = min(page_h * 1.35, 2000 * mm)
             page_size = (TICKET_WIDTH, page_h)
 
             if not callable(story):
@@ -151,10 +167,10 @@ def _render_pdf_bytes(
     doc = SimpleDocTemplate(
         buf,
         pagesize=page_size,
-        leftMargin=margin,
-        rightMargin=margin,
-        topMargin=margin,
-        bottomMargin=margin,
+        leftMargin=left_m,
+        rightMargin=right_m,
+        topMargin=top_m,
+        bottomMargin=bottom_m,
     )
     doc.build(current)
     pdf_bytes = buf.getvalue()
@@ -382,14 +398,19 @@ def generate_pdf(
 
     # Margins scale with format
     if fmt == "80mm":
-        # Comprobante térmico: 2 mm reduce banda blanca superior; otros docs 4 mm
-        margin = 1.5 * mm if doc_type == "comprobante" else 4 * mm
+        # Comprobante: gutters laterales para cabezal térmico; top corto.
+        margin: float | tuple[float, float, float, float] = (
+            TICKET_MARGINS_COMPROBANTE if doc_type == "comprobante" else 4 * mm
+        )
     elif fmt == "A5":
         margin = 8 * mm
     else:
         margin = 15 * mm
 
     page_w = TICKET_WIDTH if fmt == "80mm" else FORMAT_DIMENSIONS[fmt][0]
+    left_m, right_m, _, _ = _as_box_margins(margin)
+    # Story width = printable frame (must match SimpleDocTemplate frame)
+    story_margin = (left_m + right_m) / 2.0
     styles = _build_styles(fmt)
     story: list = []
     type_labels = {
@@ -405,8 +426,9 @@ def generate_pdf(
     # Comprobante de caja: layout propio estilo boleta térmica (logo, serie, QR…)
     if doc_type == "comprobante":
         # Factory: ReportLab flowables are single-use (retries must rebuild).
+        # Pass side margin so content_w == frame width (avoids table left overflow).
         pdf_bytes = _render_pdf_bytes(
-            lambda: build_comprobante_story(data, fmt, page_w, margin),
+            lambda: build_comprobante_story(data, fmt, page_w, story_margin),
             fmt,
             margin,
         )

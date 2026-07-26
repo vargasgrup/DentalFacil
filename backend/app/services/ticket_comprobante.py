@@ -261,6 +261,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontSize=title_sz,
             alignment=1,
             leading=title_sz + 2,
+            spaceBefore=0,
             spaceAfter=after,
             wordWrap="CJK",
         ),
@@ -270,6 +271,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontSize=small_sz,
             alignment=1,
             leading=small_sz + 2,
+            spaceBefore=0,
             spaceAfter=after,
             wordWrap="CJK",
         ),
@@ -280,6 +282,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             alignment=1,
             leading=tiny_sz + 1.5,
             textColor=colors.HexColor("#334155"),
+            spaceBefore=0,
             spaceAfter=after,
             wordWrap="CJK",
         ),
@@ -289,7 +292,10 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontSize=body_sz,
             alignment=0,
             leading=body_sz + 2,
+            spaceBefore=0,
             spaceAfter=after,
+            leftIndent=0,
+            firstLineIndent=0,
             wordWrap="CJK",
         ),
         "left_bold": ParagraphStyle(
@@ -298,7 +304,10 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontSize=body_sz,
             alignment=0,
             leading=body_sz + 2,
+            spaceBefore=0,
             spaceAfter=after,
+            leftIndent=0,
+            firstLineIndent=0,
             wordWrap="CJK",
         ),
         "tiny": ParagraphStyle(
@@ -324,21 +333,21 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
 
 
 def _line(content_w: float, *, tight: bool = False) -> HRFlowable:
-    before = 1.5 if tight else 3
-    after = 1.5 if tight else 3
+    before = 0.8 if tight else 3
+    after = 0.8 if tight else 3
     return HRFlowable(
         width=content_w,
         thickness=0.6,
         color=colors.black,
         spaceBefore=before,
         spaceAfter=after,
-        hAlign="CENTER",
+        hAlign="LEFT",
     )
 
 
 def _dash(content_w: float, *, tight: bool = False) -> HRFlowable:
-    before = 1 if tight else 2
-    after = 1 if tight else 2
+    before = 0.6 if tight else 2
+    after = 0.6 if tight else 2
     return HRFlowable(
         width=content_w,
         thickness=0.4,
@@ -346,7 +355,7 @@ def _dash(content_w: float, *, tight: bool = False) -> HRFlowable:
         spaceBefore=before,
         spaceAfter=after,
         dash=(1, 1.5),
-        hAlign="CENTER",
+        hAlign="LEFT",
     )
 
 
@@ -391,7 +400,7 @@ def build_comprobante_story(
     logo = _logo(logo_size_mm_for_ticket(fmt))
     if logo:
         story.append(logo)
-        story.append(Spacer(1, 0.5 * mm if tight else 1.5 * mm))
+        story.append(Spacer(1, 0.3 * mm if tight else 1.5 * mm))
     story.append(_p(profile.nombre_publico.upper(), styles["center_bold"]))
     if profile.ruc:
         story.append(_p(f"RUC {profile.ruc}", styles["center"]))
@@ -430,22 +439,32 @@ def build_comprobante_story(
 
     story.append(_dash(content_w, tight=tight))
 
-    # --- Ítems: misma sangría izquierda que «F. Emisión»; Cant. alineada a la izquierda ---
+    # --- Ítems: mismas columnas y sangría que «F. Emisión» (sin desborde izquierdo) ---
     header_fs = 6.5 if fmt == "80mm" else 8
     body_fs = 7 if fmt == "80mm" else 9
     if fmt == "80mm":
-        col_cant = 10 * mm
+        # Anchos fijos en ~70 mm útiles (80 − 2×5). Cant. centrado con texto plano.
+        col_cant = 9 * mm
         col_pu = 14 * mm
         col_tot = 14 * mm
-        col_desc = max(content_w - col_cant - col_pu - col_tot, 22 * mm)
+        col_desc = content_w - col_cant - col_pu - col_tot
+        if col_desc < 18 * mm:
+            col_pu = 12 * mm
+            col_tot = 12 * mm
+            col_desc = content_w - col_cant - col_pu - col_tot
     else:
         col_cant = content_w * 0.12
         col_desc = content_w * 0.44
         col_pu = content_w * 0.22
         col_tot = content_w * 0.22
 
-    hdr_style = ParagraphStyle(
-        "tick_hdr",
+    # Normalizar para que la suma sea exactamente content_w (evita overflow ReportLab)
+    col_widths = [col_cant, col_desc, col_pu, col_tot]
+    drift = content_w - sum(col_widths)
+    col_widths[1] += drift
+
+    hdr_desc = ParagraphStyle(
+        "tick_hdr_d",
         fontName="Helvetica-Bold",
         fontSize=header_fs,
         leading=header_fs + 1,
@@ -474,38 +493,37 @@ def build_comprobante_story(
         alignment=2,
     )
 
+    # Cant. como str (no Paragraph): ReportLab centra mejor en la celda
     item_rows = [
         [
-            Paragraph("Cant.", hdr_style),
-            Paragraph("Descripción", hdr_style),
+            "Cant.",
+            Paragraph("Descripción", hdr_desc),
             Paragraph("P.Unit", hdr_right),
             Paragraph("Total", hdr_right),
         ],
         [
-            Paragraph("1", body_left),
+            "1",
             Paragraph(_esc(concepto[:120]), body_left),
             Paragraph(_esc(format_price_plain(monto)), body_right),
             Paragraph(_esc(format_price_plain(monto)), body_right),
         ],
     ]
-    items_table = Table(
-        item_rows, colWidths=[col_cant, col_desc, col_pu, col_tot]
-    )
+    items_table = Table(item_rows, colWidths=col_widths, hAlign="LEFT")
+    pad = 1.5
     items_table.setStyle(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ALIGN", (0, 0), (1, -1), "LEFT"),
+                ("FONTNAME", (0, 0), (0, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, 1), (0, -1), "Helvetica"),
+                ("FONTSIZE", (0, 0), (0, -1), header_fs if fmt == "80mm" else body_fs),
+                ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                ("ALIGN", (1, 0), (1, -1), "LEFT"),
                 ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-                # Misma sangría que el bloque Cliente / F. Emisión (margen del doc)
-                ("LEFTPADDING", (0, 0), (0, -1), 0),
-                ("RIGHTPADDING", (0, 0), (0, -1), 2),
-                ("LEFTPADDING", (1, 0), (1, -1), 2),
-                ("RIGHTPADDING", (1, 0), (1, -1), 2),
-                ("LEFTPADDING", (2, 0), (-1, -1), 1),
-                ("RIGHTPADDING", (2, 0), (-1, -1), 0),
-                ("TOPPADDING", (0, 0), (-1, -1), 1),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ("LEFTPADDING", (0, 0), (-1, -1), pad),
+                ("RIGHTPADDING", (0, 0), (-1, -1), pad),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
                 ("LINEBELOW", (0, 0), (-1, 0), 0.4, colors.black),
             ]
         )

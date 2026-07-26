@@ -234,105 +234,32 @@ function printHtmlInHiddenIframe(html: string): Promise<void> {
 }
 
 /**
- * Imprime el PDF nativo 80mm con iframe del tamaño MediaBox real
- * (evita banda blanca por “ajustar” un ticket corto a 297 mm / carta).
- */
-async function printPdfNative80mm(blob: Blob): Promise<void> {
-  const pdfjs = await loadPdfJs();
-  const data = new Uint8Array(await blob.arrayBuffer());
-  const pdf = await pdfjs.getDocument({ data }).promise;
-  const page = await pdf.getPage(1);
-  const base = page.getViewport({ scale: 1 });
-  const widthMm = Math.max(70, base.width * PT_TO_MM);
-  const heightMm = Math.max(40, base.height * PT_TO_MM);
-
-  const pdfBlob =
-    blob.type === "application/pdf"
-      ? blob
-      : new Blob([blob], { type: "application/pdf" });
-  const url = URL.createObjectURL(pdfBlob);
-
-  return new Promise((resolve, reject) => {
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("title", "Ticket");
-    iframe.setAttribute("aria-hidden", "true");
-    iframe.style.cssText =
-      `position:fixed;left:-10000px;top:0;width:${widthMm.toFixed(2)}mm;` +
-      `height:${heightMm.toFixed(2)}mm;border:0;opacity:0;pointer-events:none;`;
-    document.body.appendChild(iframe);
-
-    let cleaned = false;
-    const cleanup = () => {
-      if (cleaned) return;
-      cleaned = true;
-      try {
-        URL.revokeObjectURL(url);
-        iframe.remove();
-      } catch {
-        /* ignore */
-      }
-      resolve();
-    };
-
-    const triggerPrint = () => {
-      const win = iframe.contentWindow;
-      if (!win) {
-        cleanup();
-        reject(new Error("No se pudo abrir el ticket para imprimir"));
-        return;
-      }
-      try {
-        win.focus();
-        const onAfter = () => cleanup();
-        win.addEventListener("afterprint", onAfter);
-        setTimeout(() => {
-          win.removeEventListener("afterprint", onAfter);
-          cleanup();
-        }, 90_000);
-        win.print();
-      } catch (err) {
-        cleanup();
-        reject(err instanceof Error ? err : new Error("Error al imprimir"));
-      }
-    };
-
-    iframe.addEventListener(
-      "load",
-      () => {
-        setTimeout(triggerPrint, 500);
-      },
-      { once: true }
-    );
-
-    iframe.src = url;
-  });
-}
-
-/**
- * Imprime un PDF (Blob). Ticket 80mm = PDF nativo; A4/A5 = raster.
+ * Imprime un PDF (Blob).
+ * Ticket 80mm y A4/A5 usan raster con @page = MediaBox (margin 0).
+ * Evita que el diálogo de Windows/Star “encaje” el ticket en papel largo
+ * dejando una banda blanca superior y cortando el margen izquierdo.
  */
 export async function printPdfBlob(
   blob: Blob,
   options?: { title?: string; formatHint?: PrintFormatHint }
 ): Promise<void> {
-  if (options?.formatHint === "80mm") {
-    await printPdfNative80mm(blob);
-    return;
-  }
-
   const pdfjs = await loadPdfJs();
   const data = new Uint8Array(await blob.arrayBuffer());
   const pdf = await pdfjs.getDocument({ data }).promise;
   const pages = await renderAllPages(pdf);
   if (!pages.length) throw new Error("El PDF no tiene páginas");
 
-  const html = buildPrintHtml(pages, options);
+  const html = buildPrintHtml(pages, {
+    ...options,
+    // Título vacío → sin texto útil en encabezados del navegador si están activos
+    title: options?.title ? options.title : "\u00a0",
+  });
   await printHtmlInHiddenIframe(html);
 }
 
 export function resetPrintFormatPrefsIfNeeded(): void {
   if (typeof window === "undefined") return;
-  const FLAG = "ds_print_pipeline_v6";
+  const FLAG = "ds_print_pipeline_v7";
   if (localStorage.getItem(FLAG) === "1") return;
   localStorage.removeItem("pdf_format_pref");
   localStorage.setItem(FLAG, "1");

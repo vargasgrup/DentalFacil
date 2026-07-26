@@ -18,6 +18,7 @@ import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { canAccessModule } from "@/lib/roles";
+import { navigateToPacienteFicha } from "@/lib/pacienteRoutes";
 import { Button } from "./ui/Button";
 import { openWhatsAppText, isValidPhone } from "@/lib/whatsapp";
 import { formatFichaCode } from "@/lib/ficha";
@@ -121,9 +122,9 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   }, [searchQuery]);
 
   const selectPatient = (p: SearchResult) => {
-    router.push(`/pacientes/${p.id}`);
     setSearchQuery("");
     setSearchOpen(false);
+    navigateToPacienteFicha(p.id);
   };
 
   const handleLogout = () => {

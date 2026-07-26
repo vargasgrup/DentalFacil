@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { ArrowDownCircle, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DocumentActions } from "@/components/DocumentActions";
+import { PacienteFichaLink } from "@/components/PacienteFichaLink";
 import { formatTime } from "@/lib/datetime";
 import { METODO_LABEL } from "./constants";
 import type { CashTransaction } from "./types";
@@ -97,12 +97,12 @@ export function TransactionsTable({
                 <td className="px-4 py-2.5 text-slate-700">{t.concepto}</td>
                 <td className="px-4 py-2.5">
                   {t.patient_id && t.patient_nombre ? (
-                    <Link
-                      href={`/pacientes/${t.patient_id}`}
+                    <PacienteFichaLink
+                      patientId={t.patient_id}
                       className="text-brand-600 hover:underline"
                     >
                       {t.patient_nombre}
-                    </Link>
+                    </PacienteFichaLink>
                   ) : (
                     <span className="text-slate-400">—</span>
                   )}

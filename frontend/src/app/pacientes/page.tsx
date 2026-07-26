@@ -25,6 +25,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageContainer } from "@/components/ui/PageContainer";
+import { PacienteFichaLink } from "@/components/PacienteFichaLink";
 import {
   PatientEditModal,
   type PatientAdmin,
@@ -332,22 +333,22 @@ export default function PacientesPage() {
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <Link
-                    href={`/pacientes/${p.id}`}
+                  <PacienteFichaLink
+                    patientId={p.id}
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700 transition-smooth hover:bg-brand-100"
                   >
                     {initials}
-                  </Link>
+                  </PacienteFichaLink>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Link
-                            href={`/pacientes/${p.id}`}
+                          <PacienteFichaLink
+                            patientId={p.id}
                             className="truncate text-sm font-semibold text-slate-800 hover:text-brand-700"
                           >
                             {p.nombres} {p.apellidos}
-                          </Link>
+                          </PacienteFichaLink>
                           <Badge variant="brand" className="font-mono tracking-wide">
                             {formatFichaCode(p.numero_ficha)}
                           </Badge>
@@ -371,15 +372,15 @@ export default function PacientesPage() {
                             role="menu"
                             className="absolute right-0 z-40 mt-1 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-dropdown"
                           >
-                            <Link
+                            <PacienteFichaLink
                               role="menuitem"
-                              href={`/pacientes/${p.id}`}
+                              patientId={p.id}
                               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-brand-50 hover:text-brand-800"
                               onClick={() => setMenuId(null)}
                             >
                               <FileText className="h-3.5 w-3.5" />
                               Abrir ficha clínica
-                            </Link>
+                            </PacienteFichaLink>
                             <button
                               type="button"
                               role="menuitem"
@@ -444,7 +445,7 @@ export default function PacientesPage() {
                       </div>
                     </div>
 
-                    <Link href={`/pacientes/${p.id}`} className="mt-1.5 block">
+                    <PacienteFichaLink patientId={p.id} className="mt-1.5 block">
                       {p.especialidad ? (
                         <p className="flex items-center gap-1.5 text-xs font-medium text-brand-700">
                           <Stethoscope className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -465,7 +466,7 @@ export default function PacientesPage() {
                           <span>{p.telefono || "Sin teléfono"}</span>
                         </li>
                       </ul>
-                    </Link>
+                    </PacienteFichaLink>
 
                     <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
                       <span className="text-help text-slate-400">
@@ -484,13 +485,13 @@ export default function PacientesPage() {
                           <Pencil className="h-3.5 w-3.5" />
                           Editar
                         </button>
-                        <Link
-                          href={`/pacientes/${p.id}`}
+                        <PacienteFichaLink
+                          patientId={p.id}
                           className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-700"
                         >
                           <FileText className="h-3.5 w-3.5" />
                           Ficha
-                        </Link>
+                        </PacienteFichaLink>
                       </div>
                     </div>
                   </div>

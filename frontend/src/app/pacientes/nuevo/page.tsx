@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { navigateToPacienteFicha } from "@/lib/pacienteRoutes";
+import { PacienteFichaLink } from "@/components/PacienteFichaLink";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { PageContainer } from "@/components/ui/PageContainer";
@@ -292,7 +294,8 @@ export default function NuevoPacientePage() {
         throw new Error("El servidor no devolvió el paciente creado.");
       }
       navigated = true;
-      router.push(`/pacientes/${patient.id}`);
+      // Hard nav: static export only prebuilds pacientes/_; soft-nav cannot open new ids.
+      navigateToPacienteFicha(patient.id);
     } catch (err: unknown) {
       const message =
         err instanceof Error && err.message
@@ -430,12 +433,12 @@ export default function NuevoPacientePage() {
                   <p className="mt-1 text-help text-danger-600">
                     Ya registrado: {dupPatient.nombres} {dupPatient.apellidos} (
                     {formatFichaLabel(dupPatient.numero_ficha)}).{" "}
-                    <Link
-                      href={`/pacientes/${dupPatient.id}`}
+                    <PacienteFichaLink
+                      patientId={dupPatient.id}
                       className="font-medium text-brand-600 underline-offset-2 hover:underline"
                     >
                       Abrir ficha
-                    </Link>
+                    </PacienteFichaLink>
                   </p>
                 )}
               </div>

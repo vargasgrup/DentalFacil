@@ -25,6 +25,7 @@ import { formatTime } from "@/lib/datetime";
 import { canAccessModule } from "@/lib/roles";
 import { openWhatsAppText, isValidPhone } from "@/lib/whatsapp";
 import { PageContainer } from "@/components/ui";
+import { PacienteFichaLink } from "@/components/PacienteFichaLink";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import {
   moneyPE,
@@ -505,13 +506,13 @@ export default function DashboardPage() {
                         <p className="mt-0.5 text-xs text-slate-500">{detail}</p>
                       </div>
                       <div className="flex items-center gap-1">
-                        <Link
-                          href={`/pacientes/${a.patient_id}`}
+                        <PacienteFichaLink
+                          patientId={a.patient_id}
                           title="Ver ficha"
                           className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-brand-600"
                         >
                           <FileText className="h-4 w-4" />
-                        </Link>
+                        </PacienteFichaLink>
                         {a.patient_telefono && isValidPhone(a.patient_telefono) && (
                           <button
                             type="button"
@@ -615,8 +616,8 @@ export default function DashboardPage() {
                   <ul className="mt-3 divide-y divide-slate-50">
                     {data.cumpleanos.map((c) => (
                       <li key={c.patient_id}>
-                        <Link
-                          href={`/pacientes/${c.patient_id}`}
+                        <PacienteFichaLink
+                          patientId={c.patient_id}
                           className="flex items-center gap-3 py-2.5 transition-colors hover:bg-slate-50"
                         >
                           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-xs font-bold text-brand-700">
@@ -635,7 +636,7 @@ export default function DashboardPage() {
                               · {c.ficha}
                             </p>
                           </div>
-                        </Link>
+                        </PacienteFichaLink>
                       </li>
                     ))}
                   </ul>
@@ -718,9 +719,9 @@ export default function DashboardPage() {
               <>
                 <div className="divide-y divide-slate-50">
                   {deudas.map((d) => (
-                    <Link
+                    <PacienteFichaLink
                       key={d.patient_id}
-                      href={`/pacientes/${d.patient_id}`}
+                      patientId={d.patient_id}
                       className="flex items-center justify-between p-4 transition-colors hover:bg-slate-50"
                     >
                       <div className="flex min-w-0 items-center gap-3">
@@ -739,7 +740,7 @@ export default function DashboardPage() {
                       <span className="ml-3 shrink-0 text-sm font-bold text-danger-600">
                         {moneyPE(d.saldo)}
                       </span>
-                    </Link>
+                    </PacienteFichaLink>
                   ))}
                 </div>
                 {canPacientes && (
@@ -768,9 +769,9 @@ export default function DashboardPage() {
                 <p className="text-sm text-slate-400">Sin tratamientos activos con saldo</p>
               ) : (
                 tratamientos_activos.map((t, i) => (
-                  <Link
+                  <PacienteFichaLink
                     key={`${t.patient_id}-${i}`}
-                    href={`/pacientes/${t.patient_id}`}
+                    patientId={t.patient_id}
                     className="block"
                   >
                     <div className="mb-1.5 flex items-center justify-between">
@@ -788,7 +789,7 @@ export default function DashboardPage() {
                     <p className="mt-1 text-xs text-slate-400">
                       Saldo {moneyPE(t.saldo)} de {moneyPE(t.costo)}
                     </p>
-                  </Link>
+                  </PacienteFichaLink>
                 ))
               )}
             </div>

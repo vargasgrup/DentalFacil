@@ -8,11 +8,13 @@ import { HistoriaTab } from "@/components/patient/tabs/HistoriaTab";
 import { EvaluacionTab } from "@/components/patient/tabs/EvaluacionTab";
 import { SeguimientoTab } from "@/components/patient/tabs/SeguimientoTab";
 import { useFichaClinica } from "@/components/patient/hooks/useFichaClinica";
+import { resolvePacienteIdFromRoute } from "@/lib/pacienteRoutes";
 
 export default function FichaClinicaPage() {
   const params = useParams();
   const router = useRouter();
-  const patientId = String(params.id);
+  // Static export only embeds id="_"; real UUID comes from the browser URL.
+  const patientId = resolvePacienteIdFromRoute(params?.id);
   const f = useFichaClinica(patientId);
 
   if (f.loading) {

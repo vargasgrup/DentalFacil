@@ -24,6 +24,7 @@ import { DayGrid } from "@/components/agenda/DayGrid";
 import { WeekGrid } from "@/components/agenda/WeekGrid";
 import { MonthGrid } from "@/components/agenda/MonthGrid";
 import { PageContainer } from "@/components/ui/PageContainer";
+import { PacienteFichaLink } from "@/components/PacienteFichaLink";
 import { PatientPicker, type PickedPatient } from "@/components/PatientPicker";
 import { SpecialtySelect } from "@/components/SpecialtySelect";
 import { TreatmentAutocomplete } from "@/components/TreatmentAutocomplete";
@@ -526,11 +527,11 @@ function AgendaPageInner() {
             </button>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link href={`/pacientes/${selected.patient_id}`}>
+            <PacienteFichaLink patientId={selected.patient_id}>
               <Button variant="secondary" icon={<FileText className="h-3.5 w-3.5" />}>
                 Ficha
               </Button>
-            </Link>
+            </PacienteFichaLink>
             {selected.estado === "programada" && (
               <Button variant="danger" onClick={() => cancelAppointment(selected.id)}>
                 Cancelar cita
@@ -633,7 +634,7 @@ function AgendaPageInner() {
                   className="flex shrink-0 items-center gap-2 self-end sm:self-center"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <Link href={`/pacientes/${a.patient_id}`}>
+                  <PacienteFichaLink patientId={a.patient_id}>
                     <Button
                       variant="ghost"
                       icon={<FileText className="h-3.5 w-3.5" />}
@@ -641,7 +642,7 @@ function AgendaPageInner() {
                     >
                       Ficha
                     </Button>
-                  </Link>
+                  </PacienteFichaLink>
                   {a.estado === "programada" && (
                     <Button
                       variant="danger"

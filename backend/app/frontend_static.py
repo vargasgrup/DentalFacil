@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
@@ -118,8 +118,15 @@ def resolve_ui_root() -> Path | None:
 
 
 def pick_ui_relpath(root: Path, url_path: str) -> str | None:
-    """Return path relative to root (posix) suitable for StaticFiles, or None."""
-    rel = (url_path or "").strip("/")
+    """Return path relative to root (posix) suitable for StaticFiles, or None.
+
+    Starlette on Windows may pass backslash paths (``pacientes\\uuid``). Always
+    normalize to ``/`` before matching Next.js ``output: "export"`` files.
+
+    Never fall back to root ``index.html`` for missing app routes — that HTML is
+    the login shell and authenticated clients bounce to ``/dashboard``.
+    """
+    rel = (url_path or "").replace("\\", "/").strip("/")
     candidates: list[Path] = []
     if not rel:
         candidates.append(root / "index.html")
@@ -127,13 +134,18 @@ def pick_ui_relpath(root: Path, url_path: str) -> str | None:
         candidates.append(root / rel)
         candidates.append(root / f"{rel}.html")
         candidates.append(root / rel / "index.html")
-        parts = rel.split("/")
-        if len(parts) >= 2 and parts[0] == "pacientes" and parts[1] not in {"nuevo", "_"}:
-            candidates.append(root / "pacientes" / "_" / "index.html")
-        # SPA fallback for client routes
+        parts = [p for p in rel.split("/") if p]
         last = parts[-1] if parts else ""
-        if not (last and "." in last and not last.endswith(".html")):
-            candidates.append(root / "index.html")
+        looks_like_asset = bool(last and "." in last and not last.endswith(".html"))
+
+        # Dynamic patient ficha: export only embeds pacientes/_/index.html
+        if (
+            len(parts) >= 2
+            and parts[0] == "pacientes"
+            and parts[1] not in {"nuevo", "_"}
+            and not looks_like_asset
+        ):
+            candidates.append(root / "pacientes" / "_" / "index.html")
 
     for c in candidates:
         try:
@@ -154,29 +166,27 @@ class SpaStaticFiles(StaticFiles):
         self._root = Path(directory).resolve()
 
     async def get_response(self, path: str, scope: Scope) -> Response:
-        # Request "/" arrives as "" under a mount at "/"
-        if not path or path in {".", "/"}:
-            path = "index.html"
+        # Starlette StaticFiles on Windows uses "\\" in path segments.
+        path_norm = (path or "").replace("\\", "/")
+        if not path_norm or path_norm in {".", "/"}:
+            path_norm = "index.html"
 
         try:
-            response = await super().get_response(path, scope)
+            response = await super().get_response(path_norm, scope)
             if getattr(response, "status_code", 200) != 404:
                 return response
         except StarletteHTTPException as exc:
             if exc.status_code != 404:
                 raise
 
-        alt = pick_ui_relpath(self._root, path)
-        if alt and alt != path:
+        alt = pick_ui_relpath(self._root, path_norm)
+        if alt and alt != path_norm.lstrip("/"):
             try:
                 return await super().get_response(alt, scope)
             except StarletteHTTPException:
                 pass
 
-        try:
-            return await super().get_response("index.html", scope)
-        except StarletteHTTPException:
-            raise StarletteHTTPException(status_code=404, detail="UI index.html missing")
+        raise StarletteHTTPException(status_code=404, detail="Not Found")
 
 
 _MISSING_UI_HTML = """<!DOCTYPE html>
@@ -215,6 +225,7 @@ def mount_frontend_static(app: FastAPI) -> Path | None:
         }
 
     if root is None:
+
         @app.get("/")
         async def ui_missing_root():
             return HTMLResponse(_MISSING_UI_HTML, status_code=503)

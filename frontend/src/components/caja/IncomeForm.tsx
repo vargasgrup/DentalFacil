@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { Banknote, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/Input";
 import { DocumentActions } from "@/components/DocumentActions";
+import { PacienteFichaLink } from "@/components/PacienteFichaLink";
 import { PatientPicker, type PickedPatient } from "@/components/PatientPicker";
 import { TreatmentAutocomplete } from "@/components/TreatmentAutocomplete";
 import { INCOME_PRESETS, METODOS } from "./constants";
@@ -432,12 +432,12 @@ export function IncomeForm({
               {!!lastReceipt.patient_id && !lastReceipt.patient_telefono && (
                 <p className="mt-2 text-xs text-warning-700">
                   Sin teléfono en la ficha.{" "}
-                  <Link
-                    href={`/pacientes/${lastReceipt.patient_id}`}
+                  <PacienteFichaLink
+                    patientId={lastReceipt.patient_id}
                     className="font-medium text-brand-600 underline"
                   >
                     Completar ficha
-                  </Link>
+                  </PacienteFichaLink>
                 </p>
               )}
               <div className="mt-3 flex flex-wrap gap-2">

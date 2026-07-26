@@ -20,7 +20,12 @@ def test_pick_ui_relpath_index_and_patient_fallback(tmp_path: Path):
     assert pick_ui_relpath(tmp_path, "/dashboard/") == "dashboard/index.html"
     assert pick_ui_relpath(tmp_path, "/pacientes/nuevo/") == "pacientes/nuevo/index.html"
     assert pick_ui_relpath(tmp_path, "/pacientes/abc-uuid-1/") == "pacientes/_/index.html"
+    # Starlette on Windows passes backslash path segments
+    assert pick_ui_relpath(tmp_path, r"pacientes\abc-uuid-1") == "pacientes/_/index.html"
     assert pick_ui_relpath(tmp_path, "/missing-asset.js") is None
+    # Must not serve login shell for missing app routes
+    assert pick_ui_relpath(tmp_path, "/pacientes/no-such-yet") == "pacientes/_/index.html"
+    assert pick_ui_relpath(tmp_path, "/ruta-inexistente") is None
 
 
 def test_pick_ui_relpath_next_static_chunk(tmp_path: Path):

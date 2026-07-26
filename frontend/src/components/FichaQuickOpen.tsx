@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Search, FileText, ArrowRight, Users } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatFichaCode } from "@/lib/ficha";
 import { Badge } from "@/components/ui/Badge";
+import { navigateToPacienteFicha } from "@/lib/pacienteRoutes";
 
 export interface FichaSearchHit {
   id: string;
@@ -39,7 +39,6 @@ export function FichaQuickOpen({
   autoFocus = false,
   className = "",
 }: FichaQuickOpenProps) {
-  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
 
@@ -90,7 +89,7 @@ export function FichaQuickOpen({
   const openFicha = (patientId: string) => {
     setQuery("");
     setOpen(false);
-    router.push(`/pacientes/${patientId}`);
+    navigateToPacienteFicha(patientId);
   };
 
   const uniqueShortcuts = shortcuts.filter(

@@ -97,6 +97,8 @@ Section "Install"
 
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft Server 8001"'
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NKDentalSoft Server 8001" dir=in action=allow protocol=TCP localport=8001 profile=private,domain,public'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft LAN Discovery 37020"'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NKDentalSoft LAN Discovery 37020" dir=in action=allow protocol=UDP localport=37020 profile=private,domain,public'
 
   ; Delete stale loose modules that shadowed the frozen PYZ (caused HTTPS-only / dead UI)
   Delete "$INSTDIR\server_entry.py"
@@ -149,6 +151,7 @@ Section "Uninstall"
   nsExec::ExecToLog '"$INSTDIR\nkdentalsoft-server.exe" remove'
   nsExec::ExecToLog 'schtasks /Delete /TN "NKDentalSoft Server" /F'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft Server 8001"'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft LAN Discovery 37020"'
   Delete "$DESKTOP\N&K DentalSoft.lnk"
   Delete "$DESKTOP\N&K DentalSoft Server.lnk"
   RMDir /r "$SMPROGRAMS\N&K DentalSoft"

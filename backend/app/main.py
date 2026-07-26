@@ -175,11 +175,13 @@ async def lifespan(app: FastAPI):
     logger.info("lifespan ready (scheduler reminders+backups started)")
     # Optional LAN discovery (packaging / production)
     mdns_handle = None
+    lan_discovery_handle = None
     try:
         from pathlib import Path
         import os
 
         from app.services.mdns_announce import start_mdns_announce
+        from app.services.lan_discovery import start_lan_discovery
 
         fp = ""
         fp_path = (
@@ -191,11 +193,19 @@ async def lifespan(app: FastAPI):
         if fp_path.is_file():
             fp = fp_path.read_text(encoding="utf-8").strip()
         port = int(os.environ.get("BACKEND_PORT", settings.BACKEND_PORT or 8001))
+        # Always announce on desktop/production so LAN clients can find the Server
+        lan_discovery_handle = start_lan_discovery(http_port=port)
         if (os.environ.get("NKDENTALSOFT_MDNS") or "").strip() in ("1", "true", "yes") or settings.is_production:
             mdns_handle = start_mdns_announce(port=port, fingerprint_sha256=fp)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("mDNS announce skipped: %s", exc)
+        logger.warning("LAN/mDNS announce skipped: %s", exc)
     yield
+    try:
+        from app.services.lan_discovery import stop_lan_discovery
+
+        stop_lan_discovery(lan_discovery_handle)
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from app.services.mdns_announce import stop_mdns_announce
 

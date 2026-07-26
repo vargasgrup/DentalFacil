@@ -143,6 +143,7 @@ namespace NkDentalSoft.Client
     internal static class Discovery
     {
         public const int DefaultPort = 8001;
+        public const int UdpDiscoveryPort = 37020;
 
         public static ServerHit ProbeUrl(string url, int timeoutMs)
         {
@@ -180,8 +181,8 @@ namespace NkDentalSoft.Client
                 var health = "http://" + host + ":" + port + "/api/system/health";
                 var req = (HttpWebRequest)WebRequest.Create(health);
                 req.Method = "GET";
-                req.Timeout = Math.Max(800, timeoutMs);
-                req.ReadWriteTimeout = Math.Max(800, timeoutMs);
+                req.Timeout = Math.Max(1200, timeoutMs);
+                req.ReadWriteTimeout = Math.Max(1200, timeoutMs);
                 req.Proxy = null;
                 req.KeepAlive = false;
                 using (var resp = (HttpWebResponse)req.GetResponse())
@@ -190,9 +191,11 @@ namespace NkDentalSoft.Client
                 {
                     if ((int)resp.StatusCode != 200) return null;
                     var body = reader.ReadToEnd() ?? "";
+                    // Accept any healthy N&K / FastAPI health shape (ok or degraded)
                     if (body.IndexOf("status", StringComparison.OrdinalIgnoreCase) < 0 &&
                         body.IndexOf("Dental", StringComparison.OrdinalIgnoreCase) < 0 &&
-                        body.IndexOf("product", StringComparison.OrdinalIgnoreCase) < 0)
+                        body.IndexOf("product", StringComparison.OrdinalIgnoreCase) < 0 &&
+                        body.IndexOf("app", StringComparison.OrdinalIgnoreCase) < 0)
                         return null;
 
                     return new ServerHit
@@ -235,7 +238,6 @@ namespace NkDentalSoft.Client
 
         private static string ExtractJsonString(string json, string key)
         {
-            // lightweight extract: "key":"value"
             var m = Regex.Match(json ?? "",
                 "\"" + Regex.Escape(key) + "\"\\s*:\\s*\"([^\"]*)\"",
                 RegexOptions.IgnoreCase);
@@ -257,6 +259,8 @@ namespace NkDentalSoft.Client
                         if (ua.Address.AddressFamily != AddressFamily.InterNetwork) continue;
                         var ip = ua.Address.ToString();
                         if (ip.StartsWith("127.") || ip.StartsWith("169.254.")) continue;
+                        // Skip Hyper-V / WSL / VPN-ish ranges for primary scan order
+                        if (ip.StartsWith("172.1") || ip.StartsWith("172.2") || ip.StartsWith("10.2.")) continue;
                         var parts = ip.Split('.');
                         if (parts.Length != 4) continue;
                         set.Add(parts[0] + "." + parts[1] + "." + parts[2]);
@@ -265,12 +269,10 @@ namespace NkDentalSoft.Client
             }
             catch (Exception ex) { Logger.Info("LanPrefixes: " + ex.Message); }
 
-            if (set.Count == 0)
-            {
-                set.Add("192.168.0");
-                set.Add("192.168.1");
-                set.Add("192.168.100");
-            }
+            // Always include common clinic home-router ranges
+            foreach (var p in new[] { "192.168.0", "192.168.1", "192.168.100", "10.0.0" })
+                set.Add(p);
+
             return new List<string>(set);
         }
 
@@ -300,6 +302,94 @@ namespace NkDentalSoft.Client
             return ips;
         }
 
+        /// <summary>UDP broadcast discovery (Server lan_discovery.py on port 37020).</summary>
+        public static List<ServerHit> UdpDiscover(Action<string> status, CancellationToken ct, int waitMs = 2500)
+        {
+            var hits = new List<ServerHit>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            status("Anuncio UDP en la red (puerto 37020)...");
+
+            try
+            {
+                using (var udp = new UdpClient())
+                {
+                    udp.EnableBroadcast = true;
+                    udp.Client.ReceiveTimeout = 400;
+                    try { udp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true); } catch { }
+
+                    var probe = Encoding.ASCII.GetBytes("NKDS_DISCOVER");
+                    var targets = new List<IPEndPoint>
+                    {
+                        new IPEndPoint(IPAddress.Broadcast, UdpDiscoveryPort)
+                    };
+                    foreach (var prefix in LanPrefixes())
+                    {
+                        try
+                        {
+                            targets.Add(new IPEndPoint(IPAddress.Parse(prefix + ".255"), UdpDiscoveryPort));
+                        }
+                        catch { }
+                    }
+
+                    foreach (var t in targets)
+                    {
+                        if (ct.IsCancellationRequested) break;
+                        try { udp.Send(probe, probe.Length, t); } catch { }
+                    }
+
+                    var deadline = DateTime.UtcNow.AddMilliseconds(waitMs);
+                    while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            var remote = new IPEndPoint(IPAddress.Any, 0);
+                            var data = udp.Receive(ref remote);
+                            var text = Encoding.UTF8.GetString(data ?? new byte[0]);
+                            if (text.IndexOf("NKDS1", StringComparison.OrdinalIgnoreCase) < 0 &&
+                                text.IndexOf("Dental", StringComparison.OrdinalIgnoreCase) < 0)
+                                continue;
+
+                            var port = DefaultPort;
+                            var portMatch = Regex.Match(text, "\"port\"\\s*:\\s*(\\d+)");
+                            if (portMatch.Success) int.TryParse(portMatch.Groups[1].Value, out port);
+
+                            var ips = new List<string>();
+                            foreach (Match m in Regex.Matches(text, "\"(\\d+\\.\\d+\\.\\d+\\.\\d+)\""))
+                            {
+                                var ip = m.Groups[1].Value;
+                                if (!ips.Contains(ip)) ips.Add(ip);
+                            }
+                            if (ips.Count == 0 && remote.Address != null)
+                                ips.Add(remote.Address.ToString());
+
+                            foreach (var ip in ips)
+                            {
+                                if (ct.IsCancellationRequested) break;
+                                status("UDP encontro " + ip + " — verificando...");
+                                var hit = ProbeHost(ip, port, 1200);
+                                if (hit != null && seen.Add(hit.Url))
+                                    hits.Add(hit);
+                            }
+                        }
+                        catch (SocketException)
+                        {
+                            // receive timeout — keep waiting until deadline
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Info("UDP discover: " + ex.Message);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Info("UDP discover failed: " + ex.Message);
+            }
+
+            return hits;
+        }
+
         public static List<ServerHit> FindServers(Action<string> status, CancellationToken ct)
         {
             var found = new List<ServerHit>();
@@ -316,6 +406,11 @@ namespace NkDentalSoft.Client
             Add(ProbeHost("127.0.0.1", DefaultPort, 700));
             if (ct.IsCancellationRequested) return found;
 
+            // Fast path: UDP beacon / probe (works even when TCP scan is slow)
+            foreach (var h in UdpDiscover(status, ct, 2800))
+                Add(h);
+            if (found.Count > 0) return found;
+
             status("Buscando por nombre de red (mDNS)...");
             foreach (var ip in MdnsCandidates())
             {
@@ -328,12 +423,12 @@ namespace NkDentalSoft.Client
             {
                 if (ct.IsCancellationRequested) break;
                 status("Explorando red " + prefix + ".* (puerto 8001)...");
-                var open = ScanPrefix(prefix, DefaultPort, 180, ct, status);
+                var open = ScanPrefix(prefix, DefaultPort, 320, ct);
                 foreach (var ip in open)
                 {
                     if (ct.IsCancellationRequested) break;
                     status("Verificando " + ip + "...");
-                    Add(ProbeHost(ip, DefaultPort, 600));
+                    Add(ProbeHost(ip, DefaultPort, 900));
                 }
                 if (found.Count > 0) break;
             }
@@ -341,9 +436,8 @@ namespace NkDentalSoft.Client
             return found;
         }
 
-        private static List<string> ScanPrefix(string prefix, int port, int timeoutMs, CancellationToken ct, Action<string> status)
+        private static List<string> ScanPrefix(string prefix, int port, int timeoutMs, CancellationToken ct)
         {
-            var open = new List<string>();
             var bag = new System.Collections.Concurrent.ConcurrentBag<string>();
             Parallel.For(1, 255, new ParallelOptions
             {
@@ -355,7 +449,7 @@ namespace NkDentalSoft.Client
                 var ip = prefix + "." + i;
                 if (TcpOpen(ip, port, timeoutMs)) bag.Add(ip);
             });
-            open.AddRange(bag);
+            var open = new List<string>(bag);
             open.Sort(CompareIp);
             return open;
         }
@@ -440,7 +534,7 @@ namespace NkDentalSoft.Client
             MaximizeBox = false;
             MinimizeBox = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(540, 430);
+            ClientSize = new Size(560, 470);
             BackColor = Color.FromArgb(248, 250, 252);
             Font = new Font("Segoe UI", 9F, FontStyle.Regular);
 
@@ -455,10 +549,10 @@ namespace NkDentalSoft.Client
 
             var sub = new Label
             {
-                Text = "Busca automaticamente el PC servidor en la red local (puerto 8001).",
+                Text = "Busca automaticamente el PC servidor (UDP + puerto TCP 8001).",
                 ForeColor = Color.FromArgb(100, 116, 139),
                 AutoSize = false,
-                Size = new Size(500, 20),
+                Size = new Size(520, 20),
                 Location = new Point(20, 44)
             };
             Controls.Add(sub);
@@ -468,15 +562,15 @@ namespace NkDentalSoft.Client
                 Text = "Listo.",
                 ForeColor = Color.FromArgb(30, 136, 229),
                 AutoSize = false,
-                Size = new Size(500, 20),
-                Location = new Point(20, 70)
+                Size = new Size(520, 36),
+                Location = new Point(20, 68)
             };
             Controls.Add(_status);
 
             _list = new ListBox
             {
-                Location = new Point(22, 96),
-                Size = new Size(496, 170),
+                Location = new Point(22, 108),
+                Size = new Size(516, 150),
                 IntegralHeight = false
             };
             _list.SelectedIndexChanged += (s, e) =>
@@ -488,24 +582,34 @@ namespace NkDentalSoft.Client
 
             var manualLbl = new Label
             {
-                Text = "O escriba la URL / IP manualmente:",
+                Text = "O escriba la IP del PC servidor (ej. 192.168.1.10):",
                 AutoSize = true,
-                Location = new Point(20, 278)
+                Location = new Point(20, 268)
             };
             Controls.Add(manualLbl);
 
             _manual = new TextBox
             {
-                Location = new Point(22, 300),
-                Size = new Size(496, 26),
+                Location = new Point(22, 290),
+                Size = new Size(516, 26),
                 Text = forcePrompt ? "" : Config.LoadUrl()
             };
             Controls.Add(_manual);
 
+            var help = new Label
+            {
+                Text = "Si no aparece: 1) Encienda N&K DentalSoft en el PC servidor  2) Misma Wi-Fi/LAN (no invitado)  3) En el servidor, Configuracion > Equipos conectados muestra la IP.",
+                ForeColor = Color.FromArgb(100, 116, 139),
+                AutoSize = false,
+                Size = new Size(516, 40),
+                Location = new Point(22, 322)
+            };
+            Controls.Add(help);
+
             _btnSearch = new Button
             {
                 Text = "Buscar en la red",
-                Location = new Point(22, 348),
+                Location = new Point(22, 372),
                 Size = new Size(140, 34)
             };
             _btnSearch.Click += async (s, e) => await SearchAsync();
@@ -514,7 +618,7 @@ namespace NkDentalSoft.Client
             _btnConnect = new Button
             {
                 Text = "Conectar",
-                Location = new Point(280, 348),
+                Location = new Point(300, 372),
                 Size = new Size(120, 34),
                 BackColor = Color.FromArgb(30, 136, 229),
                 ForeColor = Color.White,
@@ -526,7 +630,7 @@ namespace NkDentalSoft.Client
             var btnCancel = new Button
             {
                 Text = "Cancelar",
-                Location = new Point(410, 348),
+                Location = new Point(430, 372),
                 Size = new Size(108, 34)
             };
             btnCancel.Click += (s, e) => Close();
@@ -572,7 +676,11 @@ namespace NkDentalSoft.Client
 
                 if (_hits.Count == 0)
                 {
-                    _status.Text = "No se encontro ningun servidor. Verifique Wi-Fi/LAN y que el Server este encendido.";
+                    _status.Text = "No se encontro ningun servidor. Escriba la IP del PC servidor abajo (ej. 192.168.1.10) o pulse Buscar de nuevo con el Server encendido.";
+                    if (string.IsNullOrWhiteSpace(_manual.Text))
+                        _manual.Text = "192.168.";
+                    _manual.Focus();
+                    _manual.SelectionStart = _manual.Text.Length;
                 }
                 else
                 {

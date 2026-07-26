@@ -48,12 +48,14 @@ function AlertBox({
 
 function FormTitle({ title, hint }: { title: string; hint?: string }) {
   return (
-    <header className="mb-6">
+    <header className="mb-6 text-center">
       <h1 className="text-[1.65rem] font-bold leading-tight tracking-[-0.03em] text-slate-900 sm:text-[1.85rem]">
         {title}
       </h1>
       {hint ? (
-        <p className="mt-2 text-sm leading-relaxed text-slate-500">{hint}</p>
+        <p className="mx-auto mt-2 max-w-[34ch] text-sm leading-relaxed text-slate-500 sm:max-w-none">
+          {hint}
+        </p>
       ) : null}
     </header>
   );
@@ -313,7 +315,7 @@ export default function LoginPage() {
         }
       >
         <div className="login-premium__form mx-auto w-full max-w-[400px]">
-          <div className="mb-5 flex justify-center lg:justify-start">
+          <div className="mb-5 flex justify-center">
             <BrandLogo
               variant="login"
               priority

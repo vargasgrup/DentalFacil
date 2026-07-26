@@ -234,6 +234,13 @@ def create_evolution(
         _sync_plan_item_from_evolution(db, patient_id, entry)
     db.commit()
     db.refresh(entry)
+    from app.realtime.connection_manager import publish_event
+
+    publish_event(
+        "clinical.evolution.created",
+        {"id": entry.id, "patientId": patient_id},
+        actor=user.id,
+    )
     return entry
 
 
@@ -274,6 +281,13 @@ def update_evolution(
         _sync_plan_item_from_evolution(db, entry.patient_id, entry)
     db.commit()
     db.refresh(entry)
+    from app.realtime.connection_manager import publish_event
+
+    publish_event(
+        "clinical.evolution.updated",
+        {"id": entry.id, "patientId": entry.patient_id},
+        actor=user.id,
+    )
     return entry
 
 

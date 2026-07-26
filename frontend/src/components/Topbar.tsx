@@ -22,6 +22,17 @@ import { Button } from "./ui/Button";
 import { openWhatsAppText, isValidPhone } from "@/lib/whatsapp";
 import { formatFichaCode } from "@/lib/ficha";
 import { SHELL_HEADER_CLASS } from "./shell";
+import { useRealtimeSync, type RealtimeStatus } from "@/hooks/useRealtimeSync";
+
+function realtimeLabel(status: RealtimeStatus): { text: string; className: string } {
+  if (status === "online") {
+    return { text: "En línea", className: "bg-success-600" };
+  }
+  if (status === "connecting" || status === "reconnecting") {
+    return { text: "Reconectando", className: "bg-warning-500" };
+  }
+  return { text: "Sin conexión al servidor", className: "bg-danger-600" };
+}
 
 interface SearchResult {
   id: string;
@@ -51,6 +62,8 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const isDashboard = pathname === "/dashboard";
+  const { status: realtimeStatus } = useRealtimeSync({ enabled: Boolean(user) });
+  const realtimeUi = realtimeLabel(realtimeStatus);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -270,6 +283,13 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          <span
+            className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 sm:inline-flex"
+            title={realtimeUi.text}
+          >
+            <span className={`h-2 w-2 rounded-full ${realtimeUi.className}`} aria-hidden />
+            {realtimeUi.text}
+          </span>
           {canAccessModule(user, "pacientes") && (
             <Link
               href="/pacientes/nuevo"

@@ -184,6 +184,17 @@ def create_appointment(
     db.add(apt)
     db.commit()
     db.refresh(apt)
+    from app.realtime.connection_manager import publish_event
+
+    publish_event(
+        "appointment.created",
+        {
+            "id": apt.id,
+            "patientId": apt.patient_id,
+            "fechaHora": apt.fecha_hora.isoformat() if apt.fecha_hora else None,
+        },
+        actor=user.id,
+    )
     return _appointment_to_out(apt, db)
 
 
@@ -216,6 +227,19 @@ def update_appointment(
         setattr(apt, field, value)
     db.commit()
     db.refresh(apt)
+    from app.realtime.connection_manager import publish_event
+
+    event = "appointment.cancelled" if (apt.estado or "") == "cancelada" else "appointment.updated"
+    publish_event(
+        event,
+        {
+            "id": apt.id,
+            "patientId": apt.patient_id,
+            "estado": apt.estado,
+            "fechaHora": apt.fecha_hora.isoformat() if apt.fecha_hora else None,
+        },
+        actor=user.id,
+    )
     return _appointment_to_out(apt, db)
 
 

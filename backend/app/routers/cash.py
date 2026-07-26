@@ -249,6 +249,9 @@ def open_session(
     db.add(session)
     db.commit()
     db.refresh(session)
+    from app.realtime.connection_manager import publish_event
+
+    publish_event("cash.session.opened", {"id": session.id}, actor=user.id)
     return session
 
 
@@ -281,6 +284,10 @@ def close_session(
     session.cerrada_en = datetime.now(timezone.utc)
     session.estado = "cerrada"
     db.commit()
+
+    from app.realtime.connection_manager import publish_event
+
+    publish_event("cash.session.closed", {"id": session.id}, actor=user.id)
 
     return CashCloseSummary(
         session_id=session.id,
@@ -501,6 +508,18 @@ def create_transaction(
             detail=f"No se pudo guardar el pago: {exc}",
         ) from exc
     db.refresh(tx)
+    from app.realtime.connection_manager import publish_event
+
+    publish_event(
+        "cash.transaction.created",
+        {
+            "id": tx.id,
+            "patientId": tx.patient_id,
+            "monto": float(tx.monto or 0),
+            "tipo": tx.tipo,
+        },
+        actor=user.id,
+    )
     return _tx_to_out(
         tx,
         db,

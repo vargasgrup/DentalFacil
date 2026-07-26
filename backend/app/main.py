@@ -27,7 +27,11 @@ from app.routers.dashboard import router as dashboard_router
 from app.routers.system_maintenance import router as system_maintenance_router
 from app.routers.system_vendor import router as system_vendor_router
 from app.routers.backup import router as backup_router
+from app.routers.system import router as system_router, build_health_payload
+from app.routers.realtime_ws import router as realtime_ws_router
 from app.services.backup_service import is_restore_in_progress, run_scheduled_backup_job
+from app.realtime.connection_manager import manager as realtime_manager
+from app.version import PRODUCT_VERSION
 
 configure_logging()
 logger = get_logger("main")
@@ -70,13 +74,16 @@ def _scheduler_health() -> dict[str, Any]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _scheduler
+    import asyncio
+
     from app.services.clinic_profile import ensure_uploads_dir
     from app.ensure_auth_schema import ensure_auth_schema
 
     logger.info("lifespan start")
+    realtime_manager.bind_loop(asyncio.get_running_loop())
+    app.state.scheduler_health = _scheduler_health
     ensure_uploads_dir()
-    _run_migrations()
-    # Guarantees JWT revocation columns even if Alembic stamped head without applying them.
+    _run_migrations()    # Guarantees JWT revocation columns even if Alembic stamped head without applying them.
     try:
         ensure_auth_schema()
     except Exception as exc:  # noqa: BLE001
@@ -159,7 +166,35 @@ async def lifespan(app: FastAPI):
     _scheduler = scheduler
     app.state.scheduler = scheduler
     logger.info("lifespan ready (scheduler reminders+backups started)")
+    # Optional LAN discovery (packaging / production)
+    mdns_handle = None
+    try:
+        from pathlib import Path
+        import os
+
+        from app.services.mdns_announce import start_mdns_announce
+
+        fp = ""
+        fp_path = (
+            Path(os.environ.get("PROGRAMDATA", "C:/ProgramData"))
+            / "NKDentalSoft"
+            / "certs"
+            / "fingerprint.sha256"
+        )
+        if fp_path.is_file():
+            fp = fp_path.read_text(encoding="utf-8").strip()
+        port = int(os.environ.get("BACKEND_PORT", settings.BACKEND_PORT or 8001))
+        if (os.environ.get("NKDENTALSOFT_MDNS") or "").strip() in ("1", "true", "yes") or settings.is_production:
+            mdns_handle = start_mdns_announce(port=port, fingerprint_sha256=fp)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("mDNS announce skipped: %s", exc)
     yield
+    try:
+        from app.services.mdns_announce import stop_mdns_announce
+
+        stop_mdns_announce(mdns_handle)
+    except Exception:  # noqa: BLE001
+        pass
     scheduler.shutdown()
     _scheduler = None
     logger.info("lifespan shutdown")
@@ -167,7 +202,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=f"{settings.APP_NAME} API",
-    version="1.0.0",
+    version=PRODUCT_VERSION,
     lifespan=lifespan,
 )
 
@@ -182,51 +217,8 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health():
-    from app.db_health import ping_database, schema_ready
-
-    mig = migrations_status()
-    db_connected = ping_database()
-    tables_ok, tables_err = schema_ready() if db_connected else (False, None)
-    url = settings.DATABASE_URL or ""
-    url_ok = (
-        (
-            url.startswith("postgresql+psycopg://")
-            or url.startswith("postgresql://")
-            or url.startswith("sqlite:")
-        )
-        and "@127.0.0.1:1/" not in url
-    )
-    engine_kind = "sqlite" if settings.is_sqlite else "postgres"
-    user_count = None
-    if db_connected and tables_ok:
-        try:
-            from sqlalchemy import text
-
-            from app.database import engine
-
-            with engine.connect() as conn:
-                user_count = int(conn.execute(text("SELECT COUNT(*) FROM users")).scalar() or 0)
-        except Exception:  # noqa: BLE001
-            user_count = None
-    ready = url_ok and db_connected and mig["ok"] and tables_ok
-    jwt_ok = settings.jwt_secret_is_secure
-    if settings.is_production and not jwt_ok:
-        ready = False
-    return {
-        "status": "ok" if ready else "degraded",
-        "app": settings.APP_NAME,
-        "app_env": settings.APP_ENV,
-        "engine": engine_kind,
-        "user_count": user_count,
-        "database_url_configured": url_ok,
-        "database_connected": db_connected,
-        "migrations_ok": mig["ok"],
-        "migrations_error": mig["error"],
-        "schema_ready": tables_ok,
-        "schema_error": tables_err,
-        "jwt_secret_configured": jwt_ok,
-        "scheduler": _scheduler_health(),
-    }
+    """Legacy health URL — same payload as GET /api/system/health."""
+    return build_health_payload(scheduler=_scheduler_health())
 
 
 app.include_router(auth_router)
@@ -249,12 +241,16 @@ app.include_router(whatsapp_integration_router)
 app.include_router(system_maintenance_router)
 app.include_router(system_vendor_router)
 app.include_router(backup_router)
+app.include_router(system_router)
+app.include_router(realtime_ws_router)
 
 
 @app.middleware("http")
 async def restore_maintenance_middleware(request, call_next):
     path = request.url.path or ""
-    if is_restore_in_progress() and not path.startswith("/api/health"):
+    if is_restore_in_progress() and not (
+        path.startswith("/api/health") or path.startswith("/api/system/health")
+    ):
         from fastapi.responses import JSONResponse
 
         return JSONResponse(

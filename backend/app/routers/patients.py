@@ -310,6 +310,13 @@ def create_patient(
             detail=_db_write_error_detail(exc),
         ) from exc
     db.refresh(patient)
+    from app.realtime.connection_manager import publish_event
+
+    publish_event(
+        "patient.created",
+        {"id": patient.id, "numero_ficha": patient.numero_ficha},
+        actor=user.id,
+    )
     return patient
 
 
@@ -350,6 +357,9 @@ def update_patient(
             detail="Ya existe otro paciente con ese número de documento.",
         )
     db.refresh(p)
+    from app.realtime.connection_manager import publish_event
+
+    publish_event("patient.updated", {"id": p.id}, actor=user.id)
     return p
 
 

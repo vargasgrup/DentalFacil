@@ -463,6 +463,13 @@ def upsert_entry(
     )
     db.commit()
     db.refresh(entry)
+    from app.realtime.connection_manager import publish_event
+
+    publish_event(
+        "odontogram.updated",
+        {"patientId": patient_id, "piezaFdi": pieza_fdi, "denticion": denticion},
+        actor=user.id,
+    )
     return entry
 
 

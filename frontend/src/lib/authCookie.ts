@@ -1,8 +1,8 @@
 /** Cookie name used by middleware to gate protected app routes. */
 export const AUTH_COOKIE = "ds_access_token";
 
-/** Alineado con REFRESH_TOKEN_EXPIRE_DAYS del backend (sesión de escritorio). */
-export const AUTH_COOKIE_MAX_AGE_SEC = 30 * 24 * 60 * 60;
+/** Alineado con REFRESH_TOKEN_EXPIRE_DAYS del backend (7 días). */
+export const AUTH_COOKIE_MAX_AGE_SEC = 7 * 24 * 60 * 60;
 
 const isBrowser = () => typeof window !== "undefined";
 

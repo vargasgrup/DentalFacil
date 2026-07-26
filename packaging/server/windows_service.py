@@ -161,8 +161,73 @@ def _start_foreground_detached() -> None:
     )
 
 
+def _browser_candidates() -> list[Path]:
+    """Edge / Chrome install paths (Windows)."""
+    pf = os.environ.get("ProgramFiles", r"C:\Program Files")
+    pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    local = os.environ.get("LOCALAPPDATA", "")
+    return [
+        Path(pf) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+        Path(pf86) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+        Path(pf) / "Google" / "Chrome" / "Application" / "chrome.exe",
+        Path(pf86) / "Google" / "Chrome" / "Application" / "chrome.exe",
+        Path(local) / "Google" / "Chrome" / "Application" / "chrome.exe" if local else Path(),
+    ]
+
+
+def _open_clinic_ui(url: str) -> str:
+    """
+    Open UI as a dedicated app window (Edge/Chrome --app) so Windows shows an
+    N&K DentalSoft-like taskbar button instead of a normal browser tab.
+    Falls back to the default browser if no Chromium browser is found.
+    """
+    import subprocess
+
+    profile = (
+        Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
+        / "NKDentalSoft"
+        / "AppProfile"
+    )
+    try:
+        profile.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+
+    for browser in _browser_candidates():
+        if not browser or not browser.is_file():
+            continue
+        args = [
+            str(browser),
+            f"--app={url}",
+            f"--user-data-dir={profile}",
+            "--no-first-run",
+            "--no-default-browser-check",
+        ]
+        try:
+            creation = 0
+            if sys.platform == "win32":
+                creation = 0x00000008 | 0x00000200  # DETACHED | NEW_PROCESS_GROUP
+            subprocess.Popen(
+                args,
+                cwd=str(browser.parent),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=creation,
+                close_fds=True,
+            )
+            return f"app:{browser.name}"
+        except OSError:
+            continue
+
+    import webbrowser
+
+    webbrowser.open(url)
+    return "webbrowser"
+
+
 def run_desktop(open_browser: bool = True) -> int:
-    """Ensure the API/UI is reachable, then open the browser (clinic desktop UX)."""
+    """Ensure the API/UI is reachable, then open the clinic app window."""
     _ensure_path()
     from server_entry import prepare_environment, log
 
@@ -203,9 +268,8 @@ def run_desktop(open_browser: bool = True) -> int:
             return 1
 
     if open_browser:
-        import webbrowser
-
-        webbrowser.open(url)
+        how = _open_clinic_ui(url)
+        log(f"desktop: opened UI via {how} → {url}")
     return 0
 
 

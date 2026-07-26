@@ -63,6 +63,7 @@ export default function NuevoPacientePage() {
   const telRef = useRef<HTMLInputElement>(null);
 
   const [busy, setBusy] = useState(false);
+  const submittingRef = useRef(false);
   const [error, setError] = useState("");
   const [showMore, setShowMore] = useState(false);
   const [docStatus, setDocStatus] = useState<"idle" | "checking" | "ok" | "dup">("idle");
@@ -251,6 +252,9 @@ export default function NuevoPacientePage() {
     setError("");
     if (!validate()) return;
     if (docStatus === "dup") return;
+    // Sync guard: React setState is async — double-click/Enter can fire two POSTs.
+    if (busy || submittingRef.current) return;
+    submittingRef.current = true;
 
     const doc = form.numero_documento.trim();
     const tel = normalizePeruvianMobile(form.telefono.trim());
@@ -304,7 +308,10 @@ export default function NuevoPacientePage() {
       setError(message);
     } finally {
       window.clearTimeout(timeout);
-      if (!navigated) setBusy(false);
+      if (!navigated) {
+        submittingRef.current = false;
+        setBusy(false);
+      }
     }
   };
 

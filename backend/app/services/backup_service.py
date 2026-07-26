@@ -207,11 +207,18 @@ def _pick_directory_python_subprocess(title: str, initial_dir: str | None) -> st
     Spawn the same Python interpreter with tkinter — works when PATH lacks powershell
     (typical of Windows desktop installers under custom folders).
     Uses a temp .py file so titles with & / accents do not break -c parsing.
+
+    Frozen PyInstaller EXEs must NOT be used as the interpreter: re-launching
+    ``nkdentalsoft-server.exe`` with a .py argv falls through to ``--desktop`` and
+    opens another browser window instead of a folder dialog.
     """
     import subprocess
     import sys
     import tempfile
     import textwrap
+
+    if getattr(sys, "frozen", False):
+        raise RuntimeError("frozen EXE cannot host tkinter picker subprocess")
 
     start = _normalize_initial_dir(initial_dir)
     code = textwrap.dedent(
@@ -335,13 +342,14 @@ $dialog.ShowNewFolderButton = $true
 try {{ $dialog.RootFolder = [Environment+SpecialFolder]::MyComputer }} catch {{ }}
 $form = New-Object System.Windows.Forms.Form
 $form.TopMost = $true
-$form.ShowInTaskbar = $false
+$form.ShowInTaskbar = $true
+$form.Text = {json.dumps(title)}
 $form.Opacity = 0
 $form.Width = 1
 $form.Height = 1
-$form.StartPosition = 'Manual'
-$form.Location = New-Object System.Drawing.Point(-2000, -2000)
+$form.StartPosition = 'CenterScreen'
 [void]$form.Show()
+$form.Activate()
 $form.BringToFront()
 try {{
   $r = $dialog.ShowDialog($form)
@@ -511,11 +519,21 @@ def pick_backup_directory_interactive(
     try:
         start = _normalize_initial_dir(initial_dir)
         if os.name == "nt":
-            methods: list[tuple[str, Any]] = [
-                ("python-tk", lambda: _pick_directory_python_subprocess(title, start)),
-                ("powershell", lambda: _pick_directory_windows_ps(title, start)),
-                ("tkinter", lambda: _pick_directory_tk(title, start)),
-            ]
+            # Frozen EXE: never spawn sys.executable (reopens the desktop browser).
+            # Prefer PowerShell FolderBrowserDialog first on Windows installers.
+            import sys as _sys
+
+            if getattr(_sys, "frozen", False):
+                methods: list[tuple[str, Any]] = [
+                    ("powershell", lambda: _pick_directory_windows_ps(title, start)),
+                    ("tkinter", lambda: _pick_directory_tk(title, start)),
+                ]
+            else:
+                methods = [
+                    ("powershell", lambda: _pick_directory_windows_ps(title, start)),
+                    ("python-tk", lambda: _pick_directory_python_subprocess(title, start)),
+                    ("tkinter", lambda: _pick_directory_tk(title, start)),
+                ]
         else:
             methods = [
                 ("python-tk", lambda: _pick_directory_python_subprocess(title, start)),

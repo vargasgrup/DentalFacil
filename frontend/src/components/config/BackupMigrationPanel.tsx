@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   Archive,
   Download,
@@ -83,6 +83,7 @@ export function BackupMigrationPanel() {
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pickingFolder, setPickingFolder] = useState(false);
+  const pickingRef = useRef(false);
   const [showManualPath, setShowManualPath] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestedDirectory[]>([]);
 
@@ -146,6 +147,8 @@ export function BackupMigrationPanel() {
   }, [load, loadSuggestions]);
 
   const chooseFolder = async () => {
+    if (pickingRef.current || pickingFolder) return;
+    pickingRef.current = true;
     setPickingFolder(true);
     setMsg("Abriendo selector de carpetas… Si no aparece, use una carpeta sugerida.");
     setErr("");
@@ -193,6 +196,7 @@ export function BackupMigrationPanel() {
       setShowManualPath(true);
       void loadSuggestions();
     } finally {
+      pickingRef.current = false;
       setPickingFolder(false);
     }
   };

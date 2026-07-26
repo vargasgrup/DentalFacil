@@ -60,8 +60,8 @@ class Settings(BaseSettings):
     # JWT — generar único por entorno: openssl rand -hex 32
     JWT_SECRET: str = JWT_SECRET_INSECURE_DEFAULT
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 720  # 12 h — jornada clínica de escritorio
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # multi-PC / reinicios sin re-login diario
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 h — jornada clínica
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # reinicios en la semana; idle logout cierra antes
 
     # Rate limiting (auth endpoints)
     RATE_LIMIT_LOGIN_PER_MINUTE: int = 10

@@ -1,5 +1,6 @@
 @echo off
-REM Clinic desktop launcher: ensure server is up, then open the UI.
+REM Clinic desktop launcher: ensure server is up, then open Edge/Chrome --app UI
+REM (dedicated taskbar button with clinic favicon).
 setlocal EnableExtensions
 cd /d "%~dp0"
 
@@ -9,7 +10,6 @@ if not exist "%~dp0nkdentalsoft-server.exe" (
   exit /b 1
 )
 
-REM Desktop mode starts the server if needed (HTTP on :8001) and opens the browser.
 "%~dp0nkdentalsoft-server.exe" --desktop
 set ERR=%ERRORLEVEL%
 if not "%ERR%"=="0" (

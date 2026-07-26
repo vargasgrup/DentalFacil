@@ -118,6 +118,13 @@ async def lifespan(app: FastAPI):
         logger.error("ensure_patient_activo_schema FAILED: %s", exc, exc_info=True)
         raise
     try:
+        from app.ensure_patient_document_unique import ensure_patient_document_unique
+
+        ensure_patient_document_unique()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("ensure_patient_document_unique FAILED: %s", exc, exc_info=True)
+        raise
+    try:
         from app.ensure_maintenance_schema import ensure_maintenance_schema
 
         ensure_maintenance_schema()

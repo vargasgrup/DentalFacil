@@ -32,3 +32,5 @@ def test_comprobante_pdf_smoke(
     assert resp.status_code == 200, resp.text
     assert "application/pdf" in resp.headers.get("content-type", "")
     assert resp.content[:4] == b"%PDF"
+    # Guard against empty/corrupt tickets (ReportLab story reuse bug → ~1KB shell)
+    assert len(resp.content) > 2500, f"PDF too small ({len(resp.content)} bytes)"

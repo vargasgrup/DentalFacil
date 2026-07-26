@@ -139,7 +139,19 @@ def download_comprobante(
                         data["tratamiento_label"] = it.get("item") or tx.concepto
                         break
 
-    pdf_bytes, filename = generate_pdf("comprobante", fmt, data)
+    try:
+        pdf_bytes, filename = generate_pdf("comprobante", fmt, data)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=500,
+            detail=f"No se pudo generar el comprobante PDF: {exc}",
+        ) from exc
+
+    if not pdf_bytes or len(pdf_bytes) < 2500 or not pdf_bytes.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=500,
+            detail="El PDF del comprobante quedó vacío o corrupto. Reintente la operación.",
+        )
 
     _register_document(db, patient.id if patient else None, "comprobante", fmt, filename)
 

@@ -10,7 +10,7 @@ layout proportions change. No business logic is duplicated between formats.
 import io
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, A5
@@ -56,7 +56,11 @@ FORMAT_DIMENSIONS = {
 
 
 def _measure_story_height(story: list, avail_width: float) -> float:
-    """Suma la altura real de los flowables (para página térmica a medida)."""
+    """Suma la altura real de los flowables (para página térmica a medida).
+
+    Nota: ``wrap()`` muta flowables — el caller debe construir un story fresco
+    para ``doc.build`` después de medir.
+    """
     total = 0.0
     for flowable in story:
         try:
@@ -75,22 +79,37 @@ def _measure_story_height(story: list, avail_width: float) -> float:
     return total
 
 
-def _render_pdf_bytes(story: list, fmt: str, margin: float) -> bytes:
+def _render_pdf_bytes(
+    story: list | Callable[[], list],
+    fmt: str,
+    margin: float,
+) -> bytes:
     """
-    Renderiza el PDF. En formato 80mm la página tiene exactamente
-    el alto del contenido (+ márgenes), a escala 1:1 para tiquetera.
-    Garantiza una sola página (evita que el pie pase a hoja 2).
+    Renderiza el PDF. En 80mm la página tiene el alto del contenido (+ márgenes).
+
+    ReportLab flowables are **single-use**: after ``doc.build`` (and after
+    ``wrap`` in measurement) they must not be reused. Pass a zero-arg factory
+    for 80mm so retries rebuild a fresh story — otherwise the PDF is empty
+    (~1 KB) and browsers report «archivo dañado».
     """
+    def _fresh_story() -> list:
+        if callable(story):
+            return list(story())
+        return story
+
     buf = io.BytesIO()
     if fmt == "80mm":
+        measure_story = _fresh_story()
         usable_w = TICKET_WIDTH - 2 * margin
-        content_h = _measure_story_height(story, usable_w)
-        # wrap() suele subestimar Paragraph/Table/Image → padding moderado
-        page_h = max(50 * mm, content_h + 2 * margin + 2 * mm)
+        content_h = _measure_story_height(measure_story, usable_w)
+        # wrap() subestima; margen generoso evita 2ª página en el 1.er intento
+        page_h = max(60 * mm, content_h + 2 * margin + 12 * mm)
         page_size = (TICKET_WIDTH, page_h)
+        pdf_bytes = b""
 
-        # Reintentos si ReportLab aún parte a 2ª página
-        for _ in range(4):
+        for attempt in range(6):
+            # Siempre story fresco: build consume flowables
+            current = _fresh_story()
             buf = io.BytesIO()
             page_count = [0]
 
@@ -105,16 +124,29 @@ def _render_pdf_bytes(story: list, fmt: str, margin: float) -> bytes:
                 topMargin=margin,
                 bottomMargin=margin,
             )
-            doc.build(story, onFirstPage=_count_page, onLaterPages=_count_page)
-            if page_count[0] <= 1:
-                break
-            page_h = min(page_h * 1.35, 2000 * mm)
+            doc.build(current, onFirstPage=_count_page, onLaterPages=_count_page)
+            pdf_bytes = buf.getvalue()
+            buf.close()
+
+            # PDF vacío / casi vacío = story reutilizado o fallo de layout
+            if page_count[0] <= 1 and len(pdf_bytes) >= 2500:
+                return pdf_bytes
+
+            page_h = min(page_h * 1.4, 2000 * mm)
             page_size = (TICKET_WIDTH, page_h)
 
-        pdf_bytes = buf.getvalue()
-        buf.close()
+            if not callable(story):
+                # Sin factory no se puede reintentar con seguridad
+                break
+
+        if len(pdf_bytes) < 2500:
+            raise RuntimeError(
+                "No se pudo generar el PDF del ticket 80mm (documento vacío). "
+                "Reintente; si persiste, revise el logo de la clínica."
+            )
         return pdf_bytes
 
+    current = _fresh_story()
     page_size = FORMAT_DIMENSIONS[fmt]
     doc = SimpleDocTemplate(
         buf,
@@ -124,7 +156,7 @@ def _render_pdf_bytes(story: list, fmt: str, margin: float) -> bytes:
         topMargin=margin,
         bottomMargin=margin,
     )
-    doc.build(story)
+    doc.build(current)
     pdf_bytes = buf.getvalue()
     buf.close()
     return pdf_bytes
@@ -372,8 +404,12 @@ def generate_pdf(
 
     # Comprobante de caja: layout propio estilo boleta térmica (logo, serie, QR…)
     if doc_type == "comprobante":
-        story.extend(build_comprobante_story(data, fmt, page_w, margin))
-        pdf_bytes = _render_pdf_bytes(story, fmt, margin)
+        # Factory: ReportLab flowables are single-use (retries must rebuild).
+        pdf_bytes = _render_pdf_bytes(
+            lambda: build_comprobante_story(data, fmt, page_w, margin),
+            fmt,
+            margin,
+        )
         serie = data.get("serie") or f"T{data.get('transaction_id', 0)}"
         patient_name = data.get("patient_nombre", "")
         fn = f"Comprobante_{_safe_filename(serie)}"

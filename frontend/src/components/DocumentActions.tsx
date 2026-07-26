@@ -94,6 +94,12 @@ async function fetchPdfBlob(url: string): Promise<{ blob: Blob; filename: string
   });
   if (!resp.ok) throw new Error("Error al obtener el documento");
   const blob = await resp.blob();
+  // Empty ReportLab shells (~1KB) look like "PDF dañado" in Edge/WebView2
+  if (blob.size > 0 && blob.size < 2500) {
+    throw new Error(
+      "El comprobante generado está incompleto. Cierre y vuelva a abrir la vista previa."
+    );
+  }
   const filename =
     resp.headers.get("Content-Disposition")?.split('filename="')[1]?.replace('"', "") ||
     "documento.pdf";

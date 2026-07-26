@@ -278,12 +278,12 @@ def logo_image(
 
 
 def logo_size_mm_for_ticket(fmt: str) -> float:
-    """Ancho máximo del logo en mm para tickets (más compacto que documentos A4)."""
+    """Ancho máximo del logo en mm para tickets (legible en rollo 80mm)."""
     if fmt == "80mm":
-        return 11.0  # compacto; cabecera sin banda blanca excesiva
+        return 24.0  # visible en térmica sin desbordar márgenes de 5 mm
     if fmt == "A5":
-        return 26.0
-    return 28.0  # ~80 pt
+        return 28.0
+    return 32.0
 
 
 def cell_paragraph(text: Any, style: ParagraphStyle) -> Any:

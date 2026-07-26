@@ -53,16 +53,26 @@ Firewall: solo perfiles **Privado** y **Dominio**, puerto 8001.
 
 mDNS: servicio `_nkdentalsoft._tcp.local.` con propiedad `fp` = fingerprint SHA-256 (TOFU).
 
+## Iconos de marca
+
+Arte N&K DentalSoft (diente chrome/azul). Regenerar todos los tamaños:
+
+```powershell
+python packaging\scripts\generate_icons.py
+```
+
+Salida: `packaging/client/icons/`, `packaging/client/src-tauri/icons/`, `packaging/server/assets/icons/`, favicons en `frontend/public/`.
+
 ## Build Cliente (Tauri)
 
 ```powershell
-cd packaging\client
-# Completar src-tauri con `cargo create-tauri-app` si aún no existe el crate Rust
-# Colocar iconos en packaging/client/icons/
+# Requisitos: rustup + `cargo install tauri-cli --version "^2"`
+cd packaging\client\src-tauri
 cargo tauri build
 ```
 
-Wizard: descubrimiento mDNS → muestra IP + fingerprint → pinning local → `https://`/`wss://` únicamente.  
+Wizard (`packaging/client/ui/`): mDNS → IP + fingerprint TOFU → `https://`/`wss://` únicamente.  
+Comandos nativos: `discover_servers`, `validate_fingerprint`, `navigate_to_server`.  
 Updater: `GET /api/system/client-manifest.json` en el Servidor LAN.
 
 ## API de sistema

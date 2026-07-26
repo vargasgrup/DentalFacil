@@ -4,16 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>N&amp;K DentalSoft — Conexión al servidor</title>
+    <link rel="icon" href="./assets/icon-32.png" type="image/png" />
     <style>
       :root {
         --brand: #1c66e8;
-        --bg: #f8fafc;
-        --ink: #1e293b;
+        --bg: #0b1220;
+        --panel: #111827;
+        --ink: #e2e8f0;
+        --muted: #94a3b8;
       }
       body {
         margin: 0;
         font-family: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
-        background: var(--bg);
+        background:
+          radial-gradient(ellipse at 20% 0%, rgba(28, 102, 232, 0.35), transparent 55%),
+          radial-gradient(ellipse at 80% 100%, rgba(14, 165, 233, 0.18), transparent 50%),
+          var(--bg);
         color: var(--ink);
         min-height: 100vh;
         display: grid;
@@ -21,17 +27,35 @@
       }
       .card {
         width: min(440px, 92vw);
-        background: #fff;
-        border: 1px solid #e2e8f0;
+        background: rgba(17, 24, 39, 0.92);
+        border: 1px solid rgba(148, 163, 184, 0.25);
         border-radius: 16px;
         padding: 28px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+      }
+      .brand {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 18px;
+        text-align: center;
+      }
+      .brand img {
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+      }
+      .brand strong {
+        font-size: 1.05rem;
+        letter-spacing: 0.02em;
       }
       h1 {
-        font-size: 1.25rem;
+        font-size: 1.2rem;
         margin: 0 0 8px;
       }
       p {
-        color: #64748b;
+        color: var(--muted);
         font-size: 0.9rem;
         line-height: 1.45;
       }
@@ -44,10 +68,12 @@
       input {
         width: 100%;
         box-sizing: border-box;
-        border: 1px solid #cbd5e1;
+        border: 1px solid #334155;
         border-radius: 10px;
         padding: 10px 12px;
         font-size: 0.95rem;
+        background: #0f172a;
+        color: var(--ink);
       }
       button {
         margin-top: 18px;
@@ -60,38 +86,61 @@
         padding: 12px;
         cursor: pointer;
       }
+      button:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
       button.secondary {
-        background: #fff;
-        color: var(--brand);
-        border: 1px solid #bfdbfe;
+        background: transparent;
+        color: #93c5fd;
+        border: 1px solid #1e3a8a;
         margin-top: 8px;
       }
       .fp {
         font-family: ui-monospace, monospace;
         font-size: 0.72rem;
         word-break: break-all;
-        background: #f1f5f9;
+        background: #0f172a;
         padding: 8px;
         border-radius: 8px;
+        border: 1px solid #334155;
       }
       .err {
-        color: #dc2626;
+        color: #f87171;
         font-size: 0.85rem;
       }
       .ok {
-        color: #16a34a;
+        color: #4ade80;
+        font-size: 0.85rem;
+      }
+      .list {
+        margin-top: 10px;
+        display: grid;
+        gap: 6px;
+      }
+      .list button {
+        margin: 0;
+        text-align: left;
+        background: #0f172a;
+        border: 1px solid #334155;
+        font-weight: 500;
         font-size: 0.85rem;
       }
     </style>
   </head>
   <body>
     <div class="card">
+      <div class="brand">
+        <img src="./assets/icon-128.png" alt="N&amp;K DentalSoft" />
+        <strong>N&amp;K DentalSoft</strong>
+      </div>
       <h1>Conectar al servidor</h1>
       <p>
-        Descubra el servidor N&amp;K DentalSoft en la red local (mDNS) o ingrese
-        IP/host y puerto. Se usará HTTPS con verificación TOFU del certificado.
+        Descubra el servidor en la red local (mDNS) o ingrese IP/host y puerto.
+        Solo HTTPS con verificación TOFU del certificado.
       </p>
       <button type="button" id="discover">Buscar servidor en la LAN</button>
+      <div class="list" id="found" hidden></div>
       <label for="host">Servidor (https://IP:puerto)</label>
       <input id="host" placeholder="https://192.168.1.10:8001" />
       <label>Huella SHA-256 del certificado</label>
@@ -103,65 +152,133 @@
     </div>
     <script>
       const KEY = "nkdentalsoft.server";
-      const saved = JSON.parse(localStorage.getItem(KEY) || "null");
       const hostEl = document.getElementById("host");
       const fpEl = document.getElementById("fp");
       const errEl = document.getElementById("err");
       const okEl = document.getElementById("ok");
+      const foundEl = document.getElementById("found");
+      const saved = JSON.parse(localStorage.getItem(KEY) || "null");
+
+      function tauriInvoke(cmd, args) {
+        const core = window.__TAURI__ && window.__TAURI__.core;
+        if (!core || typeof core.invoke !== "function") return null;
+        return core.invoke(cmd, args || {});
+      }
+
+      function showErr(msg) {
+        errEl.textContent = msg;
+        errEl.hidden = false;
+        okEl.hidden = true;
+      }
+      function showOk(msg) {
+        okEl.textContent = msg;
+        okEl.hidden = false;
+        errEl.hidden = true;
+      }
+
       if (saved?.url) {
         hostEl.value = saved.url;
         fpEl.textContent = saved.fingerprint || "—";
       }
+
       document.getElementById("discover").onclick = async () => {
         errEl.hidden = true;
         okEl.hidden = true;
-        // Native mDNS discovery is provided by Tauri commands in src-tauri (see README).
-        // Browser fallback: manual entry only.
-        okEl.textContent =
-          "En el shell Tauri use el comando nativo de descubrimiento. Aquí puede ingresar la URL manualmente.";
-        okEl.hidden = false;
+        foundEl.hidden = true;
+        foundEl.innerHTML = "";
+        const inv = tauriInvoke("discover_servers");
+        if (!inv) {
+          showOk(
+            "Shell Tauri no disponible. Ingrese la URL HTTPS del servidor manualmente."
+          );
+          return;
+        }
+        try {
+          const list = await inv;
+          if (!list || !list.length) {
+            showOk(
+              "No se encontró ningún servidor mDNS. Ingrese la URL manualmente (https://IP:8001)."
+            );
+            return;
+          }
+          foundEl.hidden = false;
+          list.forEach((s) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.textContent =
+              (s.name || "Servidor") + " — " + s.url + (s.fingerprint ? " · TOFU" : "");
+            b.onclick = () => {
+              hostEl.value = s.url;
+              fpEl.textContent = s.fingerprint || "—";
+            };
+            foundEl.appendChild(b);
+          });
+          showOk("Se encontraron " + list.length + " servidor(es). Seleccione uno.");
+        } catch (e) {
+          showErr(e.message || String(e));
+        }
       };
+
       document.getElementById("connect").onclick = async () => {
         errEl.hidden = true;
         okEl.hidden = true;
         const url = hostEl.value.trim().replace(/\/$/, "");
-        if (!url.startsWith("https://")) {
-          errEl.textContent = "En producción el servidor debe usar https://";
-          errEl.hidden = false;
+        if (!url.starts_with("https://")) {
+          showErr("En producción el servidor debe usar https://");
           return;
         }
+        let fp = fpEl.textContent.trim();
         try {
+          if (fp && fp !== "—") {
+            const normalized = tauriInvoke("validate_fingerprint", {
+              fingerprint: fp,
+            });
+            if (normalized) fp = await normalized;
+          }
           const r = await fetch(url + "/api/system/health");
           if (!r.ok) throw new Error("HTTP " + r.status);
           const data = await r.json();
-          const fp = fpEl.textContent.trim();
           const prev = JSON.parse(localStorage.getItem(KEY) || "null");
-          if (prev?.fingerprint && fp && prev.fingerprint !== fp && fp !== "—") {
+          if (
+            prev?.fingerprint &&
+            fp &&
+            fp !== "—" &&
+            prev.fingerprint !== fp
+          ) {
             throw new Error(
               "La huella del certificado no coincide con la guardada. Posible reinstalación o MITM — confirme solo si confía en este servidor."
             );
           }
+          const storeFp = fp === "—" ? prev?.fingerprint || "" : fp;
           localStorage.setItem(
             KEY,
-            JSON.stringify({ url, fingerprint: fp === "—" ? prev?.fingerprint || "" : fp })
+            JSON.stringify({ url, fingerprint: storeFp })
           );
-          okEl.textContent =
-            "Conectado a " + (data.product || data.app) + " v" + (data.version || "?");
-          okEl.hidden = false;
-          // In Tauri: window.location = url (webview navigate to server UI)
-          if (window.__TAURI__) {
+          showOk(
+            "Conectado a " +
+              (data.product || data.app || "N&K DentalSoft") +
+              " v" +
+              (data.version || "?")
+          );
+          const nav = tauriInvoke("navigate_to_server", { url });
+          if (nav) {
+            await nav;
+          } else {
             window.location.href = url;
           }
         } catch (e) {
-          errEl.textContent = e.message || String(e);
-          errEl.hidden = false;
+          showErr(e.message || String(e));
         }
       };
+
       document.getElementById("change").onclick = () => {
         localStorage.removeItem(KEY);
         hostEl.value = "";
         fpEl.textContent = "—";
         okEl.hidden = true;
+        errEl.hidden = true;
+        foundEl.hidden = true;
+        foundEl.innerHTML = "";
       };
     </script>
   </body>

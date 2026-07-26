@@ -1,17 +1,32 @@
-# src-tauri
+# src-tauri — Cliente N&K DentalSoft
 
-Generate the Rust crate with:
+Crate Tauri 2 listo para `cargo tauri build` (requiere Rust + WebView2 en la PC de build).
 
-```bash
-cd packaging/client
-npm create tauri-app@latest . -- --template vanilla
-# or: cargo install create-tauri-app && create-tauri-app
+## Comandos Rust expuestos al wizard (`ui/index.html`)
+
+| Comando | Uso |
+|---|---|
+| `discover_servers` | Browse mDNS `_nkdentalsoft._tcp.local.` (stub vacío hasta habilitar `mdns-sd`) |
+| `get_cert_fingerprint` | Normaliza huella hex o SHA-256(DER hex) |
+| `validate_fingerprint` | Valida TOFU (64 hex) |
+| `navigate_to_server` | Carga `https://…` en el webview `main` |
+
+## Iconos
+
+Generados desde el arte de marca:
+
+```powershell
+python packaging\scripts\generate_icons.py
 ```
 
-Then merge `tauri.conf.json` from this folder and implement commands:
+Quedan en `src-tauri/icons/` (`32x32`, `128x128`, `128x128@2x`, `icon.ico`).
 
-- `discover_servers()` — browse `_nkdentalsoft._tcp.local.` (mdns-sd / bonjour)
-- `get_cert_fingerprint(url)` — SHA-256 of peer cert for TOFU
-- `navigate_to_server(url)` — load clinic UI in the webview
+## Build
 
-See `packaging/README.md`.
+```powershell
+# Una vez: rustup + cargo install tauri-cli --version "^2"
+cd packaging\client\src-tauri
+cargo tauri build
+```
+
+Salida NSIS: `src-tauri/target/release/bundle/nsis/`.

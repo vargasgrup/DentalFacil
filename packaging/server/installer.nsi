@@ -13,6 +13,10 @@ InstallDir "$PROGRAMFILES64\NKDentalSoft\Server"
 RequestExecutionLevel admin
 Unicode true
 
+; Brand icon (multi-size ICO from packaging/scripts/generate_icons.py)
+!define MUI_ICON "assets\icons\icon.ico"
+!define MUI_UNICON "assets\icons\icon.ico"
+
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
@@ -49,11 +53,21 @@ Section "Install"
   nsExec::ExecToLog 'powershell -ExecutionPolicy Bypass -File "$INSTDIR\..\..\scripts\post_install_healthcheck.ps1"'
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
+
+  ; Brand assets + shortcuts
+  SetOutPath "$INSTDIR\assets\icons"
+  File "assets\icons\icon.ico"
+  File "assets\icons\256x256.png"
+  CreateDirectory "$SMPROGRAMS\N&K DentalSoft"
+  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\N&K DentalSoft Server.lnk" "$INSTDIR\nkdentalsoft-server.exe" "" "$INSTDIR\assets\icons\icon.ico" 0
+  CreateShortCut "$DESKTOP\N&K DentalSoft Server.lnk" "$INSTDIR\nkdentalsoft-server.exe" "" "$INSTDIR\assets\icons\icon.ico" 0
 SectionEnd
 
 Section "Uninstall"
   nsExec::ExecToLog 'python "$INSTDIR\windows_service.py" stop'
   nsExec::ExecToLog 'python "$INSTDIR\windows_service.py" remove'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft Server 8001"'
+  Delete "$DESKTOP\N&K DentalSoft Server.lnk"
+  RMDir /r "$SMPROGRAMS\N&K DentalSoft"
   RMDir /r "$INSTDIR"
 SectionEnd

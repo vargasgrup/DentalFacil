@@ -1,2 +1,8 @@
-# Placeholder — replace with brand multi-size icons before release builds.
-# Required by tauri.conf.json: 32x32.png, 128x128.png, icon.ico
+# Placeholder histórico — los iconos de marca ya están generados aquí.
+#
+# Fuente: branding N&K DentalSoft (diente chrome/azul).
+# Regenerar:
+#   python packaging/scripts/generate_icons.py
+#
+# Tauri usa copia en: packaging/client/src-tauri/icons/
+# NSIS Server usa: packaging/server/assets/icons/icon.ico

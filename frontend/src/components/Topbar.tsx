@@ -164,10 +164,11 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
         <button
           type="button"
           onClick={onMenuClick}
-          className={`flex ${CTRL} w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-smooth hover:bg-slate-100 lg:hidden`}
-          aria-label="Abrir menú"
+          className={`inline-flex ${CTRL} shrink-0 items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-2.5 text-sm font-semibold text-brand-700 transition-smooth hover:border-brand-300 hover:bg-brand-100 md:hidden`}
+          aria-label="Abrir menú de navegación"
         >
-          <Menu className="h-5 w-5" />
+          <Menu className="h-5 w-5" aria-hidden />
+          <span className="pr-0.5">Menú</span>
         </button>
       )}
 
@@ -324,7 +325,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           >
             <LogOut className="h-4 w-4 shrink-0" aria-hidden />
             <span className="hidden lg:inline">Cerrar sesión</span>
-            <span className="hidden sm:inline lg:hidden">Salir</span>
+            <span className="hidden sm:inline md:hidden">Salir</span>
           </button>
         </div>
 

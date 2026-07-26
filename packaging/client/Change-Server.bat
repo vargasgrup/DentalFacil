@@ -1,6 +1,5 @@
 @echo off
 setlocal EnableExtensions
-title N&K DentalSoft - Cambiar servidor
-REM Always show connector UI so the user can pick another Server / IP.
-powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0Connect-Clinic.ps1" -ForcePrompt
-exit /b %ERRORLEVEL%
+REM Always show connector UI to pick another Server / IP.
+start "" "%~dp0ConnectClinic.exe" --force-prompt
+exit /b 0

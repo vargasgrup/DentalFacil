@@ -30,7 +30,19 @@ function Find-Makensis {
 }
 
 function Build-NsisClient {
-    Write-Host "==> Building LAN Client (NSIS / Edge app mode)"
+    Write-Host "==> Compiling native ConnectClinic.exe"
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "build_client_connector.ps1")
+    if ($LASTEXITCODE -ne 0) { throw "build_client_connector failed ($LASTEXITCODE)" }
+
+    $connector = Join-Path $ClientPkg "ConnectClinic.exe"
+    if (-not (Test-Path $connector)) { throw "ConnectClinic.exe missing after compile" }
+    try {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "packaging\scripts\sign_windows_exe.ps1") -Path $connector
+    } catch {
+        Write-Host "WARNING: connector signing skipped: $($_.Exception.Message)"
+    }
+
+    Write-Host "==> Building LAN Client (NSIS / native connector)"
     $makensis = Find-Makensis
     New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
     Push-Location $ClientPkg

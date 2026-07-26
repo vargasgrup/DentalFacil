@@ -15,7 +15,8 @@ ShowInstDetails show
 
 !define MUI_ICON "icons\icon.ico"
 !define MUI_UNICON "icons\icon.ico"
-!define MUI_FINISHPAGE_RUN "$INSTDIR\Open-Client.bat"
+!define MUI_FINISHPAGE_RUN "$INSTDIR\ConnectClinic.exe"
+!define MUI_FINISHPAGE_RUN_PARAMETERS "--force-prompt"
 !define MUI_FINISHPAGE_RUN_TEXT "Abrir N&K DentalSoft Client"
 
 !insertmacro MUI_PAGE_WELCOME
@@ -26,19 +27,19 @@ ShowInstDetails show
 
 Section "Install"
   SetOutPath "$INSTDIR"
+  File "ConnectClinic.exe"
   File "Open-Client.bat"
   File "Change-Server.bat"
-  File "Connect-Clinic.ps1"
-  SetOutPath "$INSTDIR\ui"
-  File /r "ui\*.*"
+  File /nonfatal "Connect-Clinic.ps1"
   SetOutPath "$INSTDIR\icons"
   File /nonfatal "icons\icon.ico"
   File /nonfatal "icons\128x128.png"
 
   CreateDirectory "$SMPROGRAMS\N&K DentalSoft"
-  CreateShortCut "$DESKTOP\N&K DentalSoft Client.lnk" "$INSTDIR\Open-Client.bat" "" "$INSTDIR\icons\icon.ico" 0 SW_SHOWNORMAL
-  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\N&K DentalSoft Client.lnk" "$INSTDIR\Open-Client.bat" "" "$INSTDIR\icons\icon.ico" 0 SW_SHOWNORMAL
-  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Cambiar servidor.lnk" "$INSTDIR\Change-Server.bat" "" "$INSTDIR\icons\icon.ico" 0 SW_SHOWNORMAL
+  ; Launch native EXE directly (no PowerShell flash)
+  CreateShortCut "$DESKTOP\N&K DentalSoft Client.lnk" "$INSTDIR\ConnectClinic.exe" "--auto-connect" "$INSTDIR\icons\icon.ico" 0 SW_SHOWNORMAL
+  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\N&K DentalSoft Client.lnk" "$INSTDIR\ConnectClinic.exe" "--auto-connect" "$INSTDIR\icons\icon.ico" 0 SW_SHOWNORMAL
+  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Cambiar servidor.lnk" "$INSTDIR\ConnectClinic.exe" "--force-prompt" "$INSTDIR\icons\icon.ico" 0 SW_SHOWNORMAL
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 SectionEnd

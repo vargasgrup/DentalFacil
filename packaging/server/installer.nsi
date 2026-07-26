@@ -86,16 +86,15 @@ Section "Install"
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft Server 8001"'
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NKDentalSoft Server 8001" dir=in action=allow protocol=TCP localport=8001 profile=private,domain'
 
-  ; (Re)register Windows Service
-  nsExec::ExecToLog '"$INSTDIR\nkdentalsoft-server.exe" stop'
+  ; Desktop-first: remove legacy Win32 service (zombie Session-0) and register Scheduled Task
+  DetailPrint "Configurando arranque de escritorio (sin servicio Windows zombie)..."
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\register_desktop_autostart.ps1" -InstallDir "$INSTDIR"'
   Pop $0
-  nsExec::ExecToLog '"$INSTDIR\nkdentalsoft-server.exe" remove'
-  Pop $0
-  Sleep 1000
-  nsExec::ExecToLog '"$INSTDIR\nkdentalsoft-server.exe" --startup auto install'
-  Pop $0
-  nsExec::ExecToLog '"$INSTDIR\nkdentalsoft-server.exe" start'
-  Pop $0
+  DetailPrint "register_desktop_autostart exit=$0"
+  ${If} $0 != 0
+    MessageBox MB_ICONEXCLAMATION \
+      "El servidor no arranco automaticamente.$\r$\n$\r$\nEjecute como Administrador:$\r$\n$INSTDIR\scripts\repair_startup.cmd"
+  ${EndIf}
 
   ; Desktop = open UI (what clinic staff expect)
   ; Start Menu = open UI + optional console for IT
@@ -104,6 +103,7 @@ Section "Install"
   CreateShortCut "$SMPROGRAMS\N&K DentalSoft\N&K DentalSoft.lnk" "$INSTDIR\Open-UI.bat" "" "$INSTDIR\assets\icons\icon.ico" 0 SW_SHOWMINIMIZED
   CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Servidor (consola).lnk" "$SYSDIR\cmd.exe" '/k ""$INSTDIR\Start-Server.bat""' "$INSTDIR\assets\icons\icon.ico" 0
   CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Abrir en navegador.lnk" "$INSTDIR\Open-UI.bat" "" "$INSTDIR\assets\icons\icon.ico" 0 SW_SHOWMINIMIZED
+  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Reparar arranque.lnk" "$INSTDIR\scripts\repair_startup.cmd" "" "$INSTDIR\assets\icons\icon.ico" 0
 
   ; Remove obsolete desktop shortcut that launched the EXE and flashed closed
   Delete "$DESKTOP\N&K DentalSoft Server.lnk"
@@ -112,7 +112,7 @@ Section "Install"
   File /nonfatal "assets\icons\icon.ico"
   File /nonfatal "assets\icons\256x256.png"
 
-  Sleep 4000
+  Sleep 2000
   nsExec::ExecToLog 'powershell -ExecutionPolicy Bypass -File "$INSTDIR\scripts\post_install_healthcheck.ps1"'
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -122,6 +122,7 @@ Section "Uninstall"
   nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\stop_for_upgrade.ps1"'
   nsExec::ExecToLog '"$INSTDIR\nkdentalsoft-server.exe" stop'
   nsExec::ExecToLog '"$INSTDIR\nkdentalsoft-server.exe" remove'
+  nsExec::ExecToLog 'schtasks /Delete /TN "NKDentalSoft Server" /F'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft Server 8001"'
   Delete "$DESKTOP\N&K DentalSoft.lnk"
   Delete "$DESKTOP\N&K DentalSoft Server.lnk"

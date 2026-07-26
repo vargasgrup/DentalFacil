@@ -1,14 +1,23 @@
 @echo off
-REM Open the clinic UI in the default browser (same PC as the Server).
+REM Clinic desktop launcher: ensure server is up, then open the UI.
 setlocal EnableExtensions
+cd /d "%~dp0"
 
-set URL_HTTPS=https://127.0.0.1:8001/
-set URL_HTTP=http://127.0.0.1:8001/
-
-if exist "%ProgramData%\NKDentalSoft\certs\server.crt" (
-  start "" "%URL_HTTPS%"
-) else (
-  start "" "%URL_HTTP%"
+if not exist "%~dp0nkdentalsoft-server.exe" (
+  echo ERROR: no se encuentra nkdentalsoft-server.exe
+  pause
+  exit /b 1
 )
 
-exit /b 0
+REM Desktop mode starts the server if needed (HTTP on :8001) and opens the browser.
+"%~dp0nkdentalsoft-server.exe" --desktop
+set ERR=%ERRORLEVEL%
+if not "%ERR%"=="0" (
+  echo.
+  echo No se pudo abrir N^&K DentalSoft.
+  echo Log: %ProgramData%\NKDentalSoft\logs\startup.log
+  echo Reparacion: "%~dp0scripts\repair_startup.cmd" ^(como Administrador^)
+  echo.
+  pause
+)
+exit /b %ERR%

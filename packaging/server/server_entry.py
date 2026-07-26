@@ -24,7 +24,16 @@ def _install_dir() -> Path:
 
 
 def _programdata() -> Path:
-    return Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "NKDentalSoft"
+    """Clinic data root. Frozen builds ignore a polluted PROGRAMDATA env."""
+    override = (os.environ.get("NKDENTALSOFT_DATA_DIR") or "").strip()
+    if override:
+        return Path(override)
+    if getattr(sys, "frozen", False):
+        # Always the real machine ProgramData — never a parent-shell temp override
+        root = Path(os.environ.get("SystemDrive", "C:")) / "ProgramData" / "NKDentalSoft"
+        return root
+    pd = os.environ.get("PROGRAMDATA") or str(Path(os.environ.get("SystemDrive", "C:")) / "ProgramData")
+    return Path(pd) / "NKDentalSoft"
 
 
 def _log_path() -> Path:
@@ -51,8 +60,14 @@ def _load_env_file(path: Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         k, _, v = line.partition("=")
-        # Prefer file values over empty/defaults already in the process env
-        os.environ[k.strip()] = v.strip()
+        key = k.strip()
+        val = v.strip()
+        # Allow process/launcher overrides (e.g. desktop port, TLS flags)
+        if key in os.environ and key.startswith("NKDENTALSOFT_"):
+            continue
+        if key in {"BACKEND_PORT", "HOST"} and key in os.environ:
+            continue
+        os.environ[key] = val
 
 
 def _env_path() -> Path:
@@ -288,78 +303,24 @@ def bootstrap_schema() -> None:
 
 
 def _port_holder(port: int) -> str | None:
-    """Return a short description of who is listening on TCP port, or None."""
-    try:
-        import subprocess
+    """If something accepts TCP on port, return a marker; else None (free)."""
+    import socket
 
-        # Prefer PowerShell NetTCPConnection when available
-        cmd = (
-            "Get-NetTCPConnection -LocalPort "
-            f"{port} -State Listen -ErrorAction SilentlyContinue "
-            "| Select-Object -First 1 -ExpandProperty OwningProcess"
-        )
-        r = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", cmd],
-            capture_output=True,
-            text=True,
-            timeout=8,
-            check=False,
-        )
-        pid_s = (r.stdout or "").strip().splitlines()
-        if not pid_s:
-            return None
-        pid = int(pid_s[0].strip())
-        if pid <= 4:
-            return f"pid={pid}"
-        name = "?"
-        path = ""
-        try:
-            t = subprocess.run(
-                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-            )
-            line = (t.stdout or "").strip()
-            if line.startswith('"'):
-                name = line.split('","')[0].strip('"')
-        except Exception:
-            pass
-        try:
-            w = subprocess.run(
-                [
-                    "powershell",
-                    "-NoProfile",
-                    "-Command",
-                    f"(Get-Process -Id {pid} -ErrorAction SilentlyContinue).Path",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-            )
-            path = (w.stdout or "").strip()
-        except Exception:
-            pass
-        return f"pid={pid} name={name} path={path}"
-    except Exception as exc:  # noqa: BLE001
-        return f"(could not inspect port: {exc})"
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.6):
+            return f"tcp-accept on 127.0.0.1:{port}"
+    except OSError:
+        return None
 
 
 def _assert_port_free(port: int) -> None:
     holder = _port_holder(port)
     if holder is None:
         return
-    # If we somehow already own it (rare), continue
-    if "nkdentalsoft-server" in holder.lower():
-        log(f"WARNING: port {port} already held by our process ({holder})")
-        return
     msg = (
-        f"Puerto {port} ocupado por otro proceso ({holder}). "
-        "Eso explica detail=Not Found al reinstalar: el navegador sigue "
-        "hablando con un API viejo sin UI. Ejecute stop_for_upgrade.ps1 "
-        "o detenga ese proceso y reinicie N&K DentalSoft Server."
+        f"Puerto {port} ya esta en uso ({holder}). "
+        "Ejecute scripts\\stop_for_upgrade.ps1 o repair_startup.cmd "
+        "como Administrador y vuelva a abrir N&K DentalSoft."
     )
     log(f"FATAL: {msg}")
     raise RuntimeError(msg)
@@ -388,19 +349,35 @@ def run_server() -> None:
     _assert_port_free(port)
     cert = root / "certs" / "server.crt"
     key = root / "certs" / "server.key"
+    disable_tls = (os.environ.get("NKDENTALSOFT_DISABLE_TLS") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    force_tls = (os.environ.get("NKDENTALSOFT_FORCE_TLS") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     kwargs: dict = {
         "app": fastapi_app,  # object import — required for PyInstaller frozen EXE
         "host": host,
         "port": port,
         "log_level": "info",
     }
-    if cert.is_file() and key.is_file():
+    use_tls = (not disable_tls or force_tls) and cert.is_file() and key.is_file()
+    if use_tls:
         kwargs["ssl_certfile"] = str(cert)
         kwargs["ssl_keyfile"] = str(key)
         log(f"HTTPS listening on https://{host}:{port}/")
     else:
-        log(f"WARNING: no TLS certs — HTTP on http://{host}:{port}/")
-    uvicorn.run(**kwargs)
+        log(f"HTTP listening on http://{host}:{port}/ (desktop mode)")
+    try:
+        uvicorn.run(**kwargs)
+    except Exception as exc:
+        log(f"uvicorn exited with error: {exc}")
+        traceback.print_exc()
+        raise
 
 
 def pause_if_interactive() -> None:

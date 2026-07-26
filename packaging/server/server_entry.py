@@ -108,13 +108,82 @@ def _import_init_helpers():
     raise ImportError(f"No se pudieron cargar scripts de init: {last_err}")
 
 
+def _generate_selfsigned_cert(
+    out_dir: Path,
+    *,
+    common_name: str = "nkdentalsoft-server.local",
+    extra_hosts: list[str] | None = None,
+    days: int = 825,
+) -> dict[str, str]:
+    """Create server.crt/key using cryptography from the frozen bundle (not loose scripts)."""
+    import hashlib
+    import ipaddress
+    from datetime import datetime, timedelta, timezone
+
+    try:
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID
+    except ImportError as exc:
+        raise RuntimeError(
+            f"cryptography no disponible en el Server empaquetado: {exc!r}"
+        ) from exc
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name(
+        [x509.NameAttribute(NameOID.COMMON_NAME, common_name)]
+    )
+    alt_names: list = [x509.DNSName(common_name)]
+    for h in extra_hosts or []:
+        h = (h or "").strip()
+        if not h:
+            continue
+        try:
+            alt_names.append(x509.IPAddress(ipaddress.ip_address(h)))
+        except ValueError:
+            alt_names.append(x509.DNSName(h))
+
+    now = datetime.now(timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=5))
+        .not_valid_after(now + timedelta(days=days))
+        .add_extension(x509.SubjectAlternativeName(alt_names), critical=False)
+        .sign(key, hashes.SHA256())
+    )
+
+    key_path = out_dir / "server.key"
+    cert_path = out_dir / "server.crt"
+    key_path.write_bytes(
+        key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
+    cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    fingerprint = hashlib.sha256(cert.public_bytes(serialization.Encoding.DER)).hexdigest()
+    (out_dir / "fingerprint.sha256").write_text(fingerprint + "\n", encoding="utf-8")
+    return {
+        "key": str(key_path),
+        "cert": str(cert_path),
+        "fingerprint_sha256": fingerprint,
+    }
+
+
 def init_clinic(host: str | None = None) -> None:
     """Generate unique .env + self-signed cert under ProgramData."""
     root = _programdata()
     for sub in ("config", "data", "logs", "certs", "uploads", "updates"):
         (root / sub).mkdir(parents=True, exist_ok=True)
 
-    gps, gsc = _import_init_helpers()
+    gps, _gsc = _import_init_helpers()
     out_env = _env_path()
     jwt_secret, maint = gps.generate_secrets()
     gps.write_env(out_env, jwt_secret=jwt_secret, maintenance_key=maint)
@@ -122,7 +191,7 @@ def init_clinic(host: str | None = None) -> None:
 
     lan = (host or "").strip() or _detect_lan_ip()
     hosts = ["127.0.0.1", "localhost", "nkdentalsoft-server.local", lan]
-    info = gsc.generate_cert(
+    info = _generate_selfsigned_cert(
         root / "certs",
         common_name="nkdentalsoft-server.local",
         extra_hosts=hosts,
@@ -157,9 +226,8 @@ def prepare_environment() -> Path:
     if not cert.is_file() or not key.is_file():
         log("TLS certs missing — regenerating self-signed certificate")
         try:
-            _, gsc = _import_init_helpers()
             lan = _detect_lan_ip()
-            info = gsc.generate_cert(
+            info = _generate_selfsigned_cert(
                 root / "certs",
                 common_name="nkdentalsoft-server.local",
                 extra_hosts=["127.0.0.1", "localhost", "nkdentalsoft-server.local", lan],
@@ -175,7 +243,17 @@ def prepare_environment() -> Path:
     os.environ.setdefault("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
     os.environ.setdefault("UPLOAD_DIR", str(root / "uploads"))
     os.environ.setdefault("NKDENTALSOFT_INSTALL_DIR", str(_install_dir()))
-    os.environ.setdefault("NKDENTALSOFT_UI_DIR", str(_install_dir() / "web"))
+    # Prefer a real web/ tree for the SPA mount
+    for candidate in (
+        _install_dir() / "web",
+        (_meipass() / "web") if _meipass() else None,
+        _install_dir() / "_internal" / "web",
+    ):
+        if candidate and (candidate / "index.html").is_file():
+            os.environ["NKDENTALSOFT_UI_DIR"] = str(candidate.resolve())
+            break
+    else:
+        os.environ.setdefault("NKDENTALSOFT_UI_DIR", str(_install_dir() / "web"))
 
     # Help Alembic find bundled ini when cwd differs
     meipass = _meipass()
@@ -209,11 +287,92 @@ def bootstrap_schema() -> None:
     assert_schema_compatible_with_uuid_models()
 
 
+def _port_holder(port: int) -> str | None:
+    """Return a short description of who is listening on TCP port, or None."""
+    try:
+        import subprocess
+
+        # Prefer PowerShell NetTCPConnection when available
+        cmd = (
+            "Get-NetTCPConnection -LocalPort "
+            f"{port} -State Listen -ErrorAction SilentlyContinue "
+            "| Select-Object -First 1 -ExpandProperty OwningProcess"
+        )
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", cmd],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+        pid_s = (r.stdout or "").strip().splitlines()
+        if not pid_s:
+            return None
+        pid = int(pid_s[0].strip())
+        if pid <= 4:
+            return f"pid={pid}"
+        name = "?"
+        path = ""
+        try:
+            t = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            line = (t.stdout or "").strip()
+            if line.startswith('"'):
+                name = line.split('","')[0].strip('"')
+        except Exception:
+            pass
+        try:
+            w = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    f"(Get-Process -Id {pid} -ErrorAction SilentlyContinue).Path",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            path = (w.stdout or "").strip()
+        except Exception:
+            pass
+        return f"pid={pid} name={name} path={path}"
+    except Exception as exc:  # noqa: BLE001
+        return f"(could not inspect port: {exc})"
+
+
+def _assert_port_free(port: int) -> None:
+    holder = _port_holder(port)
+    if holder is None:
+        return
+    # If we somehow already own it (rare), continue
+    if "nkdentalsoft-server" in holder.lower():
+        log(f"WARNING: port {port} already held by our process ({holder})")
+        return
+    msg = (
+        f"Puerto {port} ocupado por otro proceso ({holder}). "
+        "Eso explica detail=Not Found al reinstalar: el navegador sigue "
+        "hablando con un API viejo sin UI. Ejecute stop_for_upgrade.ps1 "
+        "o detenga ese proceso y reinicie N&K DentalSoft Server."
+    )
+    log(f"FATAL: {msg}")
+    raise RuntimeError(msg)
+
+
 def run_server() -> None:
     root = prepare_environment()
     log(f"install_dir={_install_dir()}")
     log(f"programdata={root}")
     log(f"APP_ENV={os.environ.get('APP_ENV')}")
+    log(f"UI_DIR={os.environ.get('NKDENTALSOFT_UI_DIR')}")
+    ui_probe = Path(os.environ.get("NKDENTALSOFT_UI_DIR") or (_install_dir() / "web"))
+    log(f"UI index exists={ (ui_probe / 'index.html').is_file() } path={ui_probe / 'index.html'}")
     try:
         bootstrap_schema()
     except Exception as exc:  # noqa: BLE001
@@ -226,6 +385,7 @@ def run_server() -> None:
 
     host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("BACKEND_PORT", "8001"))
+    _assert_port_free(port)
     cert = root / "certs" / "server.crt"
     key = root / "certs" / "server.key"
     kwargs: dict = {

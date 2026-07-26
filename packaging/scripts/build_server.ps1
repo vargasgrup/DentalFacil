@@ -86,7 +86,7 @@ if (-not $SkipFrontend) {
         throw "frontend/out/index.html missing after static export"
     }
 } elseif (-not (Test-Path (Join-Path $Root "frontend\out\index.html"))) {
-    Write-Warning "SkipFrontend set and frontend/out missing - server build will be API-only"
+    throw "SkipFrontend set but frontend/out/index.html is missing - refusing API-only Server build (would yield / => Not Found)"
 }
 
 Write-Host "==> PyInstaller onedir"
@@ -116,10 +116,22 @@ Copy-Item (Join-Path $ServerPkg "scripts\*") $ScriptsDest -Force
 # Ensure web/ sits next to the exe (PyInstaller also embeds under _internal)
 $WebSrc = Join-Path $Root "frontend\out"
 $WebDest = Join-Path $DistServer "web"
-if (Test-Path (Join-Path $WebSrc "index.html")) {
-    if (Test-Path $WebDest) { Remove-Item $WebDest -Recurse -Force }
-    Copy-Item $WebSrc $WebDest -Recurse -Force
-    Write-Host "==> Copied UI to $WebDest"
+if (-not (Test-Path (Join-Path $WebSrc "index.html"))) {
+    throw "frontend/out/index.html missing - cannot embed UI"
+}
+if (Test-Path $WebDest) { Remove-Item $WebDest -Recurse -Force }
+Copy-Item $WebSrc $WebDest -Recurse -Force
+Write-Host "==> Copied UI to $WebDest"
+if (-not (Test-Path (Join-Path $WebDest "index.html"))) {
+    throw "Failed to copy UI into onedir web/"
+}
+# Also ensure PyInstaller _internal/web exists (runtime fallback)
+$InternalWeb = Join-Path $DistServer "_internal\web\index.html"
+if (-not (Test-Path $InternalWeb)) {
+    Write-Warning "_internal/web missing from PyInstaller datas - copying beside _internal"
+    $InternalDest = Join-Path $DistServer "_internal\web"
+    if (Test-Path $InternalDest) { Remove-Item $InternalDest -Recurse -Force }
+    Copy-Item $WebSrc $InternalDest -Recurse -Force
 }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null

@@ -1,13 +1,37 @@
 # Stop N&K DentalSoft Server before overwrite/upgrade installs.
-# Safe to run when nothing is installed yet.
+# Also frees TCP 8001 so a stale API process cannot keep serving {"detail":"Not Found"}.
 param(
-  [int]$WaitSeconds = 20
+  [int]$WaitSeconds = 25,
+  [int]$Port = 8001
 )
 
 $ErrorActionPreference = "Continue"
 $svcName = "NKDentalSoftServer"
 $procName = "nkdentalsoft-server"
 $installExe = Join-Path ${env:ProgramFiles} "NKDentalSoft\Server\nkdentalsoft-server.exe"
+
+function Stop-PortListeners([int]$ListenPort) {
+  Write-Host "[upgrade] Freeing TCP port $ListenPort ..."
+  try {
+    $conns = Get-NetTCPConnection -LocalPort $ListenPort -State Listen -ErrorAction SilentlyContinue
+  } catch {
+    $conns = @()
+  }
+  foreach ($c in @($conns)) {
+    $procId = $c.OwningProcess
+    if (-not $procId -or $procId -le 4) { continue }
+    try {
+      $p = Get-Process -Id $procId -ErrorAction SilentlyContinue
+      $name = if ($p) { $p.ProcessName } else { "?" }
+      $path = if ($p) { $p.Path } else { "" }
+      Write-Host "[upgrade] Stopping PID $procId ($name) holding :$ListenPort  $path"
+      Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+      cmd /c "taskkill /F /PID $procId /T >nul 2>&1"
+    } catch {
+      Write-Host "[upgrade] port kill note: $($_.Exception.Message)"
+    }
+  }
+}
 
 Write-Host "[upgrade] Stopping Windows service $svcName (if present)..."
 try {
@@ -16,9 +40,16 @@ try {
     if ($svc.Status -ne "Stopped") {
       Stop-Service -Name $svcName -Force -ErrorAction SilentlyContinue
       sc.exe stop $svcName | Out-Null
+      net.exe stop $svcName /y 2>$null | Out-Null
     }
-    # Avoid SCM holding the binary during file replace
     sc.exe config $svcName start= demand | Out-Null
+    # Wait until SCM reports Stopped (LocalSystem holds file locks otherwise)
+    $svcDeadline = (Get-Date).AddSeconds([Math]::Min(30, $WaitSeconds))
+    while ((Get-Date) -lt $svcDeadline) {
+      $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+      if (-not $svc -or $svc.Status -eq "Stopped") { break }
+      Start-Sleep -Milliseconds 500
+    }
   }
 } catch {
   Write-Host "[upgrade] service stop note: $($_.Exception.Message)"
@@ -32,15 +63,19 @@ Get-Process -Name $procName -ErrorAction SilentlyContinue | ForEach-Object {
     Write-Host "[upgrade] process kill note: $($_.Exception.Message)"
   }
 }
-# Belt-and-suspenders
 cmd /c "taskkill /F /IM nkdentalsoft-server.exe /T >nul 2>&1"
 
-# Close cmd windows running Start-Server.bat is harder; killing the exe is enough for file locks.
+Stop-PortListeners -ListenPort $Port
 
 $deadline = (Get-Date).AddSeconds($WaitSeconds)
 while ((Get-Date) -lt $deadline) {
   $still = Get-Process -Name $procName -ErrorAction SilentlyContinue
-  if (-not $still) { break }
+  $portBusy = $false
+  try {
+    $portBusy = [bool](Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+  } catch {}
+  if (-not $still -and -not $portBusy) { break }
+  if ($portBusy) { Stop-PortListeners -ListenPort $Port }
   Start-Sleep -Milliseconds 400
 }
 

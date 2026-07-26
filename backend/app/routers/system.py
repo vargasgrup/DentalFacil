@@ -63,6 +63,19 @@ def build_health_payload(*, scheduler: dict[str, Any] | None = None) -> dict[str
     )
     if settings.is_production and not maint_ok:
         ready = False
+
+    ui_root = None
+    ui_ok = False
+    try:
+        from app.frontend_static import resolve_ui_root
+
+        ui_root_path = resolve_ui_root()
+        if ui_root_path is not None:
+            ui_root = str(ui_root_path)
+            ui_ok = (ui_root_path / "index.html").is_file()
+    except Exception:  # noqa: BLE001
+        ui_ok = False
+
     return {
         "status": "ok" if ready else "degraded",
         "app": settings.APP_NAME,
@@ -78,6 +91,8 @@ def build_health_payload(*, scheduler: dict[str, Any] | None = None) -> dict[str
         "schema_ready": tables_ok,
         "schema_error": tables_err,
         "jwt_secret_configured": jwt_ok,
+        "ui_mounted": ui_ok,
+        "ui_root": ui_root,
         "maintenance_key_configured": maint_ok if settings.is_production else bool(maint_key or True),
         "scheduler": scheduler or {"running": False, "jobs": [], "next_run": None},
     }

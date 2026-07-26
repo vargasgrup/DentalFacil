@@ -1,8 +1,11 @@
-"""Serve the static Next.js export (frontend/out) from FastAPI.
+"""Serve the embedded Next.js export from FastAPI (same origin as /api).
 
-Used by the Windows Server .exe so UI + API share one origin/port.
-Serving is done via HTTP middleware so `/` always hits the SPA even when
-route registration order would otherwise yield FastAPI `{"detail":"Not Found"}`.
+Professional pattern (Starlette):
+  1. Register all API routers first.
+  2. Mount SpaStaticFiles at "/" LAST so unmatched paths (including "/")
+     are served as the SPA, while /api/* keeps matching the routers.
+
+This avoids FastAPI's default ``{"detail":"Not Found"}`` on the clinic homepage.
 """
 
 from __future__ import annotations
@@ -14,18 +17,31 @@ import sys
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from starlette.requests import Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
+from starlette.staticfiles import StaticFiles
+from starlette.types import Scope
 
 logger = logging.getLogger("dentalfacil.frontend_static")
 
-_cached_ui_root: Path | None | bool = False  # False = unset, None = missing, Path = found
+_cached_ui_root: Path | None | bool = False  # False=unset
 _mirror_attempted = False
 
 
-def _exe_dir() -> Path | None:
+def _install_dir() -> Path | None:
+    env = (os.environ.get("NKDENTALSOFT_INSTALL_DIR") or "").strip()
+    if env:
+        p = Path(env)
+        if p.is_dir():
+            return p.resolve()
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
+        for raw in (sys.argv[0] if sys.argv else None, getattr(sys, "executable", None)):
+            if not raw:
+                continue
+            p = Path(raw).resolve()
+            if p.suffix.lower() == ".exe" and p.parent.is_dir():
+                return p.parent
     return None
 
 
@@ -35,16 +51,15 @@ def _meipass_dir() -> Path | None:
 
 
 def ensure_web_dir_beside_exe() -> None:
-    """If UI lives only under _internal/web, mirror it next to the .exe for services."""
     global _mirror_attempted
     if _mirror_attempted:
         return
     _mirror_attempted = True
-    exe_dir = _exe_dir()
+    install = _install_dir()
     meipass = _meipass_dir()
-    if not exe_dir or not meipass:
+    if not install or not meipass:
         return
-    dest = exe_dir / "web"
+    dest = install / "web"
     src = meipass / "web"
     if (dest / "index.html").is_file():
         return
@@ -54,9 +69,9 @@ def ensure_web_dir_beside_exe() -> None:
         if dest.exists():
             shutil.rmtree(dest, ignore_errors=True)
         shutil.copytree(src, dest)
-        logger.info("mirrored UI web/ from _internal to %s", dest)
+        logger.info("mirrored UI to %s", dest)
     except OSError as exc:
-        logger.warning("could not mirror web/ beside exe: %s", exc)
+        logger.warning("could not mirror web/: %s", exc)
 
 
 def resolve_ui_root() -> Path | None:
@@ -65,41 +80,45 @@ def resolve_ui_root() -> Path | None:
         return _cached_ui_root  # type: ignore[return-value]
 
     ensure_web_dir_beside_exe()
-    env = os.environ.get("NKDENTALSOFT_UI_DIR") or os.environ.get("FRONTEND_OUT_DIR")
     candidates: list[Path] = []
+
+    env = (os.environ.get("NKDENTALSOFT_UI_DIR") or os.environ.get("FRONTEND_OUT_DIR") or "").strip()
     if env:
         candidates.append(Path(env))
-    exe_dir = _exe_dir()
+
+    install = _install_dir()
     meipass = _meipass_dir()
-    if exe_dir:
-        candidates.extend([exe_dir / "web", exe_dir / "frontend" / "out"])
+    if install:
+        candidates.extend([install / "web", install / "_internal" / "web"])
     if meipass:
         candidates.append(meipass / "web")
+
+    # Dev / source tree
     repo = Path(__file__).resolve().parents[2]
     candidates.append(repo / "frontend" / "out")
 
+    seen: set[str] = set()
     for c in candidates:
+        key = str(c)
+        if key in seen:
+            continue
+        seen.add(key)
         try:
-            if (c / "index.html").is_file():
+            index = c / "index.html"
+            if index.is_file():
                 _cached_ui_root = c.resolve()
+                logger.info("UI root resolved: %s", _cached_ui_root)
                 return _cached_ui_root
         except OSError:
             continue
-    logger.warning("UI not found. Searched: %s", [str(c) for c in candidates])
+
+    logger.error("UI root NOT found. Tried: %s", [str(c) for c in candidates])
     _cached_ui_root = None
     return None
 
 
-def _safe_file(root: Path, candidate: Path) -> Path | None:
-    try:
-        resolved = candidate.resolve()
-        resolved.relative_to(root.resolve())
-    except (OSError, ValueError):
-        return None
-    return resolved if resolved.is_file() else None
-
-
-def pick_ui_file(root: Path, url_path: str) -> Path | None:
+def pick_ui_relpath(root: Path, url_path: str) -> str | None:
+    """Return path relative to root (posix) suitable for StaticFiles, or None."""
     rel = (url_path or "").strip("/")
     candidates: list[Path] = []
     if not rel:
@@ -111,73 +130,99 @@ def pick_ui_file(root: Path, url_path: str) -> Path | None:
         parts = rel.split("/")
         if len(parts) >= 2 and parts[0] == "pacientes" and parts[1] not in {"nuevo", "_"}:
             candidates.append(root / "pacientes" / "_" / "index.html")
+        # SPA fallback for client routes
+        last = parts[-1] if parts else ""
+        if not (last and "." in last and not last.endswith(".html")):
+            candidates.append(root / "index.html")
+
     for c in candidates:
-        hit = _safe_file(root, c)
-        if hit is not None:
-            return hit
-    last = rel.rsplit("/", 1)[-1] if rel else ""
-    if last and "." in last and not last.endswith(".html"):
-        return None
-    return _safe_file(root, root / "index.html")
+        try:
+            resolved = c.resolve()
+            resolved.relative_to(root.resolve())
+        except (OSError, ValueError):
+            continue
+        if resolved.is_file():
+            return resolved.relative_to(root.resolve()).as_posix()
+    return None
+
+
+class SpaStaticFiles(StaticFiles):
+    """StaticFiles with Next.js export + client-route fallbacks."""
+
+    def __init__(self, directory: Path, **kwargs):
+        super().__init__(directory=str(directory), html=True, check_dir=True, **kwargs)
+        self._root = Path(directory).resolve()
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        # Request "/" arrives as "" under a mount at "/"
+        if not path or path in {".", "/"}:
+            path = "index.html"
+
+        try:
+            response = await super().get_response(path, scope)
+            if getattr(response, "status_code", 200) != 404:
+                return response
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404:
+                raise
+
+        alt = pick_ui_relpath(self._root, path)
+        if alt and alt != path:
+            try:
+                return await super().get_response(alt, scope)
+            except StarletteHTTPException:
+                pass
+
+        try:
+            return await super().get_response("index.html", scope)
+        except StarletteHTTPException:
+            raise StarletteHTTPException(status_code=404, detail="UI index.html missing")
 
 
 _MISSING_UI_HTML = """<!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8"/><title>N&amp;K DentalSoft</title>
-<style>body{font-family:Segoe UI,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem;color:#0f172a}
-code{background:#f1f5f9;padding:.1rem .35rem;border-radius:4px}</style></head>
-<body>
-<h1>UI no empaquetada</h1>
-<p>El API del servidor responde, pero falta la carpeta <code>web/</code> con el frontend.</p>
-<p>Reinstale <strong>NKDentalSoft-Server-Setup-x64.exe</strong> (build con UI embebida) o copie
-<code>frontend/out</code> a <code>Program Files\\NKDentalSoft\\Server\\web</code>.</p>
-<p>Compruebe: <a href="/api/system/health">/api/system/health</a></p>
+<style>
+ body{font-family:"Segoe UI",system-ui,sans-serif;max-width:42rem;margin:3rem auto;padding:0 1.25rem;color:#0f172a;line-height:1.5}
+ h1{font-size:1.35rem} code{background:#f1f5f9;padding:.15rem .4rem;border-radius:6px}
+ .box{border:1px solid #e2e8f0;border-radius:12px;padding:1rem 1.1rem;background:#f8fafc;margin:1rem 0}
+ a{color:#1d4ed8}
+</style></head><body>
+<h1>Interfaz no encontrada</h1>
+<p>El API responde en este puerto, pero falta el frontend embebido (<code>web/index.html</code>).</p>
+<div class="box">
+ <p><strong>Solucion:</strong> reinstale el Setup mas reciente
+ <code>NKDentalSoft-Server-Setup-x64.exe</code> (incluye la carpeta <code>web/</code>).</p>
+ <p>Verifique: <a href="/api/system/ui-root">/api/system/ui-root</a> ·
+ <a href="/api/system/health">/api/system/health</a></p>
+</div>
 </body></html>
 """
 
 
 def mount_frontend_static(app: FastAPI) -> Path | None:
-    """Attach middleware that serves the Next export for non-API GET/HEAD requests."""
+    """Mount SPA at '/' AFTER all API routers have been registered."""
     root = resolve_ui_root()
 
-    @app.middleware("http")
-    async def frontend_spa_middleware(request: Request, call_next):
-        path = request.url.path or "/"
-        if request.method not in {"GET", "HEAD"}:
-            return await call_next(request)
-        if (
-            path.startswith("/api")
-            or path.startswith("/docs")
-            or path.startswith("/openapi")
-            or path.startswith("/redoc")
-            or path.startswith("/assets/uploads")
-        ):
-            return await call_next(request)
+    @app.get("/api/system/ui-root")
+    def ui_root_info():
+        current = resolve_ui_root()
+        return {
+            "ui_root": str(current) if current else None,
+            "index": bool(current and (current / "index.html").is_file()),
+            "install_dir": str(_install_dir()) if _install_dir() else None,
+            "meipass": str(_meipass_dir()) if _meipass_dir() else None,
+            "frozen": bool(getattr(sys, "frozen", False)),
+        }
 
-        ui = resolve_ui_root()
-        if ui is None:
-            if path == "/" or path == "":
-                return HTMLResponse(_MISSING_UI_HTML, status_code=503)
-            return await call_next(request)
+    if root is None:
+        @app.get("/")
+        async def ui_missing_root():
+            return HTMLResponse(_MISSING_UI_HTML, status_code=503)
 
-        hit = pick_ui_file(ui, path)
-        if hit is None:
-            return await call_next(request)
-        return FileResponse(hit)
+        logger.error("SPA mount skipped — web/ missing")
+        return None
 
-    if root is not None:
-        # Tiny JSON hint for operators
-        @app.get("/api/system/ui-root")
-        def ui_root_info():
-            return {"ui_root": str(root), "index": (root / "index.html").is_file()}
-
-        logger.info("frontend UI ready at %s", root)
-    else:
-        @app.get("/api/system/ui-root")
-        def ui_root_missing():
-            return JSONResponse(
-                {"ui_root": None, "detail": "web/ not found beside server"},
-                status_code=503,
-            )
-        logger.error("frontend UI NOT FOUND — / will show setup instructions")
-
+    # Mount LAST: only unmatched paths (not /api/*) reach this.
+    app.mount("/", SpaStaticFiles(directory=root), name="nkdentalsoft_spa")
+    logger.info("SPA mounted at / from %s", root)
     return root

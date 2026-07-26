@@ -17,18 +17,42 @@ from pathlib import Path
 
 
 def _install_dir() -> Path:
+    env = (os.environ.get("NKDENTALSOFT_INSTALL_DIR") or "").strip()
+    if env and Path(env).is_dir():
+        return Path(env).resolve()
     if getattr(sys, "frozen", False):
+        for raw in (sys.argv[0] if sys.argv else None, sys.executable):
+            if not raw:
+                continue
+            p = Path(raw).resolve()
+            if p.suffix.lower() == ".exe" and p.parent.is_dir():
+                return p.parent
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent
 
 
 def _ensure_path() -> None:
     install = _install_dir()
-    os.environ.setdefault("NKDENTALSOFT_INSTALL_DIR", str(install))
+    os.environ["NKDENTALSOFT_INSTALL_DIR"] = str(install)
+    try:
+        os.chdir(install)
+    except OSError:
+        pass
+
     meipass = getattr(sys, "_MEIPASS", None)
-    for p in (Path(meipass) if meipass else None, install, Path(__file__).resolve().parent):
+    for p in (Path(meipass) if meipass else None, install, install / "_internal"):
         if p and p.exists() and str(p) not in sys.path:
             sys.path.insert(0, str(p))
+
+    # Pin UI dir before importing FastAPI app (path discovery for Windows Service)
+    for candidate in (
+        install / "web",
+        Path(meipass) / "web" if meipass else None,
+        install / "_internal" / "web",
+    ):
+        if candidate and (candidate / "index.html").is_file():
+            os.environ["NKDENTALSOFT_UI_DIR"] = str(candidate.resolve())
+            break
 
 
 def run_uvicorn() -> None:
@@ -135,7 +159,12 @@ def main() -> None:
     except Exception as exc:
         print(f"[nkdentalsoft-server] FATAL: {exc}", flush=True)
         traceback.print_exc()
-        log_hint = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "NKDentalSoft" / "logs" / "startup.log"
+        log_hint = (
+            Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
+            / "NKDentalSoft"
+            / "logs"
+            / "startup.log"
+        )
         print(f"\nRevise el log: {log_hint}\n", flush=True)
         if "--foreground" in lowered or "-f" in lowered or not argv:
             _pause()

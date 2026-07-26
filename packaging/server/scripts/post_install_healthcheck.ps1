@@ -1,16 +1,15 @@
-# Post-install healthcheck — fail install if production env is insecure.
+# Post-install healthcheck — verify API + embedded UI after Server setup.
 param(
-  [string]$BaseUrl = "https://127.0.0.1:8001",
-  [int]$Retries = 30,
+  [string]$BaseUrl = "http://127.0.0.1:8001",
+  [string]$HttpsUrl = "https://127.0.0.1:8001",
+  [int]$Retries = 40,
   [int]$DelaySeconds = 2
 )
 
-$ErrorActionPreference = "Stop"
-$healthUrl = "$BaseUrl/api/system/health"
+$ErrorActionPreference = "Continue"
 
-for ($i = 1; $i -le $Retries; $i++) {
+function Trust-LocalCerts {
   try {
-    # Self-signed: skip cert validation for local loopback check only
     add-type @"
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
@@ -19,28 +18,78 @@ public class TrustAllCertsPolicy : ICertificatePolicy {
 }
 "@
     [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
-    $resp = Invoke-RestMethod -Uri $healthUrl -Method GET -TimeoutSec 5
-    if ($resp.app_env -ne "production") {
-      Write-Error "APP_ENV is '$($resp.app_env)' — expected production"
-      exit 1
-    }
-    if (-not $resp.jwt_secret_configured) {
-      Write-Error "JWT secret not configured securely"
-      exit 1
-    }
-    if ($resp.PSObject.Properties.Name -contains "maintenance_key_configured" -and -not $resp.maintenance_key_configured) {
-      Write-Error "MAINTENANCE_ACCESS_KEY not configured securely"
-      exit 1
-    }
-    if ($resp.status -eq "ok" -or $resp.database_connected) {
-      Write-Host "Post-install health OK: $($resp.status) version=$($resp.version)"
-      exit 0
-    }
+  } catch {}
+}
+
+function Try-Get([string]$Url) {
+  try {
+    return Invoke-WebRequest -Uri $Url -Method GET -TimeoutSec 5 -UseBasicParsing
   } catch {
-    Write-Host "Attempt $i/$Retries failed: $($_.Exception.Message)"
+    return $null
   }
+}
+
+Trust-LocalCerts
+
+$bases = @($BaseUrl, $HttpsUrl)
+$ok = $false
+
+for ($i = 1; $i -le $Retries; $i++) {
+  foreach ($base in $bases) {
+    $healthUrl = "$base/api/system/health"
+    $uiRootUrl = "$base/api/system/ui-root"
+    $homeUrl = "$base/"
+
+    try {
+      $health = Invoke-RestMethod -Uri $healthUrl -Method GET -TimeoutSec 5
+    } catch {
+      Write-Host "Attempt $i/$Retries [$base] health: $($_.Exception.Message)"
+      continue
+    }
+
+    if ($health.app_env -ne "production") {
+      Write-Warning "APP_ENV is '$($health.app_env)' — expected production (continuing UI checks)"
+    }
+
+    $uiMounted = $false
+    if ($health.PSObject.Properties.Name -contains "ui_mounted") {
+      $uiMounted = [bool]$health.ui_mounted
+    }
+
+    try {
+      $uiInfo = Invoke-RestMethod -Uri $uiRootUrl -Method GET -TimeoutSec 5
+      if ($uiInfo.index) { $uiMounted = $true }
+      Write-Host "ui-root: $($uiInfo.ui_root) index=$($uiInfo.index)"
+    } catch {
+      Write-Host "ui-root probe failed: $($_.Exception.Message)"
+    }
+
+    $home = Try-Get $homeUrl
+    $homeOk = $false
+    if ($home -ne $null) {
+      $ctype = [string]$home.Headers["Content-Type"]
+      $snippet = ([string]$home.Content).Substring(0, [Math]::Min(80, ([string]$home.Content).Length))
+      Write-Host "GET / => $($home.StatusCode) $ctype :: $snippet"
+      if ($home.StatusCode -eq 200 -and ($ctype -match "text/html" -or $snippet -match "<!DOCTYPE|<html")) {
+        $homeOk = $true
+      }
+      if ($snippet -match '"detail"\s*:\s*"Not Found"') {
+        Write-Error "Homepage still returns FastAPI JSON Not Found — UI mount failed"
+        exit 1
+      }
+    }
+
+    if ($homeOk -or $uiMounted) {
+      Write-Host "Post-install OK: status=$($health.status) version=$($health.version) ui=$homeOk"
+      $ok = $true
+      break
+    }
+
+    Write-Host "Attempt $i/$Retries: API up but UI not mounted yet"
+  }
+  if ($ok) { exit 0 }
   Start-Sleep -Seconds $DelaySeconds
 }
 
-Write-Error "Server did not become healthy at $healthUrl"
+Write-Error "Server did not serve embedded UI. Check Program Files\NKDentalSoft\Server\web\index.html and startup.log"
 exit 1

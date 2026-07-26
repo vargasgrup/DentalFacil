@@ -195,6 +195,12 @@ async def lifespan(app: FastAPI):
         port = int(os.environ.get("BACKEND_PORT", settings.BACKEND_PORT or 8001))
         # Always announce on desktop/production so LAN clients can find the Server
         lan_discovery_handle = start_lan_discovery(http_port=port)
+        try:
+            from app.services.connect_card import write_connect_card
+
+            write_connect_card(http_port=port)
+        except Exception as card_exc:  # noqa: BLE001
+            logger.debug("connect card: %s", card_exc)
         if (os.environ.get("NKDENTALSOFT_MDNS") or "").strip() in ("1", "true", "yes") or settings.is_production:
             mdns_handle = start_mdns_announce(port=port, fingerprint_sha256=fp)
     except Exception as exc:  # noqa: BLE001

@@ -31,15 +31,20 @@ Section "Install"
   File "Open-Client.bat"
   File "Change-Server.bat"
   File /nonfatal "Connect-Clinic.ps1"
+  File "/oname=repair_lan.ps1" "..\server\scripts\repair_lan.ps1"
   SetOutPath "$INSTDIR\icons"
   File /nonfatal "icons\icon.ico"
   File /nonfatal "icons\128x128.png"
+
+  ; Best-effort: Private profile + firewall on Client PC too
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\repair_lan.ps1" -Quiet'
 
   CreateDirectory "$SMPROGRAMS\N&K DentalSoft"
   ; Launch native EXE directly (no PowerShell flash)
   CreateShortCut "$DESKTOP\N&K DentalSoft Client.lnk" "$INSTDIR\ConnectClinic.exe" "--auto-connect" "$INSTDIR\icons\icon.ico" 0 SW_SHOWNORMAL
   CreateShortCut "$SMPROGRAMS\N&K DentalSoft\N&K DentalSoft Client.lnk" "$INSTDIR\ConnectClinic.exe" "--auto-connect" "$INSTDIR\icons\icon.ico" 0 SW_SHOWNORMAL
   CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Cambiar servidor.lnk" "$INSTDIR\ConnectClinic.exe" "--force-prompt" "$INSTDIR\icons\icon.ico" 0 SW_SHOWNORMAL
+  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Reparar red LAN.lnk" "$INSTDIR\ConnectClinic.exe" "--repair-lan" "$INSTDIR\icons\icon.ico" 0 SW_SHOWNORMAL
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 SectionEnd

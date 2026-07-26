@@ -211,22 +211,48 @@ def system_lan_info(
     Bind is typically 0.0.0.0:8001 — clients use http://<LAN-IP>:8001/
     """
     _ = admin
+    return _connect_info_payload()
+
+
+@router.get("/connect-info")
+def system_connect_info():
+    """
+    Public (no auth) LAN join card for Client installers / ConnectClinic.
+    Does not expose secrets — only hostname, port and URLs.
+    """
+    return _connect_info_payload()
+
+
+def _connect_info_payload() -> dict[str, Any]:
     port = int(os.environ.get("BACKEND_PORT") or 8001)
     host = (os.environ.get("HOST") or "0.0.0.0").strip() or "0.0.0.0"
     ips = _lan_ipv4_addresses()
+    hostname = socket.gethostname()
     urls = [f"http://{ip}:{port}/" for ip in ips]
+    if hostname:
+        urls.append(f"http://{hostname}:{port}/")
+    # de-dupe preserve order
+    seen: set[str] = set()
+    uniq_urls: list[str] = []
+    for u in urls:
+        if u not in seen:
+            seen.add(u)
+            uniq_urls.append(u)
     return {
         "host_bind": host,
         "port": port,
+        "hostname": hostname,
         "listening_all_interfaces": host in {"0.0.0.0", "::", "*"},
         "lan_ips": ips,
-        "client_urls": urls,
+        "client_urls": uniq_urls,
         "local_url": f"http://127.0.0.1:{port}/",
         "firewall_rule": "NKDentalSoft Server 8001",
+        "discovery_udp_port": 37020,
         "hint": (
-            "En cada PC de la clínica abra el navegador o el cliente N&K e ingrese "
-            "una de las URLs de la red local. Todos comparten la misma base de datos "
-            "del servidor principal."
+            "1) En el PC servidor la red Wi-Fi/Ethernet debe ser Privada (no Pública). "
+            "2) Desactive VPN en los PCs cliente. "
+            "3) En el Client pegue una URL de abajo o escriba la IP. "
+            "También puede abrir el acceso directo NKDentalSoft-Servidor.url del escritorio público."
         ),
     }
 

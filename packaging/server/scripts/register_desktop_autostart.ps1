@@ -27,6 +27,16 @@ if (-not (Test-Path $exe)) {
 
 Write-Boot "[desktop] InstallDir=$InstallDir"
 
+# Make LAN reachable from other PCs (Private profile + firewall TCP/UDP)
+$repairLan = Join-Path $InstallDir "scripts\repair_lan.ps1"
+if (Test-Path $repairLan) {
+  Write-Boot "[desktop] Running repair_lan.ps1..."
+  $lan = Start-Process -FilePath "powershell.exe" -ArgumentList @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $repairLan, "-Quiet"
+  ) -Wait -PassThru -WindowStyle Hidden
+  Write-Boot "[desktop] repair_lan exit=$($lan.ExitCode)"
+}
+
 # CRITICAL: run stop_for_upgrade in a *child* powershell.exe.
 # Calling it with & and its internal `exit` would terminate THIS script early
 # (or propagate exit 2 when Defender locks the fresh EXE) and skip Start-Process.

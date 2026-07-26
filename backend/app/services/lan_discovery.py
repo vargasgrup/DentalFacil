@@ -49,11 +49,13 @@ def _lan_ips() -> list[str]:
 
 def build_announce_payload(*, http_port: int) -> dict[str, Any]:
     ips = _lan_ips()
+    hostname = socket.gethostname()
     return {
         "magic": MAGIC,
         "product": "N&K DentalSoft",
         "version": PRODUCT_VERSION,
         "port": int(http_port),
+        "hostname": hostname,
         "ips": ips,
         "urls": [f"http://{ip}:{http_port}/" for ip in ips],
     }

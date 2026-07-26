@@ -96,9 +96,10 @@ Section "Install"
   skip_init:
 
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft Server 8001"'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NKDentalSoft Server 8001" dir=in action=allow protocol=TCP localport=8001 profile=private,domain,public'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NKDentalSoft Server 8001" dir=in action=allow protocol=TCP localport=8001 profile=private,domain,public edge=yes'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft LAN Discovery 37020"'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NKDentalSoft LAN Discovery 37020" dir=in action=allow protocol=UDP localport=37020 profile=private,domain,public'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NKDentalSoft LAN Discovery 37020" dir=in action=allow protocol=UDP localport=37020 profile=private,domain,public edge=yes'
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\repair_lan.ps1" -Quiet'
 
   ; Delete stale loose modules that shadowed the frozen PYZ (caused HTTPS-only / dead UI)
   Delete "$INSTDIR\server_entry.py"

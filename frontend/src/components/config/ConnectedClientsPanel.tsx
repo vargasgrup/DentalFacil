@@ -195,7 +195,7 @@ export function ConnectedClientsPanel() {
         </h3>
         <p className="mt-1 text-sm text-brand-900/80">
           {lan?.hint ||
-            "Use la IP de este servidor en la misma red Wi‑Fi/LAN. Puerto 8001 debe estar permitido en el firewall."}
+            "En el Client: Pegar URL (botón Copiar abajo). Red Privada, sin VPN. Puerto TCP 8001."}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-brand-800">
           <Wifi className="h-3.5 w-3.5" aria-hidden />
@@ -206,6 +206,12 @@ export function ConnectedClientsPanel() {
             <Badge variant="warning">Revise HOST=0.0.0.0</Badge>
           )}
         </div>
+        <p className="mt-2 text-xs text-brand-900/70">
+          También se crea el acceso directo{" "}
+          <span className="font-mono">NKDentalSoft-Servidor.url</span> en el escritorio público del
+          servidor (y{" "}
+          <span className="font-mono">%ProgramData%\NKDentalSoft\IP-DEL-SERVIDOR.txt</span>).
+        </p>
         <ul className="mt-3 space-y-2">
           {(lan?.client_urls || []).length === 0 ? (
             <li className="text-sm text-brand-900/70">

@@ -482,6 +482,42 @@ namespace NkDentalSoft.Client
             return m.Success ? m.Groups[1].Value : null;
         }
 
+        public static List<string> LocalLanIps()
+        {
+            var ips = new List<string>();
+            try
+            {
+                foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                    var desc = ni.Name + " " + ni.Description;
+                    if (Regex.IsMatch(desc, "TUN|TAP|VPN|ProTUN|vEthernet|WireGuard|Hyper-V", RegexOptions.IgnoreCase))
+                        continue;
+                    foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                    {
+                        if (ua.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                        var ip = ua.Address.ToString();
+                        if (ip.StartsWith("127.") || ip.StartsWith("169.254.")) continue;
+                        if (!ips.Contains(ip)) ips.Add(ip);
+                    }
+                }
+            }
+            catch { }
+            return ips;
+        }
+
+        public static bool SameSubnet24(string a, string b)
+        {
+            try
+            {
+                var pa = a.Split('.');
+                var pb = b.Split('.');
+                if (pa.Length != 4 || pb.Length != 4) return false;
+                return pa[0] == pb[0] && pa[1] == pb[1] && pa[2] == pb[2];
+            }
+            catch { return false; }
+        }
+
         public static List<string> LanPrefixes()
         {
             var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -976,12 +1012,18 @@ namespace NkDentalSoft.Client
             {
                 var pingOk = false;
                 var hostOnly = "";
+                var localIps = Discovery.LocalLanIps();
+                var sameNet = false;
                 try
                 {
                     var u = new Uri(url.StartsWith("http") ? url : "http://" + url);
                     hostOnly = u.Host;
                     if (Regex.IsMatch(hostOnly, @"^\d+\.\d+\.\d+\.\d+$"))
                     {
+                        foreach (var lip in localIps)
+                        {
+                            if (Discovery.SameSubnet24(lip, hostOnly)) { sameNet = true; break; }
+                        }
                         using (var ping = new Ping())
                         {
                             var reply = ping.Send(hostOnly, 1500);
@@ -992,18 +1034,28 @@ namespace NkDentalSoft.Client
                 catch { }
 
                 var extra = LanRepair.DetectVpnWarning() ?? LanRepair.DetectPublicNetworkWarning() ?? "";
-                var diag = pingOk
-                    ? "El PC servidor RESPONDE al ping, pero el puerto 8001 esta bloqueado (firewall del Server o antivirus). En el Server ejecute como Administrador: scripts\\repair_lan.ps1"
-                    : "El PC servidor NO responde ni al ping. Causa tipica: aislamiento Wi-Fi del router (AP/Client Isolation), VPN, o distinta red. Conecte el Server por cable Ethernet o desactive el aislamiento en el router.";
+                string diag;
+                if (!sameNet && localIps.Count > 0 && Regex.IsMatch(hostOnly ?? "", @"^\d+\.\d+\.\d+\.\d+$"))
+                {
+                    diag = "La IP del Server (" + hostOnly + ") NO esta en la misma red que este PC (" +
+                           string.Join(", ", localIps.ToArray()) +
+                           "). En el Server pulse Copiar de nuevo (la IP pudo cambiar) o active el Hotspot de clinica.";
+                }
+                else if (pingOk)
+                {
+                    diag = "El PC responde al ping, pero el puerto 8001 esta bloqueado. En el Server ejecute como Admin: Reparar red LAN.";
+                }
+                else
+                {
+                    diag = "No hay ping a " + hostOnly +
+                           ". Causas: IP vieja (Server ya no es .28), VPN, o aislamiento del router. " +
+                           "Solucion robusta: en el Server active Hotspot de clinica y conecte los Clients a ese Wi-Fi; IP tipica http://192.168.137.1:8001/";
+                }
 
                 MessageBox.Show(
                     "No hay respuesta de N&K DentalSoft en:\n" + url +
                     "\n\nDiagnostico: " + diag +
-                    "\n\n1) Server encendido en el PC principal" +
-                    "\n2) Misma Wi-Fi/LAN (perfil Privado)" +
-                    "\n3) Desactive VPN en este PC" +
-                    "\n4) Firewall + EXE permitidos (repair_lan.ps1 como Admin en el Server)" +
-                    "\n5) Use la IP (192.168.x.x), NUNCA DESKTOP-..." +
+                    "\n\nIPs de ESTE PC: " + (localIps.Count > 0 ? string.Join(", ", localIps.ToArray()) : "(sin LAN)") +
                     (string.IsNullOrEmpty(extra) ? "" : "\n\n" + extra),
                     "No se pudo conectar",
                     MessageBoxButtons.OK,

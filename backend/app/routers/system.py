@@ -177,29 +177,10 @@ def client_manifest():
 
 
 def _lan_ipv4_addresses() -> list[str]:
-    """Non-loopback IPv4 addresses for clinic LAN clients."""
-    found: list[str] = []
-    try:
-        hostname = socket.gethostname()
-        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
-            ip = info[4][0]
-            if ip and not ip.startswith("127.") and ip not in found:
-                found.append(ip)
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        # UDP trick: discover preferred outbound interface without sending
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            if ip and not ip.startswith("127.") and ip not in found:
-                found.insert(0, ip)
-        finally:
-            s.close()
-    except Exception:  # noqa: BLE001
-        pass
-    return found
+    """Non-loopback clinic LAN IPv4 (Ethernet preferred; no VPN/APIPA/Hyper-V)."""
+    from app.services.lan_network import clinic_ipv4_list
+
+    return clinic_ipv4_list()
 
 
 @router.get("/lan")
@@ -224,37 +205,40 @@ def system_connect_info():
 
 
 def _connect_info_payload() -> dict[str, Any]:
+    from app.services.lan_network import get_clinic_lan_ips
+
     port = int(os.environ.get("BACKEND_PORT") or 8001)
-    host = (os.environ.get("HOST") or "0.0.0.0").strip() or "0.0.0.0"
-    ips = _lan_ipv4_addresses()
+    # Desktop must always bind all interfaces for LAN clients
+    host = "0.0.0.0"
+    os.environ["HOST"] = host
+    rows = get_clinic_lan_ips()
+    ips = [r["ip"] for r in rows]
     hostname = socket.gethostname()
-    # CRITICAL: other PCs must use numeric IP. Windows NetBIOS names
-    # (DESKTOP-XXXX) usually do NOT resolve on clinic LAN clients.
     urls = [f"http://{ip}:{port}/" for ip in ips]
-    seen: set[str] = set()
-    uniq_urls: list[str] = []
-    for u in urls:
-        if u not in seen:
-            seen.add(u)
-            uniq_urls.append(u)
+    eth = next((r for r in rows if r.get("ethernet")), None)
+    recommended = (
+        f"http://{eth['ip']}:{port}/"
+        if eth
+        else (urls[0] if urls else f"http://127.0.0.1:{port}/")
+    )
     return {
         "host_bind": host,
         "port": port,
         "hostname": hostname,
-        "listening_all_interfaces": host in {"0.0.0.0", "::", "*"},
+        "listening_all_interfaces": True,
         "lan_ips": ips,
-        "client_urls": uniq_urls,
-        "recommended_url": uniq_urls[0] if uniq_urls else f"http://127.0.0.1:{port}/",
+        "interfaces": rows,
+        "client_urls": urls,
+        "recommended_url": recommended,
         "local_url": f"http://127.0.0.1:{port}/",
         "firewall_rule": "NKDentalSoft Server 8001",
         "discovery_udp_port": 37020,
         "hint": (
-            "Use SIEMPRE la URL con IP numerica (ej. http://192.168.100.28:8001/). "
-            "No use el nombre del PC (DESKTOP-...). "
-            "Misma Wi-Fi/LAN, perfil Privado, sin VPN. "
-            "Si el Client no conecta: 1) En el Server ejecute como Admin "
-            "scripts\\repair_lan.ps1  2) Desactive Aislamiento de AP / Client Isolation "
-            "en el router  3) Conecte el PC servidor por cable Ethernet si puede."
+            "IMPORTANTE: copie la URL recomendada (IP Ethernet). "
+            "Si cambia el PC servidor, la IP cambia — vuelva a Copiar. "
+            "Si el Client dice que no hay ping: 1) desconecte VPN  2) use la IP ACTUAL "
+            "del Server (no una vieja)  3) active Modo Hotspot de clinica "
+            "(menu Inicio → Activar Hotspot clinica) para saltarse el aislamiento del router."
         ),
     }
 

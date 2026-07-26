@@ -251,7 +251,8 @@ def prepare_environment() -> Path:
             log(f"WARNING: could not generate TLS certs: {exc}")
 
     os.environ.setdefault("APP_ENV", "production")
-    os.environ.setdefault("HOST", "0.0.0.0")
+    # Always listen on all interfaces for clinic LAN (never 127.0.0.1)
+    os.environ["HOST"] = "0.0.0.0"
     os.environ.setdefault("BACKEND_PORT", "8001")
     db_path = root / "data" / "clinica.db"
     os.environ.setdefault("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")

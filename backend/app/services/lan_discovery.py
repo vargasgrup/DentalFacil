@@ -24,27 +24,12 @@ PROBE = b"NKDS_DISCOVER"
 
 
 def _lan_ips() -> list[str]:
-    found: list[str] = []
     try:
-        hostname = socket.gethostname()
-        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
-            ip = info[4][0]
-            if ip and not ip.startswith("127.") and not ip.startswith("169.254.") and ip not in found:
-                found.append(ip)
+        from app.services.lan_network import clinic_ipv4_list
+
+        return clinic_ipv4_list()
     except Exception:  # noqa: BLE001
-        pass
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            if ip and not ip.startswith("127.") and not ip.startswith("169.254.") and ip not in found:
-                found.insert(0, ip)
-        finally:
-            s.close()
-    except Exception:  # noqa: BLE001
-        pass
-    return found
+        return []
 
 
 def build_announce_payload(*, http_port: int) -> dict[str, Any]:

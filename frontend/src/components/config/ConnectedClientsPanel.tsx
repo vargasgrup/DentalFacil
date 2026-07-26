@@ -215,22 +215,34 @@ export function ConnectedClientsPanel() {
           <span className="font-mono">%ProgramData%\NKDentalSoft\IP-DEL-SERVIDOR.txt</span>).
         </p>
         <ul className="mt-3 space-y-2">
-          {(lan?.client_urls || []).length === 0 ? (
-            <li className="text-sm text-brand-900/70">
-              No se detectó IP LAN. Verifique el cable/Wi‑Fi del servidor o use{" "}
-              <span className="font-mono">{lan?.local_url || "http://127.0.0.1:8001/"}</span> solo en
-              este PC.
+          {(lan?.recommended_url || lan?.client_urls?.[0]) && (
+            <li className="flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-brand-300 bg-white px-3 py-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-brand-700">
+                  URL para Clients (copiar esta)
+                </div>
+                <code className="text-base font-semibold text-slate-900">
+                  {lan.recommended_url || lan.client_urls[0]}
+                </code>
+              </div>
+              <Button
+                type="button"
+                className="!px-4 !py-2"
+                icon={<Copy className="h-3.5 w-3.5" />}
+                onClick={() => void copyUrl(lan.recommended_url || lan.client_urls[0])}
+              >
+                {copied === (lan.recommended_url || lan.client_urls[0]) ? "Copiado" : "Copiar"}
+              </Button>
             </li>
-          ) : (
-            (lan?.client_urls || []).map((url, idx) => (
+          )}
+          {(lan?.client_urls || [])
+            .filter((url) => url !== (lan?.recommended_url || lan?.client_urls?.[0]))
+            .map((url) => (
               <li
                 key={url}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-100 bg-white px-3 py-2"
               >
-                <div className="flex flex-wrap items-center gap-2">
-                  <code className="text-sm text-slate-800">{url}</code>
-                  {idx === 0 ? <Badge variant="success">Usar esta (IP)</Badge> : null}
-                </div>
+                <code className="text-sm text-slate-800">{url}</code>
                 <Button
                   type="button"
                   variant="secondary"
@@ -241,13 +253,18 @@ export function ConnectedClientsPanel() {
                   {copied === url ? "Copiado" : "Copiar"}
                 </Button>
               </li>
-            ))
-          )}
+            ))}
+          {(lan?.client_urls || []).length === 0 ? (
+            <li className="text-sm text-brand-900/70">
+              No se detectó IP LAN útil. Active Ethernet o el Hotspot de clínica. Local:{" "}
+              <span className="font-mono">{lan?.local_url || "http://127.0.0.1:8001/"}</span>
+            </li>
+          ) : null}
         </ul>
         {lan?.hostname ? (
           <p className="mt-2 text-xs text-amber-800">
-            No copie el nombre del PC (<span className="font-mono">{lan.hostname}</span>) en otros
-            equipos: en la clínica solo funciona la IP numerica.
+            No use el nombre del PC (<span className="font-mono">{lan.hostname}</span>). Si la IP
+            cambia al reiniciar, vuelva a pulsar Copiar en este panel.
           </p>
         ) : null}
       </div>

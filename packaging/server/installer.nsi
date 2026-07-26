@@ -76,6 +76,7 @@ Section "Install"
   File "Start-Server.bat"
   File "Open-UI.bat"
   File "Reparar-Red-LAN.bat"
+  File "Activar-Hotspot-Clinica.bat"
   SetOutPath "$INSTDIR\scripts"
   File "scripts\stop_for_upgrade.ps1"
   File "scripts\rename_locked_exe.ps1"
@@ -135,6 +136,8 @@ Section "Install"
   CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Reparar arranque.lnk" "$INSTDIR\scripts\repair_startup.cmd" "" "$INSTDIR\assets\icons\icon.ico" 0
   CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Reparar red LAN (Admin).lnk" "$INSTDIR\Reparar-Red-LAN.bat" "" "$INSTDIR\assets\icons\icon.ico" 0
   CreateShortCut "$DESKTOP\Reparar red LAN - NKDentalSoft.lnk" "$INSTDIR\Reparar-Red-LAN.bat" "" "$INSTDIR\assets\icons\icon.ico" 0
+  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Activar Hotspot clinica.lnk" "$INSTDIR\Activar-Hotspot-Clinica.bat" "" "$INSTDIR\assets\icons\icon.ico" 0
+  CreateShortCut "$DESKTOP\Activar Hotspot clinica - NKDentalSoft.lnk" "$INSTDIR\Activar-Hotspot-Clinica.bat" "" "$INSTDIR\assets\icons\icon.ico" 0
 
   ; Remove obsolete desktop shortcut that launched the EXE and flashed closed
   Delete "$DESKTOP\N&K DentalSoft Server.lnk"
@@ -162,6 +165,7 @@ Section "Uninstall"
   Delete "$DESKTOP\N&K DentalSoft.lnk"
   Delete "$DESKTOP\N&K DentalSoft Server.lnk"
   Delete "$DESKTOP\Reparar red LAN - NKDentalSoft.lnk"
+  Delete "$DESKTOP\Activar Hotspot clinica - NKDentalSoft.lnk"
   RMDir /r "$SMPROGRAMS\N&K DentalSoft"
   RMDir /r "$INSTDIR"
 SectionEnd

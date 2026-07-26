@@ -10,39 +10,20 @@ from pathlib import Path
 logger = logging.getLogger("dentalfacil.connect_card")
 
 
-def _lan_ips() -> list[str]:
-    found: list[str] = []
-    try:
-        hostname = socket.gethostname()
-        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
-            ip = info[4][0]
-            if ip and not ip.startswith("127.") and not ip.startswith("169.254.") and ip not in found:
-                found.append(ip)
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            if ip and not ip.startswith("127.") and not ip.startswith("169.254.") and ip not in found:
-                found.insert(0, ip)
-        finally:
-            s.close()
-    except Exception:  # noqa: BLE001
-        pass
-    return found
-
-
 def write_connect_card(*, http_port: int = 8001) -> str | None:
     """
     Write ProgramData + Public Desktop Internet Shortcuts pointing at the LAN URL.
     Clients can open the .url or paste the same address in ConnectClinic.
     """
-    ips = _lan_ips()
+    from app.services.lan_network import get_clinic_lan_ips
+
+    rows = get_clinic_lan_ips()
+    ips = [r["ip"] for r in rows]
     if not ips:
         return None
-    url = f"http://{ips[0]}:{int(http_port)}/"
+    eth = next((r for r in rows if r.get("ethernet")), None)
+    best = eth["ip"] if eth else ips[0]
+    url = f"http://{best}:{int(http_port)}/"
     hostname = socket.gethostname()
     body = "\r\n".join(
         [
@@ -68,16 +49,15 @@ def write_connect_card(*, http_port: int = 8001) -> str | None:
             path.parent.mkdir(parents=True, exist_ok=True)
             if path.suffix.lower() == ".txt":
                 path.write_text(
-                    "N&K DentalSoft — URL para otros PCs (USE LA IP, NO EL NOMBRE DEL PC)\r\n"
+                    "N&K DentalSoft — URL para otros PCs (USE LA IP ACTUAL)\r\n"
                     f"URL recomendada: {url}\r\n"
-                    f"IP del servidor: {ips[0]}\r\n"
+                    f"IP del servidor: {best}\r\n"
                     f"Puerto: {int(http_port)}\r\n"
-                    f"Nombre de este PC (NO usar en clientes): {hostname}\r\n"
+                    f"Nombre de este PC (NO usar): {hostname}\r\n"
                     f"Otras IPs: {', '.join(ips)}\r\n"
                     "\r\n"
-                    "En el Client escriba solo la IP o pegue la URL con numeros.\r\n"
-                    "Ejemplo correcto: 192.168.100.28\r\n"
-                    "Ejemplo INCORRECTO: DESKTOP-XXXX\r\n",
+                    "Si el Client no hace ping: active Hotspot de clinica en el Server\r\n"
+                    "y conecte los Clients a ese Wi-Fi (IP tipica 192.168.137.1).\r\n",
                     encoding="utf-8",
                 )
             else:

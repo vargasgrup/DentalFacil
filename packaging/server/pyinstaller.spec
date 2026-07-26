@@ -17,7 +17,7 @@ _datas = [
     (str(BACKEND / "alembic"), "alembic"),
     (str(BACKEND / "alembic.ini"), "."),
     (str(BACKEND / "app"), "app"),
-    (str(SERVER_PKG / "server_entry.py"), "."),
+    # server_entry is imported from PYZ (do not also ship a loose .py — it shadows updates)
     (str(SERVER_PKG / "assets" / "icons"), "assets/icons"),
     (str(SERVER_PKG / "scripts"), "scripts"),
 ]

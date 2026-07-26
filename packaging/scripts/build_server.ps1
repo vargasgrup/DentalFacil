@@ -89,12 +89,14 @@ if (-not $SkipFrontend) {
     throw "SkipFrontend set but frontend/out/index.html is missing - refusing API-only Server build (would yield / => Not Found)"
 }
 
-Write-Host "==> PyInstaller onedir"
+Write-Host "==> PyInstaller onedir (clean)"
+Remove-Item (Join-Path $ServerPkg "build") -Recurse -Force -ErrorAction SilentlyContinue
 Push-Location $Root
 try {
     & $VenvPython -m PyInstaller `
         (Join-Path $ServerPkg "pyinstaller.spec") `
         --noconfirm `
+        --clean `
         --distpath (Join-Path $ServerPkg "dist") `
         --workpath (Join-Path $ServerPkg "build")
 } finally {
@@ -105,8 +107,8 @@ if (-not (Test-Path (Join-Path $DistServer "nkdentalsoft-server.exe"))) {
     throw "PyInstaller did not produce nkdentalsoft-server.exe in $DistServer"
 }
 
-Copy-Item (Join-Path $ServerPkg "windows_service.py") $DistServer -Force
-Copy-Item (Join-Path $ServerPkg "server_entry.py") $DistServer -Force
+# Do NOT copy server_entry.py / windows_service.py beside the EXE — they shadow the
+# frozen PYZ modules via sys.path and can serve stale logic at runtime.
 Copy-Item (Join-Path $ServerPkg "Start-Server.bat") $DistServer -Force
 Copy-Item (Join-Path $ServerPkg "Open-UI.bat") $DistServer -Force
 $ScriptsDest = Join-Path $DistServer "scripts"

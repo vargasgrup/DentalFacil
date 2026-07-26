@@ -86,6 +86,12 @@ Section "Install"
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NKDentalSoft Server 8001"'
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NKDentalSoft Server 8001" dir=in action=allow protocol=TCP localport=8001 profile=private,domain'
 
+  ; Delete stale loose modules that shadowed the frozen PYZ (caused HTTPS-only / dead UI)
+  Delete "$INSTDIR\server_entry.py"
+  Delete "$INSTDIR\_internal\server_entry.py"
+  Delete "$INSTDIR\windows_service.py"
+  Delete "$INSTDIR\_internal\windows_service.py"
+
   ; Desktop-first: remove legacy Win32 service (zombie Session-0) and register Scheduled Task
   DetailPrint "Configurando arranque de escritorio (sin servicio Windows zombie)..."
   nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\register_desktop_autostart.ps1" -InstallDir "$INSTDIR"'

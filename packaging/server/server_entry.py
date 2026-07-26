@@ -30,7 +30,7 @@ def _programdata() -> Path:
         return Path(override)
     if getattr(sys, "frozen", False):
         # Always the real machine ProgramData — never a parent-shell temp override
-        root = Path(os.environ.get("SystemDrive", "C:")) / "ProgramData" / "NKDentalSoft"
+        root = Path(os.environ.get("SystemDrive", "C:") + r"\ProgramData") / "NKDentalSoft"
         return root
     pd = os.environ.get("PROGRAMDATA") or str(Path(os.environ.get("SystemDrive", "C:")) / "ProgramData")
     return Path(pd) / "NKDentalSoft"
@@ -62,10 +62,9 @@ def _load_env_file(path: Path) -> None:
         k, _, v = line.partition("=")
         key = k.strip()
         val = v.strip()
-        # Allow process/launcher overrides (e.g. desktop port, TLS flags)
-        if key in os.environ and key.startswith("NKDENTALSOFT_"):
-            continue
-        if key in {"BACKEND_PORT", "HOST"} and key in os.environ:
+        # Allow launcher TLS/UI flags to win; port/host always come from clinic .env
+        # when present (avoids polluted BACKEND_PORT from parent shells).
+        if key.startswith("NKDENTALSOFT_") and key in os.environ:
             continue
         os.environ[key] = val
 
@@ -327,6 +326,9 @@ def _assert_port_free(port: int) -> None:
 
 
 def run_server() -> None:
+    # Desktop default: HTTP. HTTPS only with NKDENTALSOFT_FORCE_TLS=1.
+    os.environ.pop("NKDENTALSOFT_FORCE_TLS", None)
+    os.environ["NKDENTALSOFT_DISABLE_TLS"] = "1"
     root = prepare_environment()
     log(f"install_dir={_install_dir()}")
     log(f"programdata={root}")
@@ -354,21 +356,7 @@ def run_server() -> None:
         "true",
         "yes",
     }
-    disable_tls = (os.environ.get("NKDENTALSOFT_DISABLE_TLS") or "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
-    # Frozen desktop default: HTTP on :8001 (Firefox / no cert warnings).
-    # Opt-in HTTPS for LAN hardening: NKDENTALSOFT_FORCE_TLS=1
-    if force_tls:
-        use_tls = cert.is_file() and key.is_file()
-        if not use_tls:
-            log("FORCE_TLS set but cert/key missing — falling back to HTTP")
-    elif disable_tls or getattr(sys, "frozen", False):
-        use_tls = False
-    else:
-        use_tls = cert.is_file() and key.is_file()
+    use_tls = bool(force_tls and cert.is_file() and key.is_file())
 
     kwargs: dict = {
         "app": fastapi_app,  # object import — required for PyInstaller frozen EXE

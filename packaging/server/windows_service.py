@@ -18,29 +18,55 @@ import traceback
 from pathlib import Path
 
 
+def _boot_log(msg: str) -> None:
+    """Log before server_entry is importable (service / early crashes)."""
+    line = msg.rstrip() + "\n"
+    try:
+        pd = os.environ.get("PROGRAMDATA") or (os.environ.get("SystemDrive", "C:") + r"\ProgramData")
+        path = Path(pd) / "NKDentalSoft" / "logs" / "startup.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(line)
+    except OSError:
+        pass
+    print(line, end="", flush=True)
+
+
 def _install_dir() -> Path:
+    # Frozen: ALWAYS the folder of the running EXE (never a stale env override
+    # pointing at an older Program Files tree that shadows PYZ modules).
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
     env = (os.environ.get("NKDENTALSOFT_INSTALL_DIR") or "").strip()
     if env and Path(env).is_dir():
         return Path(env).resolve()
-    if getattr(sys, "frozen", False):
-        for raw in (sys.argv[0] if sys.argv else None, sys.executable):
-            if not raw:
-                continue
-            p = Path(raw).resolve()
-            if p.suffix.lower() == ".exe" and p.parent.is_dir():
-                return p.parent
-        return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent
+
+
+def _purge_shadow_modules(*roots: Path) -> None:
+    for root in roots:
+        if not root:
+            continue
+        for stale in (
+            root / "server_entry.py",
+            root / "_internal" / "server_entry.py",
+            root / "windows_service.py",
+            root / "_internal" / "windows_service.py",
+        ):
+            try:
+                if stale.is_file():
+                    stale.unlink()
+                    _boot_log(f"[boot] removed shadow module {stale}")
+            except OSError as exc:
+                _boot_log(f"[boot] could not remove {stale}: {exc}")
 
 
 def _ensure_path() -> None:
     install = _install_dir()
     os.environ["NKDENTALSOFT_INSTALL_DIR"] = str(install)
     # Never inherit a polluted PROGRAMDATA from a parent shell (dev/smoke tests).
-    # Frozen clinic builds always use the real machine ProgramData root.
     if getattr(sys, "frozen", False):
         windir_pd = os.environ.get("SystemDrive", "C:") + r"\ProgramData"
-        # If PROGRAMDATA points outside the real ProgramData, reset it.
         cur = (os.environ.get("PROGRAMDATA") or "").strip()
         real = str(Path(windir_pd).resolve())
         try:
@@ -55,10 +81,35 @@ def _ensure_path() -> None:
     except OSError:
         pass
 
+    # Drop any prior sys.path entries that point at other NKDentalSoft trees
+    # (e.g. Program Files leftover from NKDENTALSOFT_INSTALL_DIR in parent shells).
+    cleaned: list[str] = []
+    for entry in sys.path:
+        try:
+            low = str(entry).replace("\\", "/").lower()
+            if "nkdentalsoft" in low and "server" in low:
+                # keep only paths under this running install / its _MEIPASS
+                if str(install.resolve()).replace("\\", "/").lower() in low:
+                    cleaned.append(entry)
+                elif getattr(sys, "_MEIPASS", None) and str(Path(sys._MEIPASS).resolve()).replace("\\", "/").lower() in low:
+                    cleaned.append(entry)
+                else:
+                    _boot_log(f"[boot] dropping shadow path {entry}")
+                    continue
+            else:
+                cleaned.append(entry)
+        except Exception:
+            cleaned.append(entry)
+    sys.path[:] = cleaned
+
     meipass = getattr(sys, "_MEIPASS", None)
-    for p in (Path(meipass) if meipass else None, install, install / "_internal"):
-        if p and p.exists() and str(p) not in sys.path:
-            sys.path.insert(0, str(p))
+    # Only expose _MEIPASS for bundled datas. Never prepend install dir — that
+    # allowed Program Files\_internal\server_entry.py to shadow the PYZ module.
+    if meipass:
+        mp = str(Path(meipass).resolve())
+        if mp in sys.path:
+            sys.path.remove(mp)
+        sys.path.insert(0, mp)
 
     for candidate in (
         install / "web",
@@ -69,19 +120,8 @@ def _ensure_path() -> None:
             os.environ["NKDENTALSOFT_UI_DIR"] = str(candidate.resolve())
             break
 
-
-def _boot_log(msg: str) -> None:
-    """Log before server_entry is importable (service / early crashes)."""
-    line = msg.rstrip() + "\n"
-    try:
-        pd = os.environ.get("PROGRAMDATA") or (os.environ.get("SystemDrive", "C:") + r"\ProgramData")
-        path = Path(pd) / "NKDentalSoft" / "logs" / "startup.log"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(line)
-    except OSError:
-        pass
-    print(line, end="", flush=True)
+    pf = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "NKDentalSoft" / "Server"
+    _purge_shadow_modules(install, pf, Path(meipass) if meipass else None)
 
 
 def run_uvicorn() -> None:

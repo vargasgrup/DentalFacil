@@ -17,6 +17,13 @@ try { & $exe remove } catch {}
 sc.exe stop NKDentalSoftServer | Out-Null
 sc.exe delete NKDentalSoftServer | Out-Null
 cmd /c "taskkill /F /IM nkdentalsoft-server.exe /T >nul 2>&1"
+# Remove loose modules that shadowed the embedded PYZ (root cause of dead HTTPS service)
+@(
+  (Join-Path $InstallDir "server_entry.py"),
+  (Join-Path $InstallDir "_internal\server_entry.py"),
+  (Join-Path $InstallDir "windows_service.py"),
+  (Join-Path $InstallDir "_internal\windows_service.py")
+) | ForEach-Object { if (Test-Path $_) { Remove-Item $_ -Force -ErrorAction SilentlyContinue } }
 Start-Sleep -Seconds 2
 
 $taskName = "NKDentalSoft Server"

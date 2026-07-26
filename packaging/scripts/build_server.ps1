@@ -177,6 +177,12 @@ if (-not $SkipNsis) {
     if (-not (Test-Path $Setup)) {
         throw "Installer not found at $Setup"
     }
+    Write-Host "==> Authenticode sign (SmartScreen / publisher)"
+    try {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "packaging\scripts\sign_windows_exe.ps1") -Path $Setup
+    } catch {
+        Write-Host "WARNING: signing skipped: $($_.Exception.Message)"
+    }
     Write-Host "OK Server installer: $Setup"
     Get-Item $Setup | Format-List Name, Length, LastWriteTime
 } else {

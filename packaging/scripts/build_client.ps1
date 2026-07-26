@@ -44,6 +44,11 @@ function Build-NsisClient {
     if (-not (Test-Path $setup)) {
         throw "Client Setup missing: $setup"
     }
+    try {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "packaging\scripts\sign_windows_exe.ps1") -Path $setup
+    } catch {
+        Write-Host "WARNING: client signing skipped: $($_.Exception.Message)"
+    }
     Get-Item $setup | Format-List Name, Length, LastWriteTime
     Write-Host "OK Client installer: $setup"
 }

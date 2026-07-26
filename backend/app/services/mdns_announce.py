@@ -42,7 +42,8 @@ def start_mdns_announce(
     props = {
         b"path": b"/api/system/health",
         b"version": b"1.0.0",
-        b"tls": b"1",
+        b"tls": b"0",
+        b"proto": b"http",
     }
     if fingerprint_sha256:
         props[b"fp"] = fingerprint_sha256.encode("ascii")

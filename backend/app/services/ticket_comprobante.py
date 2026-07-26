@@ -251,13 +251,16 @@ def _p_html(text: str, style: ParagraphStyle) -> Paragraph:
 def _styles(fmt: str) -> dict[str, ParagraphStyle]:
     if fmt == "80mm":
         title_sz, body_sz, small_sz, tiny_sz = 9, 7.5, 6.5, 5.5
-        after = 0.5
+        after = 2.8
+        lead_extra = 3.8
     elif fmt == "A5":
         title_sz, body_sz, small_sz, tiny_sz = 12, 9, 8, 7
-        after = 1
+        after = 2.0
+        lead_extra = 3.0
     else:
         title_sz, body_sz, small_sz, tiny_sz = 14, 10, 9, 8
-        after = 1
+        after = 2.0
+        lead_extra = 3.0
 
     return {
         "center_bold": ParagraphStyle(
@@ -265,7 +268,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontName="Helvetica-Bold",
             fontSize=title_sz,
             alignment=1,
-            leading=title_sz + 2,
+            leading=title_sz + lead_extra,
             spaceBefore=0,
             spaceAfter=after,
             wordWrap="CJK",
@@ -275,7 +278,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontName="Helvetica",
             fontSize=small_sz,
             alignment=1,
-            leading=small_sz + 2,
+            leading=small_sz + lead_extra,
             spaceBefore=0,
             spaceAfter=after,
             wordWrap="CJK",
@@ -285,7 +288,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontName="Helvetica",
             fontSize=tiny_sz,
             alignment=1,
-            leading=tiny_sz + 1.5,
+            leading=tiny_sz + lead_extra,
             textColor=colors.HexColor("#334155"),
             spaceBefore=0,
             spaceAfter=after,
@@ -296,7 +299,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontName="Helvetica",
             fontSize=body_sz,
             alignment=0,
-            leading=body_sz + 2,
+            leading=body_sz + lead_extra,
             spaceBefore=0,
             spaceAfter=after,
             leftIndent=0,
@@ -308,7 +311,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontName="Helvetica-Bold",
             fontSize=body_sz,
             alignment=0,
-            leading=body_sz + 2,
+            leading=body_sz + lead_extra,
             spaceBefore=0,
             spaceAfter=after,
             leftIndent=0,
@@ -320,7 +323,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontName="Helvetica",
             fontSize=tiny_sz,
             alignment=1,
-            leading=tiny_sz + 1.5,
+            leading=tiny_sz + lead_extra,
             textColor=colors.HexColor("#64748b"),
             spaceAfter=after,
             wordWrap="CJK",
@@ -330,16 +333,16 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontName="Helvetica-Bold",
             fontSize=body_sz + 1.5,
             alignment=0,
-            leading=body_sz + 3,
-            spaceAfter=2,
+            leading=body_sz + lead_extra + 1,
+            spaceAfter=after + 1,
             wordWrap="CJK",
         ),
     }
 
 
 def _line(content_w: float, *, tight: bool = False) -> HRFlowable:
-    before = 0.8 if tight else 3
-    after = 0.8 if tight else 3
+    before = 1.6 if tight else 3
+    after = 1.6 if tight else 3
     return HRFlowable(
         width=content_w,
         thickness=0.6,
@@ -351,8 +354,8 @@ def _line(content_w: float, *, tight: bool = False) -> HRFlowable:
 
 
 def _dash(content_w: float, *, tight: bool = False) -> HRFlowable:
-    before = 0.6 if tight else 2
-    after = 0.6 if tight else 2
+    before = 1.2 if tight else 2
+    after = 1.2 if tight else 2
     return HRFlowable(
         width=content_w,
         thickness=0.4,
@@ -405,7 +408,8 @@ def build_comprobante_story(
     logo = _logo(logo_size_mm_for_ticket(fmt))
     if logo:
         story.append(logo)
-        story.append(Spacer(1, 0.3 * mm if tight else 1.5 * mm))
+        # Separacion logo -> nombre (aire visible en rollo 80mm)
+        story.append(Spacer(1, 3.6 * mm if tight else 4 * mm))
     story.append(_p(profile.nombre_publico.upper(), styles["center_bold"]))
     if profile.ruc:
         story.append(_p(f"RUC {profile.ruc}", styles["center"]))
@@ -420,9 +424,12 @@ def build_comprobante_story(
             dir_txt += f" · COP {profile.cop_registro}"
         story.append(_p(dir_txt, styles["center_small"]))
 
+    story.append(Spacer(1, 2.0 * mm if tight else 2.5 * mm))
     story.append(_line(content_w, tight=tight))
+    story.append(Spacer(1, 1.4 * mm if tight else 1.8 * mm))
     story.append(_p("COMPROBANTE DE PAGO", styles["center_bold"]))
     story.append(_p(serie, styles["center_bold"]))
+    story.append(Spacer(1, 1.2 * mm if tight else 1.5 * mm))
     story.append(_dash(content_w, tight=tight))
 
     story.append(

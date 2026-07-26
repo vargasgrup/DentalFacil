@@ -36,9 +36,9 @@ Section "Install"
   File /nonfatal "icons\128x128.png"
 
   CreateDirectory "$SMPROGRAMS\N&K DentalSoft"
-  CreateShortCut "$DESKTOP\N&K DentalSoft Client.lnk" "$INSTDIR\Open-Client.bat" "" "$INSTDIR\icons\icon.ico" 0 SW_SHOWMINIMIZED
-  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\N&K DentalSoft Client.lnk" "$INSTDIR\Open-Client.bat" "" "$INSTDIR\icons\icon.ico" 0 SW_SHOWMINIMIZED
-  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Cambiar servidor.lnk" "$INSTDIR\Change-Server.bat" "" "$INSTDIR\icons\icon.ico" 0
+  CreateShortCut "$DESKTOP\N&K DentalSoft Client.lnk" "$INSTDIR\Open-Client.bat" "" "$INSTDIR\icons\icon.ico" 0 SW_SHOWNORMAL
+  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\N&K DentalSoft Client.lnk" "$INSTDIR\Open-Client.bat" "" "$INSTDIR\icons\icon.ico" 0 SW_SHOWNORMAL
+  CreateShortCut "$SMPROGRAMS\N&K DentalSoft\Cambiar servidor.lnk" "$INSTDIR\Change-Server.bat" "" "$INSTDIR\icons\icon.ico" 0 SW_SHOWNORMAL
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 SectionEnd

@@ -17,15 +17,17 @@ function AboutField({
   children: ReactNode;
 }) {
   return (
-    <div className="space-y-0.5">
-      <dt className="text-sm font-semibold text-slate-800">{label}</dt>
-      <dd className="text-sm leading-relaxed text-slate-600">{children}</dd>
+    <div className="min-w-0">
+      <dt className="text-[0.72rem] font-semibold uppercase tracking-[0.04em] text-slate-500">
+        {label}
+      </dt>
+      <dd className="mt-0.5 text-[0.9rem] leading-snug text-slate-800">{children}</dd>
     </div>
   );
 }
 
 const linkClass =
-  "text-brand-600 underline-offset-2 transition-smooth hover:text-brand-700 hover:underline";
+  "font-medium text-brand-600 underline-offset-2 transition-smooth hover:text-brand-700 hover:underline";
 
 export function AboutVendorModal({ open, onClose }: AboutVendorModalProps) {
   const titleId = useId();
@@ -52,7 +54,7 @@ export function AboutVendorModal({ open, onClose }: AboutVendorModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-900/45 p-0 sm:items-center sm:p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/45 p-4"
       role="presentation"
       onClick={onClose}
     >
@@ -60,26 +62,28 @@ export function AboutVendorModal({ open, onClose }: AboutVendorModalProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="flex max-h-[min(92vh,640px)] w-full max-w-[420px] flex-col overflow-hidden rounded-t-xl border border-slate-200 bg-white shadow-card sm:rounded-xl"
+        className="about-modal w-full max-w-[440px] overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_24px_64px_-20px_rgba(15,23,42,0.45)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4 pt-6">
-          <header className="mb-5">
+        <div className="px-6 pb-5 pt-6 sm:px-7 sm:pt-7">
+          <header className="border-b border-slate-100 pb-4">
             <h2
               id={titleId}
-              className="text-[1.35rem] font-bold tracking-tight text-slate-900"
+              className="text-[1.25rem] font-bold tracking-tight text-slate-900 sm:text-[1.35rem]"
             >
               Acerca de
             </h2>
-            <p className="mt-1 text-[0.95rem] font-medium text-slate-600">
+            <p className="mt-1 text-[0.95rem] font-semibold text-slate-700">
               {v.companyName}
             </p>
           </header>
 
-          <dl className="space-y-4">
+          <dl className="mt-4 grid grid-cols-1 gap-x-5 gap-y-3.5 sm:grid-cols-2">
             <AboutField label="Razón Social">{v.razonSocial}</AboutField>
             <AboutField label="RUC">{v.ruc}</AboutField>
-            <AboutField label="Dirección">{v.address}</AboutField>
+            <div className="sm:col-span-2">
+              <AboutField label="Dirección">{v.address}</AboutField>
+            </div>
             <AboutField label="Teléfono">
               <a href={v.phoneHref} className={linkClass}>
                 {v.phoneDisplay}
@@ -100,16 +104,25 @@ export function AboutVendorModal({ open, onClose }: AboutVendorModalProps) {
                 {v.websiteDisplay}
               </a>
             </AboutField>
-            <AboutField label="Software">{v.software}</AboutField>
             <AboutField label="Año de fundación">{v.foundedYear}</AboutField>
-            <AboutField label="Mensaje corporativo">
-              <span className="italic text-slate-600">“{v.tagline}”</span>
-            </AboutField>
+            <div className="sm:col-span-2">
+              <AboutField label="Software">{v.software}</AboutField>
+            </div>
+            <div className="sm:col-span-2">
+              <AboutField label="Mensaje corporativo">
+                <span className="italic text-slate-600">“{v.tagline}”</span>
+              </AboutField>
+            </div>
           </dl>
         </div>
 
-        <div className="shrink-0 border-t border-slate-100 px-6 py-4">
-          <Button ref={closeRef} type="button" onClick={onClose} className="min-w-[5.5rem]">
+        <div className="flex justify-start border-t border-slate-100 bg-slate-50/80 px-6 py-3.5 sm:px-7">
+          <Button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            className="min-w-[5.5rem] rounded-lg"
+          >
             Cerrar
           </Button>
         </div>

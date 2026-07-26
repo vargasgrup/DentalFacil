@@ -126,11 +126,29 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 if (-not $SkipNsis) {
     Write-Host "==> NSIS installer"
     $Makensis = Find-Makensis
-    & $Makensis (Join-Path $ServerPkg "installer.nsi")
-    if ($LASTEXITCODE -ne 0) {
-        throw "makensis failed with exit code $LASTEXITCODE"
-    }
     $Setup = Join-Path $Root "dist\NKDentalSoft-Server-Setup-x64.exe"
+    $SetupBuild = Join-Path $Root "dist\NKDentalSoft-Server-Setup-x64.build.exe"
+    # Write to .build.exe first so a locked previous Setup does not abort makensis
+    $nsi = Get-Content (Join-Path $ServerPkg "installer.nsi") -Raw
+    $nsiBuild = $nsi -replace 'OutFile\s+"[^"]+"', 'OutFile "..\..\dist\NKDentalSoft-Server-Setup-x64.build.exe"'
+    $nsiTmp = Join-Path $ServerPkg "installer.build.nsi"
+    Set-Content -Path $nsiTmp -Value $nsiBuild -Encoding UTF8
+    try {
+        & $Makensis $nsiTmp
+        if ($LASTEXITCODE -ne 0) {
+            throw "makensis failed with exit code $LASTEXITCODE"
+        }
+        if (-not (Test-Path $SetupBuild)) {
+            throw "Installer build output missing: $SetupBuild"
+        }
+        if (Test-Path $Setup) {
+            Remove-Item $Setup -Force -ErrorAction SilentlyContinue
+        }
+        Move-Item $SetupBuild $Setup -Force
+    } finally {
+        Remove-Item $nsiTmp -Force -ErrorAction SilentlyContinue
+        Remove-Item $SetupBuild -Force -ErrorAction SilentlyContinue
+    }
     if (-not (Test-Path $Setup)) {
         throw "Installer not found at $Setup"
     }

@@ -43,7 +43,16 @@ Salida: `dist\NKDentalSoft-Server-Setup-x64.exe` (+ onedir en `packaging\server\
 
 El instalador del Servidor incluye la **UI Next.js exportada** (`web/`) servida por FastAPI en el mismo puerto HTTPS (8001). Los Clientes Tauri abren `https://SERVIDOR:8001/` y usan `/api/*` en el mismo origen.
 
-`-SkipFrontend` genera solo API (útil para depurar PyInstaller).
+## Actualizacion / upgrade
+
+El instalador **detiene el servicio y mata** `nkdentalsoft-server.exe` antes de sobrescribir archivos.  
+Si aparece “Error abriendo archivo para escritura”, cierre la ventana negra del Servidor y pulse **Reintentar**, o ejecute como Admin:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\NKDentalSoft\Server\scripts\stop_for_upgrade.ps1"
+```
+
+Luego vuelva a lanzar el Setup. Los secretos en `%ProgramData%\NKDentalSoft\config\.env` **no se regeneran** en una actualización.
 
 Servicio (plan A pywin32, embebido en el `.exe`):
 

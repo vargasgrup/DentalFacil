@@ -24,6 +24,7 @@ import {
   defaultModulesForRole,
   type AppModule,
 } from "@/lib/roles";
+import { notifyClinicProfileUpdated } from "@/lib/clinicBrand";
 
 export default function ConfiguracionPage() {
   const { user: currentUser, refreshUser } = useAuth();
@@ -156,7 +157,8 @@ export default function ConfiguracionPage() {
     try {
       const cfg = await apiFetch<ClinicProfile>("/api/config/clinic");
       setClinic(cfg);
-      if (cfg.logo_url) {
+      notifyClinicProfileUpdated(cfg);
+      if (cfg.logo_url && cfg.has_custom_logo) {
         const token = getToken();
         const res = await fetch(cfg.logo_url, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -203,7 +205,8 @@ export default function ConfiguracionPage() {
         }),
       });
       setClinic(updated);
-      setClinicMsg("Datos del centro guardados. Se usan en tickets, PDFs y recordatorios.");
+      notifyClinicProfileUpdated(updated);
+      setClinicMsg("Datos del centro guardados. Se usan en tickets, PDFs, recordatorios y la interfaz.");
     } catch (err: unknown) {
       setClinicMsg(err instanceof Error ? err.message : "Error al guardar");
     } finally {
@@ -225,6 +228,7 @@ export default function ConfiguracionPage() {
       fd.append("file", file);
       const updated = await apiUpload<ClinicProfile>("/api/config/clinic/logo", fd);
       setClinic(updated);
+      notifyClinicProfileUpdated(updated);
       const token = getToken();
       const res = await fetch(updated.logo_url || "/api/config/clinic/logo-file", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -236,7 +240,7 @@ export default function ConfiguracionPage() {
           return URL.createObjectURL(blob);
         });
       }
-      setClinicMsg("Logo actualizado. Aparecerá en los documentos impresos.");
+      setClinicMsg("Logo actualizado. Se aplica de inmediato en toda la aplicación y en los documentos.");
     } catch (err: unknown) {
       setClinicMsg(err instanceof Error ? err.message : "Error al subir logo");
     } finally {
@@ -253,11 +257,11 @@ export default function ConfiguracionPage() {
         body: JSON.stringify({ clear_logo: true }),
       });
       setClinic(updated);
+      notifyClinicProfileUpdated(updated);
       setLogoPreview((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
-      await loadClinicConfig();
       setClinicMsg("Logo restablecido al predeterminado del sistema.");
     } catch (err: unknown) {
       setClinicMsg(err instanceof Error ? err.message : "Error al restablecer logo");

@@ -26,6 +26,8 @@ export interface ClinicProfile {
   has_custom_logo: boolean;
   nombre_publico: string;
   direccion_completa: string;
+  updated_at?: string | null;
+  logo_version?: number | null;
 }
 
 export const emptyClinic: ClinicProfile = {

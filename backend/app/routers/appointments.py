@@ -23,6 +23,7 @@ from app.schemas.appointment import (
     ReminderConfigUpdate,
     ClinicHoursOut,
     ClinicHoursUpdate,
+    ClinicBrandingPublicOut,
     ClinicProfileOut,
     ClinicProfileUpdate,
     EspecialidadesOut,
@@ -489,9 +490,28 @@ def update_clinic_hours(
     return ClinicHoursOut(hora_apertura=row.hora_apertura, hora_cierre=row.hora_cierre)
 
 
+def _logo_version(row: ClinicSettings) -> int:
+    ts = row.updated_at
+    if not ts:
+        return 0
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return int(ts.timestamp())
+
+
+def _touch_clinic_row(row: ClinicSettings) -> None:
+    """Fuerza updated_at para invalidar caché de logo en clientes."""
+    row.updated_at = datetime.now(timezone.utc)
+
+
 def _clinic_out(db: Session) -> ClinicProfileOut:
-    _get_or_create_clinic_settings(db)
+    row = _get_or_create_clinic_settings(db)
     profile = get_clinic_profile(db)
+    version = _logo_version(row)
+    logo_url = (
+        f"/api/config/clinic/logo-file?v={version}" if profile.logo_abs_path else None
+    )
+    updated = row.updated_at.isoformat() if row.updated_at else None
     return ClinicProfileOut(
         razon_social=profile.razon_social,
         nombre_comercial=profile.nombre_comercial,
@@ -506,10 +526,33 @@ def _clinic_out(db: Session) -> ClinicProfileOut:
         eslogan=profile.eslogan,
         director_nombre=profile.director_nombre,
         cop_registro=profile.cop_registro,
-        logo_url="/api/config/clinic/logo-file" if profile.logo_abs_path else None,
+        logo_url=logo_url,
         has_custom_logo=profile.has_custom_logo,
         nombre_publico=profile.nombre_publico,
         direccion_completa=profile.direccion_completa,
+        updated_at=updated,
+        logo_version=version,
+    )
+
+
+@config_router.get("/clinic/branding", response_model=ClinicBrandingPublicOut)
+def get_clinic_branding_public(db: Session = Depends(get_db)):
+    """
+    Marca del centro para login y shell (público).
+    Solo nombre público + logo; sin RUC/dirección/correo.
+    """
+    row = _get_or_create_clinic_settings(db)
+    profile = get_clinic_profile(db)
+    version = _logo_version(row)
+    logo_url = None
+    if profile.has_custom_logo and profile.logo_abs_path:
+        logo_url = f"/api/config/clinic/logo-file?v={version}"
+    return ClinicBrandingPublicOut(
+        nombre_publico=profile.nombre_publico,
+        has_custom_logo=profile.has_custom_logo,
+        logo_url=logo_url,
+        updated_at=row.updated_at.isoformat() if row.updated_at else None,
+        logo_version=version,
     )
 
 
@@ -551,6 +594,7 @@ def update_clinic_profile_api(
     if clear_logo:
         row.logo_path = None
 
+    _touch_clinic_row(row)
     db.commit()
     db.refresh(row)
     refresh_pending_reminder_messages(db)
@@ -563,7 +607,7 @@ async def upload_clinic_logo(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(Rol.ADMIN)),
 ):
-    """Sube logo del centro (PNG/JPEG/WebP) para documentos e impresión."""
+    """Sube logo del centro (PNG/JPEG/WebP) para UI, documentos e impresión."""
     content_type = (file.content_type or "").lower()
     allowed = {
         "image/png": ".png",
@@ -592,17 +636,18 @@ async def upload_clinic_logo(
 
     row = _get_or_create_clinic_settings(db)
     row.logo_path = f"uploads/{dest_name}"
+    _touch_clinic_row(row)
     db.commit()
     db.refresh(row)
     return _clinic_out(db)
 
 
 @config_router.get("/clinic/logo-file")
-def get_clinic_logo_file(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Sirve el logo actual (personalizado o por defecto) para previsualización."""
+def get_clinic_logo_file(db: Session = Depends(get_db)):
+    """
+    Sirve el logo actual (personalizado o por defecto).
+    Público: necesario para <img> en login/sidebar sin Bearer.
+    """
     profile = get_clinic_profile(db)
     if not profile.logo_abs_path or not profile.logo_abs_path.is_file():
         raise HTTPException(status_code=404, detail="Logo no disponible")
@@ -612,7 +657,13 @@ def get_clinic_logo_file(
         media = "image/jpeg"
     elif suffix == ".webp":
         media = "image/webp"
-    return FileResponse(profile.logo_abs_path, media_type=media)
+    return FileResponse(
+        profile.logo_abs_path,
+        media_type=media,
+        headers={
+            "Cache-Control": "public, max-age=120, must-revalidate",
+        },
+    )
 
 
 # --- Scheduler logic ---

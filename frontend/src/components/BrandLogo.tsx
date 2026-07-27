@@ -1,18 +1,13 @@
 "use client";
 
+import { useClinicBrand } from "@/lib/clinicBrand";
+
 type BrandLogoProps = {
   /** login = wide hero; sidebar = compact; inline = medium */
   variant?: "login" | "sidebar" | "inline";
   className?: string;
   priority?: boolean;
 };
-
-/**
- * Official brand mark (Logo_01): Dra Maribel Condori H. — Especialista en Ortodoncia.
- * Uses a native <img> so PNG alpha (transparent background) is never altered.
- */
-const LOGO_SRC = "/Logo.png?v=logo01-transparent";
-
 
 const sizes = {
   login: {
@@ -32,21 +27,35 @@ const sizes = {
   },
 };
 
+const PRODUCT_FALLBACK = "/Logo.png?v=logo01-transparent";
+
+/**
+ * Official mark: clinic custom logo when configured, otherwise product Logo.png.
+ * Updates live via ClinicBrandProvider when Configuración changes the logo.
+ */
 export function BrandLogo({
   variant = "inline",
   className = "",
   priority = false,
 }: BrandLogoProps) {
+  const { logoSrc, displayName } = useClinicBrand();
   const s = sizes[variant];
+
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={LOGO_SRC}
-      alt="Dra Maribel Condori H. — Especialista en Ortodoncia"
+      key={logoSrc}
+      src={logoSrc}
+      alt={displayName}
       width={s.width}
       height={s.height}
       className={`${s.className} object-contain ${className}`}
       decoding="async"
+      onError={(e) => {
+        const el = e.currentTarget;
+        if (el.src.includes("Logo.png")) return;
+        el.src = PRODUCT_FALLBACK;
+      }}
       {...(priority ? { fetchPriority: "high" as const } : {})}
     />
   );

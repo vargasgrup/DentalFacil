@@ -118,6 +118,18 @@ class ClinicProfileOut(BaseModel):
     has_custom_logo: bool = False
     nombre_publico: str
     direccion_completa: str
+    updated_at: Optional[str] = None
+    logo_version: Optional[int] = None
+
+
+class ClinicBrandingPublicOut(BaseModel):
+    """Marca pública (login + shell) — sin datos sensibles de contacto."""
+
+    nombre_publico: str
+    has_custom_logo: bool = False
+    logo_url: Optional[str] = None
+    updated_at: Optional[str] = None
+    logo_version: Optional[int] = None
 
 
 class ClinicProfileUpdate(BaseModel):

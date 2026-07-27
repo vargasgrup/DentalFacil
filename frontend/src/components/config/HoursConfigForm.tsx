@@ -1,8 +1,9 @@
 "use client";
 
+import { Clock } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { Time12hSelect } from "@/components/config/Time12hSelect";
+import { ConfigSection } from "@/components/config/ConfigSection";
 
 interface HoursConfigFormProps {
   horaApertura: string;
@@ -24,12 +25,16 @@ export function HoursConfigForm({
   readOnly = false,
 }: HoursConfigFormProps) {
   return (
-    <Card>
-      <h2 className="mb-2 text-section-title text-slate-700">Horario de atención</h2>
-      <p className="mb-4 text-sm text-slate-500">
-        Define el rango visible en la grilla de Agenda. El sistema usa siempre formato de{" "}
-        <strong className="font-medium text-slate-700">12 horas</strong> (a. m. / p. m.).
-      </p>
+    <ConfigSection
+      title="Horario de atención"
+      icon={<Clock className="h-4 w-4" aria-hidden />}
+      description={
+        <>
+          Define el rango visible en la grilla de Agenda. El sistema usa siempre formato de{" "}
+          <strong className="font-medium text-slate-700">12 horas</strong> (a. m. / p. m.).
+        </>
+      }
+    >
       <form
         onSubmit={onSubmit}
         className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
@@ -54,7 +59,11 @@ export function HoursConfigForm({
           </Button>
         )}
       </form>
-      {hoursMsg && <p className="mt-2 text-sm text-slate-500">{hoursMsg}</p>}
-    </Card>
+      {hoursMsg ? (
+        <p className="text-sm text-success-700" role="status">
+          {hoursMsg}
+        </p>
+      ) : null}
+    </ConfigSection>
   );
 }

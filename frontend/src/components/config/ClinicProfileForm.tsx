@@ -1,9 +1,10 @@
 "use client";
 
+import { Building2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/Input";
 import { UbigeoSelect } from "@/components/UbigeoSelect";
+import { ConfigSection } from "@/components/config/ConfigSection";
 import type { ClinicProfile } from "./types";
 
 interface ClinicProfileFormProps {
@@ -30,15 +31,14 @@ export function ClinicProfileForm({
   onClearLogo,
 }: ClinicProfileFormProps) {
   return (
-    <Card>
-      <h2 className="mb-1 text-section-title text-slate-700">Datos del centro</h2>
-      <p className="mb-4 text-sm text-slate-500">
-        Información oficial del centro odontológico (Perú). Se usa en tickets, fichas,
-        consentimiento, presupuestos y recordatorios WhatsApp.
-      </p>
+    <ConfigSection
+      title="Datos del centro"
+      icon={<Building2 className="h-4 w-4" aria-hidden />}
+      description="Información oficial del centro odontológico (Perú). Se usa en tickets, fichas, consentimiento, presupuestos y recordatorios WhatsApp."
+    >
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="flex flex-wrap items-start gap-4">
-          <div className="flex h-20 w-44 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+          <div className="flex h-20 w-44 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 ring-1 ring-slate-100">
             {logoPreview ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logoPreview} alt="Logo del centro" className="max-h-full max-w-full object-contain" />
@@ -184,6 +184,6 @@ export function ClinicProfileForm({
           )}
         </div>
       </form>
-    </Card>
+    </ConfigSection>
   );
 }

@@ -500,7 +500,7 @@ export default function ConfiguracionPage() {
   const isAdmin = currentUser?.rol === "ADMIN";
 
   return (
-    <PageContainer width="default">
+    <PageContainer width="default" className="!space-y-5">
       <ModuleHeader
         crumbs={[
           { label: "Inicio", href: "/dashboard" },

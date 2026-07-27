@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getToken, getApiBase } from "@/lib/api";
+import { isLanDesktopRuntime } from "@/lib/runtimeMode";
 
 export type RealtimeStatus = "offline" | "connecting" | "online" | "reconnecting";
 
@@ -66,6 +67,12 @@ export function useRealtimeSync(options: Options = {}) {
 
   const connect = useCallback(() => {
     if (!enabled || typeof window === "undefined") return;
+    // Web/cloud (Railway): Next HTTP proxy no soporta upgrade WS de forma fiable.
+    // Evita el bucle "Reconectando". Desktop/LAN (:8001) sigue igual.
+    if (!isLanDesktopRuntime()) {
+      setStatus("offline");
+      return;
+    }
     const token = getToken();
     if (!token) {
       setStatus("offline");

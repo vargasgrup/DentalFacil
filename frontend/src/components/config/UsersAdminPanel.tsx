@@ -1,10 +1,10 @@
 "use client";
 
-import { KeyRound, Plus, UserCheck, UserX } from "lucide-react";
+import { KeyRound, Plus, UserCheck, Users, UserX } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/Input";
+import { ConfigSection } from "@/components/config/ConfigSection";
 import {
   MAX_ADMINS,
   MODULE_LABELS,
@@ -130,16 +130,17 @@ export function UsersAdminPanel({
   const createLocked = rol === "ADMIN";
 
   return (
-    <Card>
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-section-title text-slate-700">Usuarios del centro</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Hasta {MAX_ADMINS} administradores. Asigna rol y marca los módulos permitidos
-            (Pacientes, Agenda, Caja, Reportes, Configuración). Administradores: {adminCount}/
-            {MAX_ADMINS}.
-          </p>
-        </div>
+    <ConfigSection
+      title="Usuarios del centro"
+      icon={<Users className="h-4 w-4" aria-hidden />}
+      description={
+        <>
+          Hasta {MAX_ADMINS} administradores. Asigna rol y marca los módulos permitidos
+          (Pacientes, Agenda, Caja, Reportes, Configuración). Administradores: {adminCount}/
+          {MAX_ADMINS}.
+        </>
+      }
+      actions={
         <Button
           variant={showCreate ? "ghost" : "primary"}
           onClick={() => setShowCreate(!showCreate)}
@@ -147,10 +148,10 @@ export function UsersAdminPanel({
         >
           {showCreate ? "Cancelar" : "Nuevo"}
         </Button>
-      </div>
-
+      }
+    >
       {showCreate && (
-        <form onSubmit={onCreate} className="mb-4 space-y-3 rounded-lg bg-surface-subtle p-4">
+        <form onSubmit={onCreate} className="mb-1 space-y-3 rounded-xl border border-slate-200/80 bg-slate-50/60 p-4">
           <Input
             label="Nombre"
             value={nombre}
@@ -301,6 +302,6 @@ export function UsersAdminPanel({
           );
         })}
       </div>
-    </Card>
+    </ConfigSection>
   );
 }

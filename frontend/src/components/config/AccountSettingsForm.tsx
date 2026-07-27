@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/Input";
+import { ConfigSection } from "@/components/config/ConfigSection";
 
 export interface AccountFormValues {
   nombre: string;
@@ -94,21 +94,12 @@ export function AccountSettingsForm({
   };
 
   return (
-    <Card>
-      <div className="mb-1 flex items-start gap-3">
-        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
-          <KeyRound className="h-4 w-4" aria-hidden />
-        </span>
-        <div>
-          <h2 className="text-section-title text-slate-700">Mi cuenta</h2>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Actualice su nombre, correo de acceso o contraseña. Siempre confirme con la
-            contraseña actual.
-          </p>
-        </div>
-      </div>
-
-      <form onSubmit={(e) => void handleSubmit(e)} className="mt-5 space-y-4">
+    <ConfigSection
+      title="Mi cuenta"
+      icon={<KeyRound className="h-4 w-4" aria-hidden />}
+      description="Actualice su nombre, correo de acceso o contraseña. Siempre confirme con la contraseña actual."
+    >
+      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             label="Nombre de usuario"
@@ -126,9 +117,10 @@ export function AccountSettingsForm({
             autoComplete="username"
             required
             disabled={busy}
-          />        </div>
+          />
+        </div>
 
-        <div className="rounded-xl border border-slate-200 bg-surface-subtle/50 p-3 sm:p-4">
+        <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 sm:p-4">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Seguridad
           </p>
@@ -178,6 +170,6 @@ export function AccountSettingsForm({
           )}
         </div>
       </form>
-    </Card>
+    </ConfigSection>
   );
 }

@@ -12,9 +12,9 @@ import {
 } from "lucide-react";
 import { apiFetch, apiFetchBlob, ApiError, getToken, getApiBase } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/Input";
+import { ConfigSection } from "@/components/config/ConfigSection";
 import { formatDateTime } from "@/lib/datetime";
 
 interface BackupSettings {
@@ -372,15 +372,11 @@ export function BackupMigrationPanel() {
   };
 
   return (
-    <Card>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-section-title text-slate-800">Respaldo y Migración</h2>
-          <p className="mt-1 text-help text-slate-500">
-            Genera un paquete completo (base de datos + archivos) para USB o migrar a otra PC.
-            Solo administradores.
-          </p>
-        </div>
+    <ConfigSection
+      title="Respaldo y Migración"
+      icon={<Archive className="h-4 w-4" aria-hidden />}
+      description="Genera un paquete completo (base de datos + archivos) para USB o migrar a otra PC. Solo administradores."
+      actions={
         <Button
           type="button"
           variant="primary"
@@ -390,8 +386,8 @@ export function BackupMigrationPanel() {
         >
           Generar backup ahora
         </Button>
-      </div>
-
+      }
+    >
       {loading && <p className="text-sm text-slate-400">Cargando…</p>}
       {msg && (
         <p role="status" className="mb-3 rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-sm text-success-800">
@@ -728,6 +724,6 @@ export function BackupMigrationPanel() {
           </p>
         )}
       </div>
-    </Card>
+    </ConfigSection>
   );
 }

@@ -1,11 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Copy, MonitorSmartphone, RefreshCw, Users, Wifi } from "lucide-react";
-import { apiFetch } from "@/lib/api";
+import {
+  Cloud,
+  Copy,
+  MonitorSmartphone,
+  RefreshCw,
+  Users,
+  Wifi,
+} from "lucide-react";
+import { apiFetch, ApiError } from "@/lib/api";
+import { isLanDesktopRuntime } from "@/lib/runtimeMode";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { ConfigSection } from "@/components/config/ConfigSection";
 import { roleLabel } from "@/lib/roles";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -49,33 +57,124 @@ function roleTone(role: string): "brand" | "success" | "warning" | "neutral" {
   return "neutral";
 }
 
+function formatLoadError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 404) {
+      return "El servidor no expone aún la API de red local. Actualice el Backend (escritorio) o use esta sección solo en el Server LAN.";
+    }
+    return err.message || "No se pudo cargar la red de la clínica";
+  }
+  if (err instanceof Error) return err.message;
+  return "No se pudo cargar la red de la clínica";
+}
+
+/** Static panel for Railway / public web — no LAN polling. */
+function WebCloudClientsNotice() {
+  return (
+    <ConfigSection
+      title="Equipos conectados"
+      icon={<Cloud className="h-4 w-4" aria-hidden />}
+      description="Disponible en el modo Escritorio (Server + Clients en la red local de la clínica)."
+    >
+      <div className="rounded-xl border border-brand-100 bg-gradient-to-br from-brand-50/70 to-white px-4 py-5">
+        <p className="text-sm leading-relaxed text-slate-700">
+          Está usando la <strong className="font-semibold text-slate-900">versión web en la nube</strong>.
+          La unión de equipos por IP LAN, el discovery UDP y el monitoreo de Clients no aplican
+          aquí — por eso no se realizan peticiones periódicas a{" "}
+          <span className="font-mono text-xs text-slate-600">/api/system/lan</span> ni a{" "}
+          <span className="font-mono text-xs text-slate-600">/api/system/connections</span>.
+        </p>
+        <ul className="mt-4 space-y-2 text-sm text-slate-600">
+          <li className="flex gap-2">
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />
+            En web, cada usuario inicia sesión en el mismo sistema online; no hay “servidor de
+            clínica” en la red local.
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />
+            Para ver equipos en tiempo real y copiar la URL LAN, abra N&amp;K DentalSoft en el{" "}
+            <strong className="font-medium text-slate-800">instalador Server</strong> (puerto 8001)
+            o desde un Client de la clínica.
+          </li>
+        </ul>
+      </div>
+    </ConfigSection>
+  );
+}
+
 export function ConnectedClientsPanel() {
+  const [mode, setMode] = useState<"pending" | "lan" | "web">("pending");
+
+  // Detect after mount (SSR-safe). Web/cloud never polls LAN APIs.
+  useEffect(() => {
+    setMode(isLanDesktopRuntime() ? "lan" : "web");
+  }, []);
+
+  if (mode === "pending") {
+    return (
+      <ConfigSection
+        title="Equipos conectados"
+        icon={<Users className="h-4 w-4" aria-hidden />}
+        description="Detectando modo de instalación…"
+      >
+        <div className="skeleton h-28 rounded-xl" />
+      </ConfigSection>
+    );
+  }
+
+  if (mode === "web") {
+    return <WebCloudClientsNotice />;
+  }
+
+  return <LanConnectedClientsPanel />;
+}
+
+function LanConnectedClientsPanel() {
   const [conn, setConn] = useState<ConnectionsPayload | null>(null);
   const [lan, setLan] = useState<LanPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = Boolean(opts?.silent);
+    if (!silent) setLoading(true);
+    if (!silent) setError("");
     try {
-      const [c, l] = await Promise.all([
+      const [cRes, lRes] = await Promise.allSettled([
         apiFetch<ConnectionsPayload>("/api/system/connections"),
         apiFetch<LanPayload>("/api/system/lan"),
       ]);
-      setConn(c);
-      setLan(l);
+
+      const errors: string[] = [];
+
+      if (cRes.status === "fulfilled") {
+        setConn(cRes.value);
+      } else {
+        errors.push(formatLoadError(cRes.reason));
+      }
+
+      if (lRes.status === "fulfilled") {
+        setLan(lRes.value);
+      } else {
+        errors.push(formatLoadError(lRes.reason));
+      }
+
+      if (errors.length > 0 && !silent) {
+        setError(errors[0]);
+      } else if (errors.length === 0) {
+        setError("");
+      }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "No se pudo cargar la red de la clínica");
+      if (!silent) setError(formatLoadError(err));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void load();
-    const id = window.setInterval(() => void load(), 8000);
+    void load({ silent: false });
+    const id = window.setInterval(() => void load({ silent: true }), 8000);
     return () => window.clearInterval(id);
   }, [load]);
 
@@ -92,47 +191,45 @@ export function ConnectedClientsPanel() {
   const byRole = conn?.by_role || {};
 
   return (
-    <Card className="space-y-4 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold text-slate-800">
-            <Users className="h-4 w-4 text-brand-600" aria-hidden />
-            Equipos conectados
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Usuarios en línea en tiempo real (caja, doctor, asistente) y cómo unir otros PCs al
-            servidor principal.
-          </p>
-        </div>
+    <ConfigSection
+      title="Equipos conectados"
+      icon={<Users className="h-4 w-4" aria-hidden />}
+      description="Usuarios en línea en tiempo real y cómo unir otros PCs al servidor principal de la clínica."
+      actions={
         <Button
           type="button"
           variant="secondary"
           loading={loading}
           icon={<RefreshCw className="h-4 w-4" />}
-          onClick={() => void load()}
+          onClick={() => void load({ silent: false })}
         >
           Actualizar
         </Button>
-      </div>
-
+      }
+    >
       {error && (
-        <div className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-600">
+        <div className="rounded-xl border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-600">
           {error}
         </div>
       )}
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">En línea</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-slate-800">
+        <div className="rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white px-4 py-3 shadow-sm">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+            En línea
+          </p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
             {conn?.total_users ?? "—"}
           </p>
           <p className="text-xs text-slate-500">
-            {conn?.total_sockets ?? 0} sesión{(conn?.total_sockets || 0) === 1 ? "" : "es"} WebSocket
+            {conn?.total_sockets ?? 0} sesión{(conn?.total_sockets || 0) === 1 ? "" : "es"}{" "}
+            WebSocket
           </p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:col-span-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Por rol</p>
+        <div className="rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white px-4 py-3 shadow-sm sm:col-span-2">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+            Por rol
+          </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {Object.keys(byRole).length === 0 ? (
               <span className="text-sm text-slate-500">Nadie conectado por ahora</span>
@@ -147,21 +244,22 @@ export function ConnectedClientsPanel() {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
+      <div className="overflow-x-auto rounded-xl border border-slate-200/90">
         <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+          <thead className="bg-slate-50/90 text-[11px] uppercase tracking-[0.12em] text-slate-500">
             <tr>
-              <th className="px-3 py-2 font-semibold">Usuario</th>
-              <th className="px-3 py-2 font-semibold">Rol</th>
-              <th className="px-3 py-2 font-semibold">IP / equipo</th>
-              <th className="px-3 py-2 font-semibold">Desde</th>
+              <th className="px-3 py-2.5 font-bold">Usuario</th>
+              <th className="px-3 py-2.5 font-bold">Rol</th>
+              <th className="px-3 py-2.5 font-bold">IP / equipo</th>
+              <th className="px-3 py-2.5 font-bold">Desde</th>
             </tr>
           </thead>
           <tbody>
             {(conn?.connections || []).length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-3 py-6 text-center text-slate-500">
-                  No hay otros equipos conectados. Abra N&K en otro PC con la URL de la red local.
+                <td colSpan={4} className="px-3 py-8 text-center text-slate-500">
+                  No hay otros equipos conectados. Abra N&amp;K en otro PC con la URL de la red
+                  local.
                 </td>
               </tr>
             ) : (
@@ -190,7 +288,7 @@ export function ConnectedClientsPanel() {
         </table>
       </div>
 
-      <div className="rounded-xl border border-brand-100 bg-brand-50/60 p-4">
+      <div className="rounded-xl border border-brand-100 bg-gradient-to-br from-brand-50/70 to-white p-4">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-brand-800">
           <MonitorSmartphone className="h-4 w-4" aria-hidden />
           Conectar otros equipos al servidor
@@ -201,7 +299,10 @@ export function ConnectedClientsPanel() {
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-brand-800">
           <Wifi className="h-3.5 w-3.5" aria-hidden />
-          Escucha: <span className="font-mono">{lan?.host_bind || "0.0.0.0"}:{lan?.port || 8001}</span>
+          Escucha:{" "}
+          <span className="font-mono">
+            {lan?.host_bind || "0.0.0.0"}:{lan?.port || 8001}
+          </span>
           {lan?.listening_all_interfaces ? (
             <Badge variant="success">Red local activa</Badge>
           ) : (
@@ -216,7 +317,7 @@ export function ConnectedClientsPanel() {
         </p>
         <ul className="mt-3 space-y-2">
           {(lan?.recommended_url || lan?.client_urls?.[0]) && (
-            <li className="flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-brand-300 bg-white px-3 py-3">
+            <li className="flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-brand-300 bg-white px-3 py-3 shadow-sm">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-wide text-brand-700">
                   URL para Clients (copiar esta)
@@ -268,6 +369,6 @@ export function ConnectedClientsPanel() {
           </p>
         ) : null}
       </div>
-    </Card>
+    </ConfigSection>
   );
 }

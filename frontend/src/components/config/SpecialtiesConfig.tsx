@@ -1,9 +1,9 @@
 "use client";
 
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Stethoscope, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/Input";
+import { ConfigSection } from "@/components/config/ConfigSection";
 
 interface SpecialtiesConfigProps {
   isAdmin: boolean;
@@ -37,16 +37,17 @@ export function SpecialtiesConfig({
   onReset,
 }: SpecialtiesConfigProps) {
   return (
-    <Card>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-section-title text-slate-700">Especialidades odontológicas</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Catálogo del centro. Se usa al registrar evolución clínica y al crear citas.
-            {espIsDefault ? " (valores por defecto del sistema)" : ""}
-          </p>
-        </div>
-        {isAdmin && (
+    <ConfigSection
+      title="Especialidades odontológicas"
+      icon={<Stethoscope className="h-4 w-4" aria-hidden />}
+      description={
+        <>
+          Catálogo del centro. Se usa al registrar evolución clínica y al crear citas.
+          {espIsDefault ? " (valores por defecto del sistema)" : ""}
+        </>
+      }
+      actions={
+        isAdmin ? (
           <Button
             type="button"
             variant="secondary"
@@ -56,9 +57,9 @@ export function SpecialtiesConfig({
           >
             Restablecer
           </Button>
-        )}
-      </div>
-
+        ) : undefined
+      }
+    >
       <div className="space-y-3">
         <label className="block">
           <span className="mb-1 block text-label text-slate-700">
@@ -139,6 +140,6 @@ export function SpecialtiesConfig({
 
         {!isAdmin && espMsg && <p className="text-sm text-slate-500">{espMsg}</p>}
       </div>
-    </Card>
+    </ConfigSection>
   );
 }

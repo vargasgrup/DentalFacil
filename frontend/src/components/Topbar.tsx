@@ -26,6 +26,7 @@ import { openWhatsAppText, isValidPhone } from "@/lib/whatsapp";
 import { formatFichaCode } from "@/lib/ficha";
 import { SHELL_TOPBAR_CLASS } from "./shell";
 import { useRealtimeSync, type RealtimeStatus } from "@/hooks/useRealtimeSync";
+import { isLanDesktopRuntime } from "@/lib/runtimeMode";
 
 function realtimeLabel(status: RealtimeStatus): {
   text: string;
@@ -82,7 +83,13 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const isDashboard = pathname === "/dashboard";
-  const { status: realtimeStatus } = useRealtimeSync({ enabled: Boolean(user) });
+  const [lanRealtime, setLanRealtime] = useState(false);
+  useEffect(() => {
+    setLanRealtime(isLanDesktopRuntime());
+  }, []);
+  const { status: realtimeStatus } = useRealtimeSync({
+    enabled: Boolean(user) && lanRealtime,
+  });
   const realtimeUi = realtimeLabel(realtimeStatus);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -341,18 +348,22 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           </div>
         </div>
 
-        <span
-          className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-tight md:inline-flex ${realtimeUi.pill}`}
-          title={realtimeUi.text}
-        >
-          <span className={`h-2 w-2 rounded-full ${realtimeUi.dot}`} aria-hidden />
-          {realtimeUi.text}
-        </span>
-        <span
-          className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full md:hidden ${realtimeUi.dot}`}
-          title={realtimeUi.text}
-          aria-label={realtimeUi.text}
-        />
+        {lanRealtime ? (
+          <>
+            <span
+              className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-tight md:inline-flex ${realtimeUi.pill}`}
+              title={realtimeUi.text}
+            >
+              <span className={`h-2 w-2 rounded-full ${realtimeUi.dot}`} aria-hidden />
+              {realtimeUi.text}
+            </span>
+            <span
+              className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full md:hidden ${realtimeUi.dot}`}
+              title={realtimeUi.text}
+              aria-label={realtimeUi.text}
+            />
+          </>
+        ) : null}
 
         <div className="mx-0.5 hidden h-6 w-px bg-gradient-to-b from-transparent via-brand-200/80 to-transparent sm:block" aria-hidden />
 

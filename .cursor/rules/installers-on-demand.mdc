@@ -1,0 +1,12 @@
+---
+description: No regenerar instaladores Windows salvo pedido explícito del usuario
+alwaysApply: true
+---
+
+# Instaladores Windows — solo bajo demanda
+
+**No** ejecutar `build_server.ps1`, `build_client.ps1`, `build_all.ps1` ni firmar/generar `dist\NKDentalSoft-*-Setup-x64.exe` de forma automática.
+
+Solo generar instaladores cuando el usuario lo pida **explícitamente** en el mensaje.
+
+Sí permitido: cambios de código frontend/backend, docs, commits/push, y builds de desarrollo locales si el usuario los pide.

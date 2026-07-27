@@ -78,12 +78,42 @@ def build_health_payload(*, scheduler: dict[str, Any] | None = None) -> dict[str
     except Exception:  # noqa: BLE001
         ui_ok = False
 
+    railway_env = (os.environ.get("RAILWAY_ENVIRONMENT") or "").strip()
+    railway_warnings: list[str] = []
+    if railway_env:
+        if (settings.APP_ENV or "").strip().lower() not in ("production", "prod"):
+            railway_warnings.append(
+                "APP_ENV no es production — defina APP_ENV=production en Variables del Backend."
+            )
+        if settings.is_sqlite:
+            db_norm = (settings.DATABASE_URL or "").replace("\\", "/")
+            if "/data/" not in db_norm:
+                railway_warnings.append(
+                    "SQLite fuera de /data (efímero en Railway). Use DATABASE_URL="
+                    "${{Postgres.DATABASE_URL}} o sqlite:////data/clinica.db + volumen en Backend."
+                )
+            else:
+                railway_warnings.append(
+                    "Motor SQLite en /data — OK si hay volumen; Postgres del canvas no se está usando."
+                )
+        public = (settings.PUBLIC_APP_URL or "").strip().lower()
+        if not public or "localhost" in public:
+            railway_warnings.append(
+                "PUBLIC_APP_URL debe ser la URL pública del Frontend "
+                "(https://mdodontologia.up.railway.app)."
+            )
+
+    if railway_warnings and ready:
+        # Still serving, but operators must fix Railway variables.
+        ready = False
+
     return {
         "status": "ok" if ready else "degraded",
         "app": settings.APP_NAME,
         "product": settings.PRODUCT_NAME,
         "version": PRODUCT_VERSION,
         "app_env": settings.APP_ENV,
+        "railway_environment": railway_env or None,
         "engine": engine_kind,
         "user_count": user_count,
         "database_url_configured": url_ok,
@@ -96,6 +126,7 @@ def build_health_payload(*, scheduler: dict[str, Any] | None = None) -> dict[str
         "ui_mounted": ui_ok,
         "ui_root": ui_root,
         "maintenance_key_configured": maint_ok if settings.is_production else bool(maint_key or True),
+        "railway_warnings": railway_warnings,
         "scheduler": scheduler or {"running": False, "jobs": [], "next_run": None},
     }
 

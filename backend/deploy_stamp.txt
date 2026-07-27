@@ -1,0 +1,4 @@
+# Deploy stamp — bump to force Railway Backend rebuild when watchPatterns skip UI-only pushes.
+# 2026-07-27: production was Online but APP_ENV=development + engine=sqlite while Postgres
+# sat unused; OpenAPI missing /api/system/* (stale image). See docs/RAILWAY.md.
+STAMP=2026-07-27T16:20Z-railway-prod-guard

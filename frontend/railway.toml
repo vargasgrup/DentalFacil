@@ -1,7 +1,15 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "frontend/Dockerfile"
-watchPatterns = ["/frontend/**"]
+# Prefer root Dockerfile so BACKEND_URL build-arg and monorepo COPY paths stay consistent.
+dockerfilePath = "Dockerfile.frontend"
+watchPatterns = [
+  "/frontend/**",
+  "frontend/**",
+  "/Dockerfile.frontend",
+  "Dockerfile.frontend",
+  "/frontend/railway.toml",
+  "frontend/railway.toml",
+]
 
 [deploy]
 startCommand = "npm start"

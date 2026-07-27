@@ -72,7 +72,7 @@ function bustLogoUrl(url: string | null | undefined, version?: number | null): s
   }
 }
 
-function logoCacheKey(b: Pick<ClinicBranding, "has_custom_logo" | "logo_version" | "logo_url">): string {
+function logoCacheKey(b: ClinicBranding): string {
   const path = (b.logo_url || "").split("?")[0];
   return `${b.has_custom_logo ? 1 : 0}:${b.logo_version ?? 0}:${path}`;
 }
@@ -85,7 +85,11 @@ function readCached(): ClinicBranding | null {
     const parsed = JSON.parse(raw) as ClinicBranding;
     if (!parsed || typeof parsed !== "object") return null;
     return {
-      ...parsed,
+      nombre_publico: parsed.nombre_publico || "",
+      has_custom_logo: Boolean(parsed.has_custom_logo),
+      logo_url: parsed.logo_url ?? null,
+      updated_at: parsed.updated_at ?? null,
+      logo_version: parsed.logo_version ?? null,
       revision: typeof parsed.revision === "number" ? parsed.revision : Date.now(),
     };
   } catch {
@@ -120,7 +124,7 @@ function writeLogoDataCache(key: string, dataUrl: string) {
   try {
     window.sessionStorage.setItem(LOGO_DATA_KEY, JSON.stringify({ key, dataUrl }));
   } catch {
-    /* quota — ignore; in-memory provider state still works */
+    /* quota */
   }
 }
 
@@ -155,11 +159,11 @@ function toBranding(
   const hasCustom = Boolean(profile.has_custom_logo);
   const logo_url = hasCustom ? bustLogoUrl(profile.logo_url, version) : null;
   const sameLogo =
-    prev != null &&
+    prev !== null &&
     prev.has_custom_logo === hasCustom &&
     (prev.logo_version ?? null) === (version ?? null) &&
     (prev.logo_url || "").split("?")[0] === (logo_url || "").split("?")[0];
-  const sameName = prev != null && prev.nombre_publico === (profile.nombre_publico || "");
+  const sameName = prev !== null && prev.nombre_publico === (profile.nombre_publico || "");
 
   return {
     nombre_publico: profile.nombre_publico || "",
@@ -167,16 +171,34 @@ function toBranding(
     logo_url,
     updated_at: profile.updated_at ?? null,
     logo_version: version,
-    revision: sameLogo && sameName ? prev.revision : Date.now(),
+    revision: sameLogo && sameName && prev !== null ? prev.revision : Date.now(),
   };
 }
 
-function initialLogoSrc(branding: ClinicBranding | null): string {
-  if (!branding?.has_custom_logo || !branding.logo_url) return PRODUCT_LOGO;
+function resolveDisplaySrc(branding: ClinicBranding | null): string {
+  if (!branding || !branding.has_custom_logo || !branding.logo_url) {
+    return PRODUCT_LOGO;
+  }
   const cached = readLogoDataCache();
-  if (cached && cached.key === logoCacheKey(branding)) return cached.dataUrl;
-  // Prefer API URL for first paint (public endpoint); Brand provider will upgrade to data URL.
+  if (cached && cached.key === logoCacheKey(branding)) {
+    return cached.dataUrl;
+  }
   return absoluteApiUrl(branding.logo_url);
+}
+
+function syncLogoDisplay(next: ClinicBranding, setLogoSrc: (src: string) => void) {
+  if (!next.has_custom_logo || !next.logo_url) {
+    clearLogoDataCache();
+    setLogoSrc(PRODUCT_LOGO);
+    return;
+  }
+  const key = logoCacheKey(next);
+  const cached = readLogoDataCache();
+  if (cached && cached.key === key) {
+    setLogoSrc(cached.dataUrl);
+  } else {
+    setLogoSrc(absoluteApiUrl(next.logo_url));
+  }
 }
 
 export function notifyClinicProfileUpdated(
@@ -188,7 +210,6 @@ export function notifyClinicProfileUpdated(
   if (typeof window === "undefined") return;
   const prev = readCached();
   const payload = toBranding(profile, prev);
-  // Explicit Configuración save always bumps revision so the shell reloads the mark.
   payload.revision = Date.now();
   writeCached(payload);
   if (
@@ -203,26 +224,16 @@ export function notifyClinicProfileUpdated(
 
 export function ClinicBrandProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [branding, setBranding] = useState<ClinicBranding | null>(() => readCached());
-  const [logoSrc, setLogoSrc] = useState(() => initialLogoSrc(readCached()));
+  // SSR-safe defaults — never touch localStorage/window in useState initializers.
+  const [branding, setBranding] = useState<ClinicBranding | null>(null);
+  const [logoSrc, setLogoSrc] = useState<string>(PRODUCT_LOGO);
+  const [hydrated, setHydrated] = useState(false);
   const loadGen = useRef(0);
 
   const applyBranding = useCallback((next: ClinicBranding) => {
     setBranding(next);
     writeCached(next);
-    if (!next.has_custom_logo || !next.logo_url) {
-      clearLogoDataCache();
-      setLogoSrc(PRODUCT_LOGO);
-      return;
-    }
-    const key = logoCacheKey(next);
-    const cached = readLogoDataCache();
-    if (cached?.key === key) {
-      setLogoSrc(cached.dataUrl);
-    } else {
-      // Point immediately at the new logo URL (public/auth fetch upgrades to data URL).
-      setLogoSrc(absoluteApiUrl(next.logo_url));
-    }
+    syncLogoDisplay(next, setLogoSrc);
   }, []);
 
   const applyProfile = useCallback(
@@ -234,17 +245,8 @@ export function ClinicBrandProvider({ children }: { children: ReactNode }) {
     ) => {
       setBranding((prev) => {
         const next = toBranding(profile, prev);
-        // Side-effect mirror of applyBranding for logo display (same tick as branding).
         writeCached(next);
-        if (!next.has_custom_logo || !next.logo_url) {
-          clearLogoDataCache();
-          setLogoSrc(PRODUCT_LOGO);
-        } else {
-          const key = logoCacheKey(next);
-          const cached = readLogoDataCache();
-          if (cached?.key === key) setLogoSrc(cached.dataUrl);
-          else setLogoSrc(absoluteApiUrl(next.logo_url));
-        }
+        syncLogoDisplay(next, setLogoSrc);
         return next;
       });
     },
@@ -273,13 +275,30 @@ export function ClinicBrandProvider({ children }: { children: ReactNode }) {
     }
   }, [applyProfile]);
 
+  // Client-only hydrate from session/local cache (avoids SSR null.logo_url crash).
+  useEffect(() => {
+    const cached = readCached();
+    if (cached) {
+      setBranding(cached);
+      setLogoSrc(resolveDisplaySrc(cached));
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    void refresh();
+  }, [hydrated, refresh, user?.id]);
+
   // Keep a stable displayable logo in the provider (survives AppShell remount per module).
   useEffect(() => {
+    if (!hydrated) return;
+
     const gen = ++loadGen.current;
     let cancelled = false;
 
     const run = async () => {
-      if (!branding?.has_custom_logo || !branding.logo_url) {
+      if (!branding || !branding.has_custom_logo || !branding.logo_url) {
         if (!cancelled && gen === loadGen.current) {
           clearLogoDataCache();
           setLogoSrc(PRODUCT_LOGO);
@@ -287,17 +306,20 @@ export function ClinicBrandProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const key = logoCacheKey(branding);
+      const active = branding;
+      const logoPath = active.logo_url;
+      if (!logoPath) return;
+
+      const key = logoCacheKey(active);
       const cached = readLogoDataCache();
-      if (cached?.key === key) {
+      if (cached && cached.key === key) {
         if (!cancelled && gen === loadGen.current) setLogoSrc(cached.dataUrl);
         return;
       }
 
-      // Keep previous custom logo visible while fetching the new one (no product flash).
       const token = getToken();
       try {
-        const res = await fetch(absoluteApiUrl(branding.logo_url), {
+        const res = await fetch(absoluteApiUrl(logoPath), {
           cache: "no-store",
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
@@ -309,8 +331,7 @@ export function ClinicBrandProvider({ children }: { children: ReactNode }) {
         setLogoSrc(dataUrl);
       } catch {
         if (!cancelled && gen === loadGen.current) {
-          // Public URL as last resort before product fallback
-          setLogoSrc(absoluteApiUrl(branding.logo_url));
+          setLogoSrc(absoluteApiUrl(logoPath));
         }
       }
     };
@@ -319,11 +340,10 @@ export function ClinicBrandProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [branding?.has_custom_logo, branding?.logo_url, branding?.logo_version, branding?.revision]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh, user?.id]);
+  }, [
+    hydrated,
+    branding,
+  ]);
 
   useEffect(() => {
     const onUpdate = (ev: Event) => {
@@ -343,15 +363,20 @@ export function ClinicBrandProvider({ children }: { children: ReactNode }) {
     };
   }, [applyBranding, refresh]);
 
+  const displayName =
+    branding && branding.nombre_publico && branding.nombre_publico.trim()
+      ? branding.nombre_publico.trim()
+      : PRODUCT_ALT;
+
   const value = useMemo<ClinicBrandContextValue>(
     () => ({
       branding,
       logoSrc,
-      displayName: branding?.nombre_publico?.trim() || PRODUCT_ALT,
+      displayName,
       refresh,
       applyProfile,
     }),
-    [branding, logoSrc, refresh, applyProfile]
+    [branding, logoSrc, displayName, refresh, applyProfile]
   );
 
   return (

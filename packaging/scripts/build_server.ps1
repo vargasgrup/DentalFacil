@@ -1,4 +1,7 @@
 # Build N&K DentalSoft Server: PyInstaller onedir + NSIS installer.
+# Docs: packaging/README.md
+# LAN Client/Server connection config is FROZEN (verified) — do not change network/bind/discovery
+# code when iterating on installers; see .cursor/rules/lan-client-server-freeze.mdc
 # Requires: Python 3.12+, NSIS 3 (makensis), Node 20+ for UI embed, pyinstaller + pywin32.
 
 param(

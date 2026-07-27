@@ -1,6 +1,9 @@
 # Build N&K DentalSoft Client installer.
+# Docs: packaging/README.md
+# LAN connection stack is FROZEN (verified). Prefer: -ForceNsis (ConnectClinic + NSIS).
+# See .cursor/rules/lan-client-server-freeze.mdc
 # Prefer Tauri (Rust) when Windows Application Control allows it;
-# otherwise build a LAN Client NSIS package (Edge --app) that works with HTTP Server.
+# otherwise build a LAN Client NSIS package (Edge --app) that works with the Server.
 
 param(
     [switch]$SkipInstallCli,

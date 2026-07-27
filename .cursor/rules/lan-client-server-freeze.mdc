@@ -1,0 +1,32 @@
+---
+description: Congelado — no modificar conexiones LAN Cliente/Servidor (verificadas en clínica)
+alwaysApply: true
+---
+
+# Conexiones Cliente ↔ Servidor — CONGELADO
+
+Estado **2026-07-27**: LAN Cliente/Servidor **verificada y operativa** en clínica.  
+**Prohibido** cambiar, “mejorar”, refactorizar o reabrir el diseño de conexiones salvo orden **explícita** del usuario.
+
+## No tocar (salvo pedido explícito)
+
+- `packaging/client/ConnectClinic.cs` y build `build_client_connector.ps1`
+- `packaging/client/installer.nsi` (atajos ConnectClinic / repair)
+- `backend/app/services/lan_network.py`, `lan_discovery.py`, `firewall_lan.py`, `connect_card.py`
+- `packaging/server/scripts/repair_lan.ps1`, `enable_clinic_hotspot.ps1`, `detect_lan_ip.ps1`
+- `packaging/server/Reparar-Red-LAN.bat`, `Activar-Hotspot-Clinica.bat`
+- Bind/host LAN en `packaging/server/server_entry.py` (`HOST=0.0.0.0`, puerto **8001**)
+- Endpoints LAN en `backend/app/routers/system.py` (`connect-info`, IPs, discovery)
+- Flujo Client: Cloud discovery UDP **37020**, IP numérica, sin `DESKTOP-…`, sin `wa.me` para docs
+
+## Permitido sin tocar LAN
+
+UI clínica, reportes, caja, agenda, WhatsApp documentos (regla aparte), builds de instaladores **sin** alterar scripts/código de red listados arriba.
+
+## Si algo “parece” un bug de red
+
+1. No editar código LAN.
+2. Pedir confirmación al usuario.
+3. Remitir a `packaging/README.md` § Conexiones congeladas.
+
+Documentación de build: `packaging/README.md`.

@@ -1,122 +1,275 @@
-# Packaging — N&K DentalSoft (Servidor + Cliente LAN)
+# Packaging — N&K DentalSoft (generadores de instaladores)
 
-Arquitectura: **1 Servidor Windows** (FastAPI + SQLite local + HTTPS) y **N Clientes Tauri** (WebView sin BD).  
-SQLite **nunca** en carpeta compartida SMB.
+Documentación operativa del **generador de instaladores** Windows (Server + Client).  
+Actualizada **2026-07-27** tras verificación en clínica de la conexión LAN.
 
-## Requisitos de build
+> **CONGELADO — conexiones LAN**  
+> Cliente ↔ Servidor está **verificado y funcional**. No modificar la configuración ni el código de red/conexión (ver § [Conexiones congeladas](#conexiones-congeladas) y regla Cursor `.cursor/rules/lan-client-server-freeze.mdc`).  
+> El trabajo futuro debe centrarse en otros aspectos del producto; los builds de instaladores pueden regenerarse **sin** alterar esos archivos.
 
-| Componente | Requisito |
-|---|---|
-| Server exe | Python 3.11+, `pip install -r backend/requirements.txt pyinstaller pywin32 zeroconf cryptography` |
-| Server installer | [NSIS 3](https://nsis.sourceforge.io/) |
-| Client | [Rust](https://rustup.rs/) + Tauri CLI 2 (`cargo install tauri-cli`) |
-| Frontend estático (opcional) | Node 20+, `next build` (SSR actual: en v1 el Cliente apunta al UI servido por el Server o proxy) |
+---
 
-## Secretos de producción (obligatorio)
+## Arquitectura de despliegue (clínica)
 
-```powershell
-python packaging/server/scripts/generate_production_secrets.py
-python packaging/server/scripts/generate_selfsigned_cert.py --host 192.168.1.10
+| Rol | Artefacto | Qué es |
+|-----|-----------|--------|
+| **Servidor** | `dist\NKDentalSoft-Server-Setup-x64.exe` | FastAPI + SQLite local + UI Next.js estática embebida (`web/`). Escucha **HTTP `0.0.0.0:8001`**. |
+| **Cliente** | `dist\NKDentalSoft-Client-Setup-x64.exe` | Estación LAN: `ConnectClinic.exe` (WinForms) abre Edge `--app` hacia la URL del Server. **Sin base de datos.** |
+
+- Una sola PC **Server** (encendida en horario); N PCs **Client**.
+- SQLite **nunca** en carpeta SMB compartida.
+- Los Clients usan la **IP numérica** del Server (`http://192.168.x.x:8001/`), no nombres `DESKTOP-…`.
+- Same-origin: la UI del Server en `:8001` llama a `/api/*` sin `NEXT_PUBLIC_API_URL` hardcodeado a otro host.
+
+---
+
+## Requisitos de máquina de build
+
+| Herramienta | Uso |
+|-------------|-----|
+| Windows 10/11 x64 | Host de empaquetado |
+| Python **3.12** | PyInstaller Server (`.venv-build`) |
+| Node **20+** | `npm run build:desktop` → `frontend/out` |
+| [NSIS 3](https://nsis.sourceforge.io/) (`makensis`) | Instaladores `.exe` |
+| .NET Framework / Roslyn `csc` | Compilar `ConnectClinic.exe` |
+| (Opcional) Rust + Tauri CLI 2 | Camino alterno Client; en práctica se usa **NSIS + ConnectClinic** (`-ForceNsis`) |
+
+Firma Authenticode (si hay certificado local): `packaging/scripts/sign_windows_exe.ps1`.
+
+---
+
+## Mapa de scripts (generadores)
+
+```
+packaging/
+├── README.md                          ← este documento
+├── scripts/
+│   ├── build_all.ps1                  ← Server + Client → dist\
+│   ├── build_server.ps1               ← generador instalador SERVER
+│   ├── build_client.ps1               ← generador instalador CLIENT
+│   ├── build_client_connector.ps1     ← csc → ConnectClinic.exe  [CONGELADO lógica]
+│   ├── sign_windows_exe.ps1
+│   ├── generate_icons.py
+│   └── allow_local_installers.ps1
+├── server/
+│   ├── installer.nsi                  ← NSIS Server
+│   ├── pyinstaller.spec
+│   ├── server_entry.py                ← entry runtime  [HOST LAN CONGELADO]
+│   ├── Start-Server.bat / Open-UI.bat
+│   ├── Reparar-Red-LAN.bat
+│   ├── Activar-Hotspot-Clinica.bat
+│   └── scripts/                       ← repair_lan, hotspot, upgrade, healthcheck…
+└── client/
+    ├── installer.nsi                  ← NSIS Client
+    ├── ConnectClinic.cs               ← conector nativo  [CONGELADO]
+    ├── ConnectClinic.exe              ← salida del connector (build)
+    └── Open-Client.bat / Change-Server.bat
 ```
 
-- Genera `JWT_SECRET` y `MAINTENANCE_ACCESS_KEY` únicos.
-- Fuerza `APP_ENV=production`.
-- Rechaza la clave legacy `Solo,yo1532`.
-- Escribe en `%ProgramData%\NKDentalSoft\config\.env` y certificados en `...\certs\`.
-- **Nunca** copiar `docker-compose.yml` env a una PC de clínica.
+Artefactos finales (no versionar binarios grandes en git si el repo lo evita):
 
-Post-install:
+| Salida | Ruta |
+|--------|------|
+| Setup Server | `dist\NKDentalSoft-Server-Setup-x64.exe` |
+| Setup Client | `dist\NKDentalSoft-Client-Setup-x64.exe` |
+| Onedir Server (debug) | `packaging\server\dist\nkdentalsoft-server\` |
+
+---
+
+## Build Servidor (`build_server.ps1`)
+
+### Qué hace (pipeline)
+
+1. Crea/usa venv `.venv-build` con Python 3.12.
+2. Instala deps backend + `pyinstaller`, `pywin32`, `pywebview` (salvo `-SkipDeps`).
+3. Regenera iconos de marca si hay recursos.
+4. **Frontend:** `npm run build:desktop` → `frontend/out` (salvo `-SkipFrontend`; exige `out/index.html` previo).
+5. **PyInstaller** onedir (`packaging/server/pyinstaller.spec`) → `nkdentalsoft-server.exe`.
+6. Copia `web/`, `scripts/`, BATs e iconos junto al onedir.  
+   **No** copiar `server_entry.py` suelto al lado del EXE (ensombrece el módulo frozen).
+7. **NSIS** (`installer.nsi`) → Setup en `dist\` (vía `.build.exe` intermedio si el Setup anterior está bloqueado).
+8. Firma Authenticode si está disponible.
+
+### Comandos
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File packaging/server/scripts/post_install_healthcheck.ps1
+# Build completo (UI + EXE + instalador)
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_server.ps1
+
+# Solo reempaquetar backend (UI ya en frontend\out)
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_server.ps1 -SkipFrontend
+
+# Onedir sin NSIS
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_server.ps1 -SkipNsis
 ```
 
-## Build Servidor
+### Parámetros
 
-```powershell
-# Una vez: winget install Python.Python.3.12 NSIS.NSIS
-# Requiere Node 20+ para embeber la UI (npm run build:desktop → frontend/out)
-powershell -ExecutionPolicy Bypass -File packaging\scripts\build_server.ps1
-```
+| Switch | Efecto |
+|--------|--------|
+| `-SkipFrontend` | No corre `build:desktop`; exige `frontend\out\index.html` |
+| `-SkipDeps` | No reinstala pip deps |
+| `-SkipNsis` | Solo onedir PyInstaller |
 
-Salida: `dist\NKDentalSoft-Server-Setup-x64.exe` (+ onedir en `packaging\server\dist\nkdentalsoft-server\`).
+### Post-instalación en PC clínica (Server)
 
-El instalador del Servidor incluye la **UI Next.js exportada** (`web/`) servida por FastAPI en el mismo puerto HTTPS (8001). Los Clientes Tauri abren `https://SERVIDOR:8001/` y usan `/api/*` en el mismo origen.
+1. Ejecutar Setup como Administrador.
+2. Primera vez: `--init-clinic` genera secretos en `%ProgramData%\NKDentalSoft\config\.env` (en upgrades **no** se regeneran).
+3. Arrancar Server; abrir UI (`Open-UI.bat` / acceso local `http://127.0.0.1:8001/`).
+4. En **Configuración**: copiar la **URL actual** para Clients (IP Ethernet preferida).
+5. Atajos: **Reparar red LAN**, **Activar Hotspot clinica** (si el router aísla Wi‑Fi).
 
-## Actualizacion / upgrade
-
-El instalador **detiene el servicio y mata** `nkdentalsoft-server.exe` antes de sobrescribir archivos.  
-Si aparece “Error abriendo archivo para escritura”, cierre la ventana negra del Servidor y pulse **Reintentar**, o ejecute como Admin:
+Upgrade: el NSIS detiene/mata `nkdentalsoft-server.exe` antes de sobrescribir. Si falla el archivo en uso:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File "C:\Program Files\NKDentalSoft\Server\scripts\stop_for_upgrade.ps1"
 ```
 
-Luego vuelva a lanzar el Setup. Los secretos en `%ProgramData%\NKDentalSoft\config\.env` **no se regeneran** en una actualización.
+---
 
-Servicio (plan A pywin32, embebido en el `.exe`):
+## Build Cliente (`build_client.ps1`)
+
+### Camino oficial verificado (clínica)
+
+**NSIS + `ConnectClinic.exe`** (recomendado / forzado):
 
 ```powershell
-nkdentalsoft-server.exe --startup auto install
-nkdentalsoft-server.exe start
-# Depuración:
-nkdentalsoft-server.exe --foreground
-nkdentalsoft-server.exe --init-clinic
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_client.ps1 -ForceNsis
 ```
 
-Plan B: NSSM apuntando a `nkdentalsoft-server.exe --foreground`.
+Pipeline:
 
-Firewall: solo perfiles **Privado** y **Dominio**, puerto 8001.
+1. `build_client_connector.ps1` → compila `ConnectClinic.cs` → `ConnectClinic.exe`.
+2. Firma el connector (si hay cert).
+3. `makensis packaging\client\installer.nsi` → `dist\NKDentalSoft-Client-Setup-x64.exe`.
+4. Firma el Setup.
 
-mDNS: servicio `_nkdentalsoft._tcp.local.` con propiedad `fp` = fingerprint SHA-256 (TOFU).
+Sin `-ForceNsis`, el script intenta Tauri y, si falla (p. ej. WDAC), **cae al mismo NSIS**.
+
+### Post-instalación Client
+
+1. Instalar Setup en cada terminal.
+2. Pegar la URL/`IP` del Server (copiada desde Configuración del Server).
+3. Atajos: Client (`--auto-connect`), Cambiar servidor (`--force-prompt`), Reparar red LAN.
+
+---
+
+## Build ambos
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_all.ps1
+```
+
+Equivale a Server completo + Client (`-SkipInstallCli` en el camino Tauri; el fallback NSIS sigue disponible).
+
+Para clínica hoy:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_server.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_client.ps1 -ForceNsis
+```
+
+---
+
+## Conexiones congeladas
+
+**Verificado 2026-07-27.** No modificar sin orden explícita del responsable del producto.
+
+### Comportamiento estable (referencia, no “mejorar”)
+
+| Pieza | Comportamiento |
+|-------|----------------|
+| Bind Server | `0.0.0.0:8001` |
+| URL Client | `http://<IPv4>:8001/` solo con IP numérica |
+| Preferencia IP | Ethernet real; filtrar VPN / APIPA / Hyper-V (`lan_network`) |
+| Discovery | UDP beacon/responder puerto **37020** |
+| Firewall | Puerto 8001 + EXE Server + ICMP vía `firewall_lan` / `repair_lan.ps1` |
+| Aislamiento router | Guía Hotspot de clínica (`192.168.137.1` típico en Mobile Hotspot Windows) |
+| UI Server | Panel Clients: copiar `recommended_url` |
+
+### Archivos / carpetas bajo congelación
+
+- `packaging/client/ConnectClinic.cs`
+- `packaging/scripts/build_client_connector.ps1`
+- `packaging/client/installer.nsi` (lanzamiento ConnectClinic / repair)
+- `backend/app/services/lan_network.py`
+- `backend/app/services/lan_discovery.py`
+- `backend/app/services/firewall_lan.py`
+- `backend/app/services/connect_card.py`
+- `backend/app/routers/system.py` (parte connect-info / IPs LAN)
+- `packaging/server/server_entry.py` (HOST / prepare_environment LAN)
+- `packaging/server/scripts/repair_lan.ps1`
+- `packaging/server/scripts/enable_clinic_hotspot.ps1`
+- `packaging/server/Reparar-Red-LAN.bat`
+- `packaging/server/Activar-Hotspot-Clinica.bat`
+
+Regla Cursor (siempre activa): `.cursor/rules/lan-client-server-freeze.mdc`.
+
+### Qué sí se puede hacer al empaquetar
+
+- Regenerar instaladores con los scripts anteriores **sin editar** la lista congelada.
+- Cambiar UI, módulos clínicos, PDFs, WhatsApp documentos, etc.
+- Actualizar textos de este README si el pipeline de **build** cambia (PyInstaller/NSIS/Node), siempre que no se altere la red.
+
+---
+
+## Secretos y datos en PC Server
+
+| Ruta | Contenido |
+|------|-----------|
+| `%ProgramData%\NKDentalSoft\config\.env` | Secretos clínica (no regenerar en upgrade) |
+| `%ProgramData%\NKDentalSoft\data\` | SQLite / datos |
+| `%ProgramData%\NKDentalSoft\logs\` | Logs |
+| `%ProgramData%\NKDentalSoft\connect.url` / `IP-DEL-SERVIDOR.txt` | Tarjeta de conexión (IP actual) |
+
+Generación manual (solo primera instalación / mantenimiento autorizado):
+
+```powershell
+python packaging/server/scripts/generate_production_secrets.py
+```
+
+Healthcheck:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging/server/scripts/post_install_healthcheck.ps1
+```
+
+---
 
 ## Iconos de marca
 
-Arte N&K DentalSoft (PNG transparente). Fuente preferida:
-
-`C:\PROYECTOS\Recursos DentalSoft\Icono.png`
+Fuente preferida: `C:\PROYECTOS\Recursos DentalSoft\Icono.png`
 
 ```powershell
 python packaging\scripts\generate_icons.py
 ```
 
-Salida: `packaging/client/icons/`, `packaging/client/src-tauri/icons/`, `packaging/server/assets/icons/`, favicons en `frontend/public/`.
+Salida: `packaging/client/icons/`, `packaging/server/assets/icons/`, favicons en `frontend/public/`.
 
-## Build Cliente (Tauri)
+---
 
-```powershell
-# Una vez: winget install Rustlang.Rustup
-#          cargo install tauri-cli --version "^2"
-powershell -ExecutionPolicy Bypass -File packaging\scripts\build_client.ps1 -SkipInstallCli
-```
-
-Salida: `dist\NKDentalSoft-Client-Setup-x64.exe`.
-
-Wizard (`packaging/client/ui/`): mDNS → IP + fingerprint TOFU → `https://`/`wss://` únicamente.  
-Comandos nativos: `discover_servers`, `validate_fingerprint`, `navigate_to_server`.  
-Updater: `GET /api/system/client-manifest.json` en el Servidor LAN (plugin Tauri opcional en v1.1).
-
-## API de sistema
+## API de sistema (referencia)
 
 | Endpoint | Uso |
-|---|---|
+|----------|-----|
 | `GET /api/system/health` | Conectividad / post-install |
-| `GET /api/system/version` | Versión de producto |
-| `GET /api/system/env-check` | ADMIN: secretos OK sin filtrar valores |
-| `GET /api/system/client-manifest.json` | Feed updater Tauri |
-| `WS /api/ws?token=` | Sync en tiempo real |
+| `GET /api/system/version` | Versión |
+| `GET /api/system/env-check` | ADMIN: secretos OK (sin filtrar valores) |
+| Endpoints connect-info / LAN | **Congelados** — no rediseñar |
 
-## Despliegue en clínica
+---
 
-1. Reservar IP del Servidor en el router (recomendado).
-2. Instalar `NKDentalSoft-Server-Setup-x64.exe` en la PC Servidor (encendida en horario).
-3. Instalar Cliente en cada terminal; confirmar fingerprint TOFU una vez.
-4. Verificar Topbar: indicador **En línea**.
+## Checklist rápido clínica
 
-## TLS / TOFU
+1. Server: Setup → arrancar → Configuración → **Copiar URL** (IP actual).
+2. Misma LAN o Hotspot del Server; perfil de red **Privado**; sin VPN en Client.
+3. Client: Setup → pegar URL → Conectar.
+4. Topbar Client: **En línea**.
 
-HTTPS obligatorio desde v1. El Cliente fija el fingerprint; si cambia, bloquea hasta confirmación explícita (reinstalación o MITM).
+Si falla ping entre PCs: Hotspot de clínica o `Reparar-Red-LAN` como Admin en el Server — **sin cambiar código**.
 
-## Fuera de alcance (sprint negocio)
+---
 
-ACL `require_module` en APIs clínicas, anulación de caja, forzar `America/Lima` en builders de agenda.
+## Fuera de alcance de este documento
+
+Módulos clínicos, ACL, WhatsApp documentos (ver `.cursor/rules/document-whatsapp-sender.mdc`), y cualquier feature de producto no relacionada con empaquetado o LAN congelada.

@@ -339,17 +339,17 @@ p {
   -webkit-backdrop-filter: blur(18px) saturate(1.35);
 }
 
-/* Focus dental chair (left of frame); crop out the hand on the right */
+/* Login hero: crop to dental equipment (right); hide patient/dentist (left) */
 .login-hero-img {
-  object-position: 8% 42%;
-  transform: scale(1.08);
-  transform-origin: left center;
+  object-position: 82% 42%;
+  transform: scale(1.12);
+  transform-origin: 85% 45%;
 }
 
 @media (min-width: 1280px) {
   .login-hero-img {
-    object-position: 4% 40%;
-    transform: scale(1.12);
+    object-position: 88% 40%;
+    transform: scale(1.18);
   }
 }
 

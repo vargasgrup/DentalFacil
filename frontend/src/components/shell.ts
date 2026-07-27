@@ -1,18 +1,21 @@
 /** Shared chrome height — sidebar brand strip + topbar must match for a continuous edge. */
-export const SHELL_HEADER_HEIGHT = "h-20";
+export const SHELL_HEADER_HEIGHT = "h-16 sm:h-[4.5rem] md:h-20";
 
 export const SHELL_HEADER_CLASS =
   `flex ${SHELL_HEADER_HEIGHT} shrink-0 items-center`;
 
-/** Premium topbar surface (frosted, soft depth — not a flat white strip). */
+/**
+ * Premium topbar — soft clinical blue-slate wash (pairs with dashboard KPIs,
+ * distinct from pure-white content cards).
+ */
 export const SHELL_TOPBAR_CLASS = [
   SHELL_HEADER_CLASS,
-  "relative sticky top-0 z-40 gap-3 border-b border-slate-200/70 px-3 sm:gap-3.5 sm:px-5 lg:px-6",
-  "bg-white/80 backdrop-blur-xl backdrop-saturate-150",
-  "shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_8px_24px_-12px_rgba(15,23,42,0.12)]",
+  "topbar-chrome relative sticky top-0 z-40 gap-2 sm:gap-3 sm:px-4 md:gap-3.5 lg:px-6 px-2.5",
+  "border-b border-brand-100/80",
+  "backdrop-blur-xl backdrop-saturate-150",
 ].join(" ");
 
-/** Sidebar brand strip — aligned edge with topbar, slightly denser white. */
+/** Sidebar brand strip — calm white to frame the tinted topbar. */
 export const SHELL_SIDEBAR_BRAND_CLASS = [
   SHELL_HEADER_CLASS,
   "border-b border-slate-200/80 bg-white px-3",

@@ -194,21 +194,15 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
 
   return (
     <header className={SHELL_TOPBAR_CLASS}>
-      {/* Soft brand accent line */}
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand-400/50 to-transparent"
-        aria-hidden
-      />
-
       {onMenuClick && (
         <button
           type="button"
           onClick={onMenuClick}
-          className={`inline-flex ${CTRL} shrink-0 items-center gap-2 rounded-xl border border-brand-200/80 bg-gradient-to-b from-brand-50 to-white px-2.5 text-sm font-semibold text-brand-700 shadow-sm transition-smooth hover:border-brand-300 hover:shadow md:hidden`}
+          className={`inline-flex ${CTRL} shrink-0 items-center gap-1.5 rounded-xl border border-brand-200/80 bg-white/70 px-2 text-sm font-semibold text-brand-700 shadow-sm transition-smooth hover:border-brand-300 hover:bg-white sm:gap-2 sm:px-2.5 md:hidden`}
           aria-label="Abrir menú de navegación"
         >
           <Menu className="h-5 w-5" aria-hidden />
-          <span className="pr-0.5">Menú</span>
+          <span className="hidden min-[400px]:inline pr-0.5">Menú</span>
         </button>
       )}
 
@@ -225,10 +219,10 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
             placeholder="Abrir ficha: nombre, DNI o FC-00005…"
-            className={`${CTRL} w-full rounded-xl border border-slate-200/90 bg-slate-50/90 pl-10 pr-3 text-sm leading-none text-slate-700 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] transition-smooth placeholder:text-slate-400 hover:border-slate-300 hover:bg-white focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/15`}
+            className={`${CTRL} w-full rounded-xl border border-brand-100/90 bg-white/70 pl-10 pr-3 text-sm leading-none text-slate-700 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] transition-smooth placeholder:text-slate-400 hover:border-brand-200 hover:bg-white focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/15`}
             aria-label="Buscar y abrir ficha clínica"
           />
-          <kbd className="pointer-events-none absolute right-2.5 hidden rounded-md border border-slate-200/80 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-400 shadow-sm sm:inline-block">
+          <kbd className="pointer-events-none absolute right-2.5 hidden rounded-md border border-brand-100 bg-white/80 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 shadow-sm lg:inline-block">
             ⌕
           </kbd>
         </div>
@@ -269,13 +263,13 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
 
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
         {/* Utility cluster */}
-        <div className="flex items-center gap-0.5 rounded-2xl border border-slate-200/70 bg-slate-50/70 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+        <div className="flex items-center gap-0.5 rounded-2xl border border-brand-100/80 bg-white/55 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] sm:p-1">
           <button
             type="button"
             onClick={handleGlobalRefresh}
             disabled={refreshing}
             className={`${ICON_BTN} disabled:opacity-50`}
-            title="Actualizar datos del módulo actual"
+            title="Actualizar"
             aria-label="Actualizar"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
@@ -291,7 +285,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             >
               <Bell className="h-[18px] w-[18px]" />
               {reminders.length > 0 && (
-                <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-600 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
+                <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-600 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
                   {reminders.length}
                 </span>
               )}
@@ -348,96 +342,116 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
         </div>
 
         <span
-          className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-tight sm:inline-flex ${realtimeUi.pill}`}
+          className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-tight md:inline-flex ${realtimeUi.pill}`}
           title={realtimeUi.text}
         >
           <span className={`h-2 w-2 rounded-full ${realtimeUi.dot}`} aria-hidden />
           {realtimeUi.text}
         </span>
+        <span
+          className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full md:hidden ${realtimeUi.dot}`}
+          title={realtimeUi.text}
+          aria-label={realtimeUi.text}
+        />
 
-        <div className="mx-0.5 hidden h-6 w-px bg-gradient-to-b from-transparent via-slate-200 to-transparent sm:block" aria-hidden />
+        <div className="mx-0.5 hidden h-6 w-px bg-gradient-to-b from-transparent via-brand-200/80 to-transparent sm:block" aria-hidden />
 
-        {/* Primary actions */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        {/* Primary actions — compact on small screens */}
+        <div className="flex items-center gap-1 sm:gap-1.5">
           {canAccessModule(user, "pacientes") && (
             <Link
               href="/pacientes/nuevo"
               className={
                 isDashboard
-                  ? `btn-float-brand inline-flex ${CTRL} items-center gap-1.5 rounded-full bg-gradient-to-b from-brand-500 to-brand-600 px-3 text-sm font-semibold leading-none text-white shadow-[0_6px_16px_-4px_rgba(28,102,232,0.55)] hover:from-brand-600 hover:to-brand-700 sm:px-4`
+                  ? `btn-float-brand inline-flex ${CTRL} items-center gap-1.5 rounded-full bg-gradient-to-b from-brand-500 to-brand-600 px-2.5 text-sm font-semibold leading-none text-white shadow-[0_6px_16px_-4px_rgba(28,102,232,0.55)] hover:from-brand-600 hover:to-brand-700 sm:px-3.5`
                   : `inline-flex ${CTRL} items-center gap-1.5 rounded-xl bg-gradient-to-b from-brand-500 to-brand-600 px-2.5 text-sm font-semibold leading-none text-white shadow-[0_4px_12px_-3px_rgba(28,102,232,0.45)] transition-smooth hover:from-brand-600 hover:to-brand-700 sm:px-3`
               }
             >
               <Users className="h-4 w-4 shrink-0" aria-hidden />
-              <span className="hidden md:inline">Nuevo paciente</span>
-              <span className="md:hidden">Paciente</span>
+              <span className="hidden lg:inline">Nuevo paciente</span>
+              <span className="hidden sm:inline lg:hidden">Paciente</span>
             </Link>
           )}
           {canAccessModule(user, "agenda") && (
             <Link
               href="/agenda?nueva=1"
-              className={`inline-flex ${CTRL} items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-2.5 text-sm font-medium leading-none text-slate-700 shadow-sm transition-smooth hover:border-brand-300 hover:bg-brand-50/80 hover:text-brand-700 sm:px-3`}
+              title="Nueva cita"
+              aria-label="Nueva cita"
+              className={`inline-flex ${CTRL} items-center gap-1.5 rounded-xl border border-brand-100 bg-white/80 px-2 text-sm font-medium leading-none text-slate-700 shadow-sm transition-smooth hover:border-brand-300 hover:bg-brand-50/80 hover:text-brand-700 sm:px-2.5`}
             >
               <Calendar className="h-4 w-4 shrink-0" aria-hidden />
-              <span className="hidden md:inline">Nueva cita</span>
-              <span className="md:hidden">Cita</span>
+              <span className="hidden lg:inline">Nueva cita</span>
             </Link>
           )}
         </div>
 
-        <div className="mx-0.5 hidden h-6 w-px bg-gradient-to-b from-transparent via-slate-200 to-transparent sm:block" aria-hidden />
+        <div className="mx-0.5 hidden h-6 w-px bg-gradient-to-b from-transparent via-brand-200/80 to-transparent sm:block" aria-hidden />
 
-        {/* Identity */}
-        <div ref={userRef} className="relative">
+        {/* Identity + compact logout */}
+        <div className="flex items-center gap-0.5 sm:gap-1">
+          <div ref={userRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setUserOpen(!userOpen)}
+              className={`inline-flex ${CTRL} items-center gap-1.5 rounded-xl border border-brand-100/90 bg-white/80 px-1.5 shadow-sm transition-smooth hover:border-brand-200 hover:bg-white hover:shadow sm:gap-2 sm:pr-2`}
+              aria-expanded={userOpen}
+              aria-haspopup="menu"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-[11px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(28,102,232,0.45)] ring-2 ring-white">
+                {initials}
+              </span>
+              <div className="hidden min-w-0 text-left leading-tight md:block">
+                <p className="max-w-[6.5rem] truncate text-xs font-semibold text-slate-800 lg:max-w-28">
+                  {user?.nombre}
+                </p>
+                <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                  {user?.rol}
+                </p>
+              </div>
+              <ChevronDown className="hidden h-3.5 w-3.5 shrink-0 text-slate-400 md:inline" />
+            </button>
+            {userOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 py-1 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.28)] backdrop-blur-md"
+              >
+                <div className="border-b border-slate-100 bg-gradient-to-r from-brand-50/80 to-white px-4 py-3">
+                  <p className="truncate text-sm font-semibold text-slate-800">{user?.nombre}</p>
+                  <p className="truncate text-xs text-slate-400">{user?.email}</p>
+                </div>
+                {canAccessModule(user, "configuracion") && (
+                  <Link
+                    href="/configuracion"
+                    role="menuitem"
+                    onClick={() => setUserOpen(false)}
+                    className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 transition-smooth hover:bg-slate-50"
+                  >
+                    <Settings className="h-4 w-4 text-slate-400" />
+                    Configuración
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-danger-600 transition-smooth hover:bg-danger-50"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Cerrar sesión
+                </button>
+              </div>
+            )}
+          </div>
+
           <button
             type="button"
-            onClick={() => setUserOpen(!userOpen)}
-            className={`inline-flex ${CTRL} items-center gap-2 rounded-xl border border-slate-200/80 bg-white px-1.5 shadow-sm transition-smooth hover:border-slate-300 hover:shadow sm:pr-2.5`}
-            aria-expanded={userOpen}
-            aria-haspopup="menu"
+            onClick={handleLogout}
+            title="Cerrar sesión"
+            aria-label="Cerrar sesión"
+            className={`inline-flex ${CTRL} w-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-500 transition-smooth hover:border-danger-200 hover:bg-danger-50 hover:text-danger-700 hover:shadow-sm`}
           >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-[11px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(28,102,232,0.45)] ring-2 ring-white">
-              {initials}
-            </span>
-            <div className="hidden min-w-0 text-left leading-tight sm:block">
-              <p className="max-w-28 truncate text-xs font-semibold text-slate-800">{user?.nombre}</p>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
-                {user?.rol}
-              </p>
-            </div>
-            <ChevronDown className="hidden h-3.5 w-3.5 shrink-0 text-slate-400 sm:inline" />
+            <LogOut className="h-4 w-4" aria-hidden />
           </button>
-          {userOpen && (
-            <div
-              role="menu"
-              className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 py-1 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.28)] backdrop-blur-md"
-            >
-              <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3">
-                <p className="truncate text-sm font-semibold text-slate-800">{user?.nombre}</p>
-                <p className="truncate text-xs text-slate-400">{user?.email}</p>
-              </div>
-              {canAccessModule(user, "configuracion") && (
-                <Link
-                  href="/configuracion"
-                  role="menuitem"
-                  onClick={() => setUserOpen(false)}
-                  className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 transition-smooth hover:bg-slate-50"
-                >
-                  <Settings className="h-4 w-4 text-slate-400" />
-                  Configuración
-                </Link>
-              )}
-              <button
-                type="button"
-                role="menuitem"
-                onClick={handleLogout}
-                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-danger-600 transition-smooth hover:bg-danger-50"
-              >
-                <LogOut className="h-4 w-4" />
-                Cerrar sesión
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </header>

@@ -18,6 +18,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { getApiBase } from "@/lib/api";
+import { useClinicBrand } from "@/lib/clinicBrand";
 
 type SetupMode = "new" | "restore";
 type AuthView = "login" | "forgot" | "reset";
@@ -62,6 +63,7 @@ function FormTitle({ title, hint }: { title: string; hint?: string }) {
 
 export default function LoginPage() {
   const { needsSetup, loading, login, setup, user } = useAuth();
+  const { displayName, refresh: refreshBrand } = useClinicBrand();
 
   const [view, setView] = useState<AuthView>("login");
   const [email, setEmail] = useState("");
@@ -88,6 +90,11 @@ export default function LoginPage() {
       setView("forgot");
     }
   }, []);
+
+  // Ensure public clinic branding (logo + name) is loaded on the login screen.
+  useEffect(() => {
+    void refreshBrand();
+  }, [refreshBrand]);
 
   const goLogin = useCallback(() => {
     setView("login");
@@ -269,7 +276,7 @@ export default function LoginPage() {
           ? "Ingrese su correo para recibir un código de recuperación."
           : view === "reset"
             ? "Ingrese el código recibido y su nueva contraseña."
-            : "Accede con tu correo al panel de M&D Odontología Especializada.";
+            : `Accede con tu correo al panel de ${displayName}.`;
 
   const panelEyebrow = "Bienvenido a la clínica";
   const panelTitle =
@@ -287,7 +294,7 @@ export default function LoginPage() {
         panelTitle={panelTitle}
         footer={
           <footer className="flex flex-col items-center gap-1.5 text-center text-[0.75rem] text-slate-500">
-            <p>© 2026 M&D Odontología Especializada · Todos los derechos reservados.</p>
+            <p>© {new Date().getFullYear()} {displayName} · Todos los derechos reservados.</p>
             <button
               type="button"
               className="font-medium text-[#2B9FD9] underline-offset-2 transition-colors hover:text-[#1c66e8] hover:underline"

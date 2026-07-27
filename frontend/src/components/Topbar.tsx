@@ -24,17 +24,33 @@ import { requestAppRefresh } from "@/lib/appRefresh";
 import { Button } from "./ui/Button";
 import { openWhatsAppText, isValidPhone } from "@/lib/whatsapp";
 import { formatFichaCode } from "@/lib/ficha";
-import { SHELL_HEADER_CLASS } from "./shell";
+import { SHELL_TOPBAR_CLASS } from "./shell";
 import { useRealtimeSync, type RealtimeStatus } from "@/hooks/useRealtimeSync";
 
-function realtimeLabel(status: RealtimeStatus): { text: string; className: string } {
+function realtimeLabel(status: RealtimeStatus): {
+  text: string;
+  dot: string;
+  pill: string;
+} {
   if (status === "online") {
-    return { text: "En línea", className: "bg-success-600" };
+    return {
+      text: "En línea",
+      dot: "bg-success-500 shadow-[0_0_0_3px_rgba(34,197,94,0.2)]",
+      pill: "border-success-200/80 bg-success-50/90 text-success-800",
+    };
   }
   if (status === "connecting" || status === "reconnecting") {
-    return { text: "Reconectando", className: "bg-warning-500" };
+    return {
+      text: "Reconectando",
+      dot: "bg-warning-500 animate-pulse shadow-[0_0_0_3px_rgba(245,158,11,0.22)]",
+      pill: "border-warning-200/80 bg-warning-50/90 text-warning-800",
+    };
   }
-  return { text: "Sin conexión al servidor", className: "bg-danger-600" };
+  return {
+    text: "Sin conexión",
+    dot: "bg-danger-500 shadow-[0_0_0_3px_rgba(220,38,38,0.2)]",
+    pill: "border-danger-200/80 bg-danger-50/90 text-danger-800",
+  };
 }
 
 interface SearchResult {
@@ -57,8 +73,9 @@ interface Reminder {
   estado: string;
 }
 
-/** Uniform control height across search, icons, primary CTA, and user chip. */
 const CTRL = "h-9";
+const ICON_BTN =
+  `inline-flex ${CTRL} w-9 items-center justify-center rounded-xl border border-transparent text-slate-500 transition-smooth hover:border-slate-200/80 hover:bg-white hover:text-slate-800 hover:shadow-sm`;
 
 export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const router = useRouter();
@@ -106,7 +123,9 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
     try {
       const data = await apiFetch<Reminder[]>("/api/appointments/reminders/pending");
       setReminders(data);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   useEffect(() => {
@@ -123,10 +142,14 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
     const timer = setTimeout(async () => {
       setSearchLoading(true);
       try {
-        const data = await apiFetch<SearchResult[]>(`/api/patients/search?q=${encodeURIComponent(searchQuery)}`);
+        const data = await apiFetch<SearchResult[]>(
+          `/api/patients/search?q=${encodeURIComponent(searchQuery)}`
+        );
         setSearchResults(data);
         setSearchOpen(true);
-      } catch { /* ignore */ } finally {
+      } catch {
+        /* ignore */
+      } finally {
         setSearchLoading(false);
       }
     }, 200);
@@ -144,14 +167,13 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
     router.push("/");
   };
 
-    const sendReminder = async (r: Reminder) => {
+  const sendReminder = async (r: Reminder) => {
     if (!isValidPhone(r.patient_telefono)) {
       alert("El paciente no tiene teléfono válido");
       return;
     }
     setSendingId(r.id);
     try {
-      // Recargar pendientes para usar mensaje con datos actuales del centro
       const fresh = await apiFetch<Reminder[]>("/api/appointments/reminders/pending");
       const current = fresh.find((x) => x.id === r.id) || r;
       await openWhatsAppText(current.patient_telefono, current.mensaje_sugerido, async () => {
@@ -171,12 +193,18 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
     .toUpperCase();
 
   return (
-    <header className={`${SHELL_HEADER_CLASS} sticky top-0 z-40 gap-3 px-4 sm:gap-4 sm:px-6`}>
+    <header className={SHELL_TOPBAR_CLASS}>
+      {/* Soft brand accent line */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand-400/50 to-transparent"
+        aria-hidden
+      />
+
       {onMenuClick && (
         <button
           type="button"
           onClick={onMenuClick}
-          className={`inline-flex ${CTRL} shrink-0 items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-2.5 text-sm font-semibold text-brand-700 transition-smooth hover:border-brand-300 hover:bg-brand-100 md:hidden`}
+          className={`inline-flex ${CTRL} shrink-0 items-center gap-2 rounded-xl border border-brand-200/80 bg-gradient-to-b from-brand-50 to-white px-2.5 text-sm font-semibold text-brand-700 shadow-sm transition-smooth hover:border-brand-300 hover:shadow md:hidden`}
           aria-label="Abrir menú de navegación"
         >
           <Menu className="h-5 w-5" aria-hidden />
@@ -184,34 +212,42 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
         </button>
       )}
 
+      {/* Command search */}
       <div ref={searchRef} className="relative min-w-0 max-w-xl flex-1">
-        <div className="relative flex items-center">
-          <Search className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" aria-hidden />
+        <div className="group relative flex items-center">
+          <Search
+            className="pointer-events-none absolute left-3.5 h-4 w-4 text-slate-400 transition-smooth group-focus-within:text-brand-600"
+            aria-hidden
+          />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
             placeholder="Abrir ficha: nombre, DNI o FC-00005…"
-            className={`${CTRL} w-full rounded-lg border border-slate-200 bg-surface-subtle pl-9 pr-3 text-sm leading-none text-slate-700 transition-smooth placeholder:text-slate-400 focus:border-brand-600 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-600`}
+            className={`${CTRL} w-full rounded-xl border border-slate-200/90 bg-slate-50/90 pl-10 pr-3 text-sm leading-none text-slate-700 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] transition-smooth placeholder:text-slate-400 hover:border-slate-300 hover:bg-white focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/15`}
             aria-label="Buscar y abrir ficha clínica"
           />
+          <kbd className="pointer-events-none absolute right-2.5 hidden rounded-md border border-slate-200/80 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-400 shadow-sm sm:inline-block">
+            ⌕
+          </kbd>
         </div>
         {searchOpen && searchResults.length > 0 && (
-          <div className="absolute left-0 right-0 top-full z-50 mt-1.5 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-dropdown">
+          <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-72 overflow-y-auto rounded-xl border border-slate-200/90 bg-white/95 py-1.5 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.28)] backdrop-blur-md">
             {searchResults.map((p) => (
               <button
                 key={p.id}
                 type="button"
                 onClick={() => selectPatient(p)}
-                className="flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-smooth hover:bg-brand-50"
+                className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm transition-smooth hover:bg-brand-50/80"
               >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-medium text-slate-500">
-                    {p.nombres[0]}{p.apellidos[0]}
+                <span className="flex min-w-0 items-center gap-2.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-slate-100 to-slate-200/80 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/80">
+                    {p.nombres[0]}
+                    {p.apellidos[0]}
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate font-medium text-slate-700">
+                    <span className="block truncate font-semibold text-slate-800">
                       {p.nombres} {p.apellidos}
                     </span>
                     <span className="block truncate text-xs text-slate-400">
@@ -225,103 +261,111 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           </div>
         )}
         {searchOpen && !searchLoading && searchResults.length === 0 && searchQuery.trim().length > 0 && (
-          <div className="absolute left-0 right-0 top-full z-50 mt-1.5 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-400 shadow-dropdown">
+          <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-xl border border-slate-200/90 bg-white/95 p-3.5 text-sm text-slate-400 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.28)] backdrop-blur-md">
             No se encontraron pacientes
           </div>
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          onClick={handleGlobalRefresh}
-          disabled={refreshing}
-          className={`inline-flex ${CTRL} items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium leading-none text-slate-600 transition-smooth hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-60 sm:px-3`}
-          title="Actualizar datos del módulo actual"
-          aria-label="Actualizar"
-        >
-          <RefreshCw className={`h-4 w-4 shrink-0 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
-          <span className="hidden sm:inline">Actualizar</span>
-        </button>
-        <div ref={notifRef} className="relative">
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        {/* Utility cluster */}
+        <div className="flex items-center gap-0.5 rounded-2xl border border-slate-200/70 bg-slate-50/70 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
           <button
             type="button"
-            onClick={() => setNotifOpen(!notifOpen)}
-            className={`relative flex ${CTRL} w-9 items-center justify-center rounded-lg text-slate-500 transition-smooth hover:bg-slate-100 hover:text-slate-700`}
-            title="Recordatorios pendientes"
-            aria-label="Recordatorios pendientes"
+            onClick={handleGlobalRefresh}
+            disabled={refreshing}
+            className={`${ICON_BTN} disabled:opacity-50`}
+            title="Actualizar datos del módulo actual"
+            aria-label="Actualizar"
           >
-            <Bell className="h-[18px] w-[18px]" />
-            {reminders.length > 0 && (
-              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-600 px-1 text-[10px] font-bold leading-none text-white">
-                {reminders.length}
-              </span>
-            )}
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
           </button>
-          {notifOpen && (
-            <div className="absolute right-0 z-50 mt-1.5 w-80 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-dropdown sm:w-96">
-              <div className="border-b border-slate-100 px-4 py-2.5">
-                <p className="text-sm font-semibold text-slate-700">
-                  Recordatorios pendientes {reminders.length > 0 && `(${reminders.length})`}
-                </p>
-              </div>
-              <div className="max-h-80 overflow-y-auto">
-                {reminders.length === 0 ? (
-                  <p className="px-4 py-6 text-center text-sm text-slate-400">Sin recordatorios pendientes</p>
-                ) : (
-                  reminders.map((r) => (
-                    <div
-                      key={r.id}
-                      className="border-b border-slate-50 px-4 py-3 last:border-0"
-                    >
-                      <p className="text-sm font-medium text-slate-700">{r.patient_nombre}</p>
-                      {r.appointment_fecha && (
-                        <p className="text-help text-slate-400">
-                          Cita: {formatDateTime(r.appointment_fecha, { year: undefined })}
+
+          <div ref={notifRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setNotifOpen(!notifOpen)}
+              className={ICON_BTN}
+              title="Recordatorios pendientes"
+              aria-label="Recordatorios pendientes"
+            >
+              <Bell className="h-[18px] w-[18px]" />
+              {reminders.length > 0 && (
+                <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-600 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
+                  {reminders.length}
+                </span>
+              )}
+            </button>
+            {notifOpen && (
+              <div className="absolute right-0 z-50 mt-2 w-80 overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.28)] backdrop-blur-md sm:w-96">
+                <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-2.5">
+                  <p className="text-sm font-semibold text-slate-800">
+                    Recordatorios pendientes {reminders.length > 0 && `(${reminders.length})`}
+                  </p>
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {reminders.length === 0 ? (
+                    <p className="px-4 py-8 text-center text-sm text-slate-400">
+                      Sin recordatorios pendientes
+                    </p>
+                  ) : (
+                    reminders.map((r) => (
+                      <div key={r.id} className="border-b border-slate-50 px-4 py-3 last:border-0">
+                        <p className="text-sm font-medium text-slate-800">{r.patient_nombre}</p>
+                        {r.appointment_fecha && (
+                          <p className="text-help text-slate-400">
+                            Cita: {formatDateTime(r.appointment_fecha, { year: undefined })}
+                          </p>
+                        )}
+                        <p className="mt-0.5 line-clamp-2 text-help text-slate-400">
+                          {r.mensaje_sugerido}
                         </p>
-                      )}
-                      <p className="mt-0.5 line-clamp-2 text-help text-slate-400">{r.mensaje_sugerido}</p>
-                      <div className="mt-2 flex items-center gap-2">
-                        <Button
-                          variant="primary"
-                          className="text-xs"
-                          loading={sendingId === r.id}
-                          icon={<MessageCircle className="h-3.5 w-3.5" />}
-                          onClick={() => sendReminder(r)}
-                        >
-                          Enviar
-                        </Button>
-                        <Link
-                          href="/agenda"
-                          onClick={() => setNotifOpen(false)}
-                          className="text-xs font-medium text-brand-600 hover:text-brand-700"
-                        >
-                          Ver agenda
-                        </Link>
+                        <div className="mt-2 flex items-center gap-2">
+                          <Button
+                            variant="primary"
+                            className="text-xs"
+                            loading={sendingId === r.id}
+                            icon={<MessageCircle className="h-3.5 w-3.5" />}
+                            onClick={() => sendReminder(r)}
+                          >
+                            Enviar
+                          </Button>
+                          <Link
+                            href="/agenda"
+                            onClick={() => setNotifOpen(false)}
+                            className="text-xs font-medium text-brand-600 hover:text-brand-700"
+                          >
+                            Ver agenda
+                          </Link>
+                        </div>
                       </div>
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          <span
-            className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 sm:inline-flex"
-            title={realtimeUi.text}
-          >
-            <span className={`h-2 w-2 rounded-full ${realtimeUi.className}`} aria-hidden />
-            {realtimeUi.text}
-          </span>
+        <span
+          className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-tight sm:inline-flex ${realtimeUi.pill}`}
+          title={realtimeUi.text}
+        >
+          <span className={`h-2 w-2 rounded-full ${realtimeUi.dot}`} aria-hidden />
+          {realtimeUi.text}
+        </span>
+
+        <div className="mx-0.5 hidden h-6 w-px bg-gradient-to-b from-transparent via-slate-200 to-transparent sm:block" aria-hidden />
+
+        {/* Primary actions */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {canAccessModule(user, "pacientes") && (
             <Link
               href="/pacientes/nuevo"
               className={
                 isDashboard
-                  ? `btn-float-brand inline-flex ${CTRL} items-center gap-1.5 rounded-full bg-brand-600 px-3 text-sm font-semibold leading-none text-white hover:bg-brand-700 sm:px-4`
-                  : `inline-flex ${CTRL} items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 text-sm font-medium leading-none text-white transition-smooth hover:bg-brand-700 sm:px-3`
+                  ? `btn-float-brand inline-flex ${CTRL} items-center gap-1.5 rounded-full bg-gradient-to-b from-brand-500 to-brand-600 px-3 text-sm font-semibold leading-none text-white shadow-[0_6px_16px_-4px_rgba(28,102,232,0.55)] hover:from-brand-600 hover:to-brand-700 sm:px-4`
+                  : `inline-flex ${CTRL} items-center gap-1.5 rounded-xl bg-gradient-to-b from-brand-500 to-brand-600 px-2.5 text-sm font-semibold leading-none text-white shadow-[0_4px_12px_-3px_rgba(28,102,232,0.45)] transition-smooth hover:from-brand-600 hover:to-brand-700 sm:px-3`
               }
             >
               <Users className="h-4 w-4 shrink-0" aria-hidden />
@@ -332,52 +376,44 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           {canAccessModule(user, "agenda") && (
             <Link
               href="/agenda?nueva=1"
-              className={`inline-flex ${CTRL} items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium leading-none text-slate-700 transition-smooth hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 sm:px-3`}
+              className={`inline-flex ${CTRL} items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-2.5 text-sm font-medium leading-none text-slate-700 shadow-sm transition-smooth hover:border-brand-300 hover:bg-brand-50/80 hover:text-brand-700 sm:px-3`}
             >
               <Calendar className="h-4 w-4 shrink-0" aria-hidden />
               <span className="hidden md:inline">Nueva cita</span>
               <span className="md:hidden">Cita</span>
             </Link>
           )}
-          <button
-            type="button"
-            onClick={handleLogout}
-            title="Cerrar sesión"
-            aria-label="Cerrar sesión"
-            className={`inline-flex ${CTRL} items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium leading-none text-slate-600 transition-smooth hover:border-danger-200 hover:bg-danger-50 hover:text-danger-700 sm:px-3`}
-          >
-            <LogOut className="h-4 w-4 shrink-0" aria-hidden />
-            <span className="hidden lg:inline">Cerrar sesión</span>
-            <span className="hidden sm:inline md:hidden">Salir</span>
-          </button>
         </div>
 
-        <div className="mx-0.5 hidden h-5 w-px bg-slate-200 sm:block" aria-hidden />
+        <div className="mx-0.5 hidden h-6 w-px bg-gradient-to-b from-transparent via-slate-200 to-transparent sm:block" aria-hidden />
 
+        {/* Identity */}
         <div ref={userRef} className="relative">
           <button
             type="button"
             onClick={() => setUserOpen(!userOpen)}
-            className={`inline-flex ${CTRL} items-center gap-2 rounded-lg px-1.5 transition-smooth hover:bg-slate-100 sm:pr-2`}
+            className={`inline-flex ${CTRL} items-center gap-2 rounded-xl border border-slate-200/80 bg-white px-1.5 shadow-sm transition-smooth hover:border-slate-300 hover:shadow sm:pr-2.5`}
             aria-expanded={userOpen}
             aria-haspopup="menu"
           >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-[11px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(28,102,232,0.45)] ring-2 ring-white">
               {initials}
             </span>
             <div className="hidden min-w-0 text-left leading-tight sm:block">
-              <p className="max-w-28 truncate text-xs font-medium text-slate-700">{user?.nombre}</p>
-              <p className="text-[10px] leading-none text-slate-400">{user?.rol}</p>
+              <p className="max-w-28 truncate text-xs font-semibold text-slate-800">{user?.nombre}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                {user?.rol}
+              </p>
             </div>
             <ChevronDown className="hidden h-3.5 w-3.5 shrink-0 text-slate-400 sm:inline" />
           </button>
           {userOpen && (
             <div
               role="menu"
-              className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-dropdown"
+              className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 py-1 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.28)] backdrop-blur-md"
             >
-              <div className="border-b border-slate-100 px-4 py-2">
-                <p className="truncate text-sm font-medium text-slate-700">{user?.nombre}</p>
+              <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3">
+                <p className="truncate text-sm font-semibold text-slate-800">{user?.nombre}</p>
                 <p className="truncate text-xs text-slate-400">{user?.email}</p>
               </div>
               {canAccessModule(user, "configuracion") && (
@@ -385,7 +421,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                   href="/configuracion"
                   role="menuitem"
                   onClick={() => setUserOpen(false)}
-                  className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 transition-smooth hover:bg-slate-50"
+                  className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 transition-smooth hover:bg-slate-50"
                 >
                   <Settings className="h-4 w-4 text-slate-400" />
                   Configuración
@@ -395,7 +431,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                 type="button"
                 role="menuitem"
                 onClick={handleLogout}
-                className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-danger-600 transition-smooth hover:bg-danger-50"
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-danger-600 transition-smooth hover:bg-danger-50"
               >
                 <LogOut className="h-4 w-4" />
                 Cerrar sesión

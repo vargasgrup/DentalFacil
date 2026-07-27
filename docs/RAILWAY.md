@@ -58,10 +58,14 @@ Luego: **Deploy** → **Redeploy** (o push que toque `backend/**`).
 
 Root Directory **vacío** en Backend y Frontend.
 
-| Servicio | Config file | Dockerfile |
-|----------|-------------|------------|
-| Backend | `/backend/railway.toml` | `Dockerfile.backend` (raíz) |
-| Frontend | `/frontend/railway.toml` | Preferible `Dockerfile.frontend` (raíz); el UI puede usar `frontend/Dockerfile` |
+| Servicio | Config file | Root Directory (Railway UI) | Dockerfile |
+|----------|-------------|------------------------------|------------|
+| Backend | `/backend/railway.toml` | **vacío** (raíz del repo) | `Dockerfile.backend` |
+| Frontend | `/frontend/railway.toml` | **`frontend`** | `frontend/Dockerfile` |
+
+> **No** use `Dockerfile.frontend` si el Root Directory del servicio Frontend es `frontend`: el contexto ya es esa carpeta y `COPY frontend/` falla con `"/frontend": not found`.
+>
+> `Dockerfile.frontend` (raíz) solo aplica si Root Directory del Frontend está **vacío**.
 
 Start Backend: `python boot.py` (definido en `backend/railway.toml`).  
 Healthcheck: `GET /api/health` (timeout 180s).

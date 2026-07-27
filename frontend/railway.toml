@@ -1,12 +1,14 @@
 [build]
 builder = "DOCKERFILE"
-# Prefer root Dockerfile so BACKEND_URL build-arg and monorepo COPY paths stay consistent.
-dockerfilePath = "Dockerfile.frontend"
+# IMPORTANT: Railway Frontend service uses Root Directory = `frontend`
+# (build context = contents of frontend/). Use this Dockerfile, NOT
+# Dockerfile.frontend (that one expects repo-root context + COPY frontend/).
+dockerfilePath = "frontend/Dockerfile"
 watchPatterns = [
   "/frontend/**",
   "frontend/**",
-  "/Dockerfile.frontend",
-  "Dockerfile.frontend",
+  "/frontend/Dockerfile",
+  "frontend/Dockerfile",
   "/frontend/railway.toml",
   "frontend/railway.toml",
 ]

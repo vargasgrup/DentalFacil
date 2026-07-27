@@ -26,6 +26,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageContainer } from "@/components/ui/PageContainer";
+import { ModuleHeader } from "@/components/ui/ModuleHeader";
 import { PacienteFichaLink } from "@/components/PacienteFichaLink";
 import {
   PatientEditModal,
@@ -223,21 +224,25 @@ export default function PacientesPage() {
 
   return (
     <PageContainer>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-page-title text-slate-800">Pacientes</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {filtered.length}{" "}
-            {filtered.length === 1 ? "paciente" : "pacientes"}
-            {hasFilters
+      <ModuleHeader
+        crumbs={[
+          { label: "Inicio", href: "/dashboard" },
+          { label: "Pacientes" },
+        ]}
+        title="Pacientes"
+        description={
+          `${filtered.length} ${filtered.length === 1 ? "paciente" : "pacientes"}${
+            hasFilters
               ? " encontrados"
-              : " registrados · administra o abre su ficha clínica"}
-          </p>
-        </div>
-        <Link href="/pacientes/nuevo">
-          <Button icon={<Plus className="h-4 w-4" />}>Nuevo paciente</Button>
-        </Link>
-      </div>
+              : " registrados · administra o abre su ficha clínica"
+          }`
+        }
+        actions={
+          <Link href="/pacientes/nuevo">
+            <Button icon={<Plus className="h-4 w-4" />}>Nuevo paciente</Button>
+          </Link>
+        }
+      />
 
       {toast && (
         <p
@@ -264,7 +269,7 @@ export default function PacientesPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <div className="module-surface-muted flex flex-col gap-3 p-3.5 lg:flex-row lg:items-center">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
@@ -272,7 +277,7 @@ export default function PacientesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por nombre, DNI, ficha o especialidad..."
-            className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
           />
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -281,7 +286,7 @@ export default function PacientesPage() {
               value={estadoFilter}
               onChange={(e) => setEstadoFilter(e.target.value as EstadoFilter)}
               aria-label="Filtrar por estado"
-              className="w-full rounded-lg border border-slate-300 bg-white py-2.5 px-3 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-sm shadow-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
             >
               <option value="activos">Activos</option>
               <option value="inactivos">Inactivos</option>
@@ -294,7 +299,7 @@ export default function PacientesPage() {
               value={especialidadFilter}
               onChange={(e) => setEspecialidadFilter(e.target.value)}
               aria-label="Filtrar por especialidad"
-              className="w-full rounded-lg border border-slate-300 bg-white py-2.5 px-3 text-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-sm shadow-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
             >
               <option value="">Todas las especialidades</option>
               {specialtyOptions.map((esp) => (

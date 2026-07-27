@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   Calendar,
@@ -23,6 +22,7 @@ import { DayGrid } from "@/components/agenda/DayGrid";
 import { WeekGrid } from "@/components/agenda/WeekGrid";
 import { MonthGrid } from "@/components/agenda/MonthGrid";
 import { PageContainer } from "@/components/ui/PageContainer";
+import { ModuleHeader } from "@/components/ui/ModuleHeader";
 import { PacienteFichaLink } from "@/components/PacienteFichaLink";
 import { PatientPicker, type PickedPatient } from "@/components/PatientPicker";
 import { SpecialtySelect } from "@/components/SpecialtySelect";
@@ -62,9 +62,10 @@ export default function AgendaPage() {
   return (
     <Suspense
       fallback={
-        <div className="space-y-4">
-          <div className="skeleton h-10 w-48 rounded-lg" />
-          <div className="skeleton h-96 rounded-card" />
+        <div className="space-y-5 p-1">
+          <div className="skeleton h-16 w-72 rounded-xl" />
+          <div className="skeleton h-14 w-full rounded-xl" />
+          <div className="skeleton h-[28rem] rounded-2xl" />
         </div>
       }
     >
@@ -295,38 +296,35 @@ function AgendaPageInner() {
   return (
     <PageContainer className="space-y-5">
       {error && (
-        <div className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm text-danger-600">
+        <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700 shadow-sm">
           {error}
         </div>
       )}
 
-      {/* Breadcrumb + header (N&K pattern) */}
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-sm text-slate-400">
-            <Link href="/dashboard" className="hover:text-brand-600">
-              Inicio
-            </Link>
-            <span className="mx-1.5">/</span>
-            <span className="font-medium text-slate-600">Agenda</span>
-          </p>
-          <h1 className="mt-1 text-page-title text-slate-800">Citas / Agenda</h1>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+      <ModuleHeader
+        crumbs={[
+          { label: "Inicio", href: "/dashboard" },
+          { label: "Agenda" },
+        ]}
+        title="Citas / Agenda"
+        description="Planifique y gestione la agenda clínica con vista mes, semana, día o lista."
+        meta={
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 transition-smooth hover:bg-slate-50"
+              className="module-nav-btn"
               aria-label="Anterior"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="min-w-[10rem] text-center text-sm font-semibold capitalize text-slate-700">
+            <span className="min-w-[10rem] rounded-lg border border-slate-200/80 bg-white/80 px-3 py-1.5 text-center text-sm font-semibold capitalize text-slate-800 shadow-sm">
               {periodLabel}
             </span>
             <button
               type="button"
               onClick={() => navigate(1)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 transition-smooth hover:bg-slate-50"
+              className="module-nav-btn"
               aria-label="Siguiente"
             >
               <ChevronRight className="h-4 w-4" />
@@ -334,46 +332,45 @@ function AgendaPageInner() {
             <button
               type="button"
               onClick={() => setCurrentDate(new Date())}
-              className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-50"
+              className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand-700 transition-smooth hover:bg-brand-50"
             >
               Hoy
             </button>
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => openNewForm()} icon={<Plus className="h-4 w-4" />}>
-            Nueva cita
-          </Button>
-          <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5">
-            {viewTabs.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setView(t.id)}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-smooth ${
-                  view === t.id
-                    ? "bg-white text-slate-800 shadow-sm"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </header>
+        }
+        actions={
+          <>
+            <Button onClick={() => openNewForm()} icon={<Plus className="h-4 w-4" />}>
+              Nueva cita
+            </Button>
+            <div className="module-seg" role="tablist" aria-label="Vista de agenda">
+              {viewTabs.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === t.id}
+                  onClick={() => setView(t.id)}
+                  className={`module-seg__btn ${view === t.id ? "is-active" : ""}`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </>
+        }
+      />
 
       {/* Filter bar — only filters on existing data */}
-      <Card padding="sm" className="flex flex-wrap items-end gap-3">
+      <Card padding="sm" className="module-surface-muted flex flex-wrap items-end gap-3 !border-brand-100/70 !shadow-none">
         <label className="block">
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Estado
           </span>
           <select
             value={estadoFilter}
             onChange={(e) => setEstadoFilter(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
           >
             <option value="todos">Todos</option>
             <option value="programada">Programada</option>
@@ -382,7 +379,7 @@ function AgendaPageInner() {
           </select>
         </label>
         <div className="block min-w-[240px] flex-1">
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Paciente
           </span>
           <PatientPicker
@@ -401,7 +398,7 @@ function AgendaPageInner() {
               setEstadoFilter("todos");
               setFilterPatient(null);
             }}
-            className="pb-2 text-xs font-medium text-slate-500 hover:text-brand-600"
+            className="pb-2 text-xs font-semibold text-slate-500 transition-smooth hover:text-brand-600"
           >
             Limpiar filtros
           </button>
@@ -410,14 +407,14 @@ function AgendaPageInner() {
 
       {/* New appointment form */}
       {showNew && (
-        <Card>
+        <Card className="module-surface border-brand-100/80">
           <form onSubmit={createAppointment} className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-section-title text-slate-700">Nueva cita</h2>
+              <h2 className="text-section-title text-slate-800">Nueva cita</h2>
               <button
                 type="button"
                 onClick={() => setShowNew(false)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+                className="rounded-lg p-1.5 text-slate-400 transition-smooth hover:bg-slate-100 hover:text-slate-600"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -482,7 +479,7 @@ function AgendaPageInner() {
 
       {/* Detail panel */}
       {selected && (
-        <Card className="border-brand-200">
+        <Card className="module-surface border-brand-200/80 bg-gradient-to-br from-brand-50/40 to-white">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -516,7 +513,7 @@ function AgendaPageInner() {
             <button
               type="button"
               onClick={() => setSelected(null)}
-              className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+              className="rounded-lg p-1.5 text-slate-400 transition-smooth hover:bg-white hover:text-slate-600"
             >
               <X className="h-4 w-4" />
             </button>
@@ -597,13 +594,13 @@ function AgendaPageInner() {
               <Card
                 key={a.id}
                 padding="sm"
-                className={`flex cursor-pointer flex-col gap-3 transition-smooth hover:shadow-card-hover sm:flex-row sm:items-center sm:justify-between ${
+                className={`module-surface flex cursor-pointer flex-col gap-3 transition-smooth hover:-translate-y-0.5 hover:shadow-[0_14px_36px_-14px_rgba(28,102,232,0.22)] sm:flex-row sm:items-center sm:justify-between ${
                   a.estado === "cancelada" ? "opacity-60" : ""
                 }`}
                 onClick={() => setSelected(a)}
               >
                 <div className="flex items-center gap-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-50 to-brand-100 text-sm font-semibold text-brand-700 ring-1 ring-brand-100">
                     {initials}
                   </div>
                   <div className="min-w-0">

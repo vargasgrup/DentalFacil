@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiFetch, apiUpload, getToken, setToken, setRefreshToken } from "@/lib/api";
 import { PageContainer } from "@/components/ui/PageContainer";
+import { ModuleHeader } from "@/components/ui/ModuleHeader";
 import { ESPECIALIDADES_ODONTOLOGICAS } from "@/lib/especialidades";
 import { ClinicProfileForm } from "@/components/config/ClinicProfileForm";
 import {
@@ -500,14 +501,16 @@ export default function ConfiguracionPage() {
 
   return (
     <PageContainer width="default">
-      <div>
-        <h1 className="text-page-title text-slate-800">Configuración</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Datos del centro, cuenta de acceso, horario, recordatorios y usuarios.
-        </p>
-      </div>
+      <ModuleHeader
+        crumbs={[
+          { label: "Inicio", href: "/dashboard" },
+          { label: "Configuración" },
+        ]}
+        title="Configuración"
+        description="Datos del centro, cuenta de acceso, horario, recordatorios y usuarios."
+      />
       {error && (
-        <div className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm text-danger-600">
+        <div className="rounded-xl border border-danger-200 bg-danger-50 p-3 text-sm text-danger-600">
           {error}
         </div>
       )}

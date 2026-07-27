@@ -44,32 +44,32 @@ export function MonthGrid({
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,7fr)_minmax(260px,3fr)]">
       {/* Month calendar card */}
-      <div className="overflow-hidden rounded-card border border-slate-200 bg-white shadow-card">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+      <div className="module-surface overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-100/90 bg-gradient-to-r from-brand-50/50 to-transparent px-5 py-4">
           <button
             type="button"
             onClick={() => onNavigateMonth(-1)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-smooth hover:bg-slate-100"
+            className="module-nav-btn"
             aria-label="Mes anterior"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <h3 className="text-base font-bold capitalize text-slate-800">{monthLabel}</h3>
+          <h3 className="text-base font-bold capitalize tracking-tight text-slate-900">{monthLabel}</h3>
           <button
             type="button"
             onClick={() => onNavigateMonth(1)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-smooth hover:bg-slate-100"
+            className="module-nav-btn"
             aria-label="Mes siguiente"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="grid grid-cols-7 border-b border-slate-100 bg-surface-subtle">
+        <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50/80">
           {weekdays.map((d) => (
             <div
               key={d}
-              className="px-1 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+              className="px-1 py-2.5 text-center text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400"
             >
               {d}
             </div>
@@ -90,14 +90,14 @@ export function MonthGrid({
                 key={`${day.toISOString()}-${i}`}
                 type="button"
                 onClick={() => onSelectDate(day)}
-                className={`min-h-[88px] border-b border-r border-slate-100 p-1.5 text-left transition-smooth hover:bg-brand-50/50 sm:min-h-[100px] ${
-                  !inMonth ? "bg-slate-50/60" : "bg-white"
-                } ${isSelected ? "ring-2 ring-inset ring-brand-500" : ""}`}
+                className={`cal-day-cell min-h-[88px] border-b border-r border-slate-100/90 p-1.5 text-left sm:min-h-[100px] ${
+                  !inMonth ? "bg-slate-50/70" : "bg-white"
+                } ${isSelected ? "is-selected" : ""}`}
               >
                 <span
                   className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${
                     isToday
-                      ? "bg-brand-600 text-white"
+                      ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
                       : isSelected
                         ? "text-brand-700"
                         : inMonth
@@ -111,7 +111,7 @@ export function MonthGrid({
                   {dayAppts.slice(0, 3).map((a) => (
                     <div
                       key={a.id}
-                      className="truncate rounded px-1 py-0.5 text-[10px] font-medium bg-brand-50 text-brand-700"
+                      className="cal-day-chip truncate"
                       onClick={(e) => {
                         e.stopPropagation();
                         onAppointmentClick(a);
@@ -134,12 +134,12 @@ export function MonthGrid({
       </div>
 
       {/* Próximas citas panel */}
-      <aside className="overflow-hidden rounded-card border border-slate-200 bg-white shadow-card">
-        <div className="border-b border-slate-100 px-4 py-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+      <aside className="module-surface overflow-hidden">
+        <div className="border-b border-slate-100 bg-gradient-to-r from-brand-50/60 to-transparent px-4 py-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">
             Próximas citas
           </p>
-          <p className="mt-1 text-sm font-medium capitalize text-slate-700">
+          <p className="mt-1 text-sm font-semibold capitalize text-slate-800">
             {selectedDate.toLocaleDateString("es-PE", {
               weekday: "long",
               day: "numeric",
@@ -151,7 +151,7 @@ export function MonthGrid({
 
         {selectedDayAppts.length === 0 ? (
           <div className="flex flex-col items-center px-4 py-10 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-subtle text-slate-300">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 text-brand-300 ring-1 ring-brand-100">
               <Calendar className="h-6 w-6" />
             </div>
             <p className="mt-3 text-sm font-medium text-slate-500">
@@ -160,7 +160,7 @@ export function MonthGrid({
             <button
               type="button"
               onClick={onCreateClick}
-              className="mt-4 text-sm font-semibold text-brand-600 hover:text-brand-700"
+              className="mt-4 text-sm font-semibold text-brand-600 transition-smooth hover:text-brand-700"
             >
               + Agendar cita
             </button>
@@ -174,7 +174,7 @@ export function MonthGrid({
                   <button
                     type="button"
                     onClick={() => onAppointmentClick(a)}
-                    className="flex w-full items-start gap-3 px-4 py-3 text-left transition-smooth hover:bg-brand-50/50"
+                    className="flex w-full items-start gap-3 px-4 py-3 text-left transition-smooth hover:bg-brand-50/60"
                   >
                     <div className="w-12 shrink-0 pt-0.5 text-center">
                       <p className="text-sm font-bold text-slate-800">

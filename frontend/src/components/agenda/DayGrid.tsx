@@ -178,7 +178,7 @@ export function DayGrid({
   }, [date, startMin]);
 
   return (
-    <div className="overflow-hidden rounded-card border border-slate-200 bg-white shadow-card">
+    <div className="module-surface overflow-hidden">
       {outOfHours.length > 0 && (
         <div className="border-b border-warning-100 bg-warning-50 px-4 py-2.5">
           <p className="text-xs font-medium text-warning-800">
@@ -203,12 +203,12 @@ export function DayGrid({
         </div>
       )}
       {multi && (
-        <div className="flex border-b border-slate-200 bg-surface-subtle">
+        <div className="flex border-b border-slate-100 bg-gradient-to-r from-brand-50/50 to-transparent">
           <div className="w-[4.5rem] shrink-0" />
           {columns.map((d) => (
             <div
               key={d.id}
-              className="flex-1 border-l border-slate-200 px-2 py-2.5 text-center text-xs font-semibold text-slate-600"
+              className="flex-1 border-l border-slate-100/90 px-2 py-3 text-center text-xs font-bold tracking-tight text-slate-700"
             >
               {d.nombre}
             </div>

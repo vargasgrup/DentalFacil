@@ -214,7 +214,89 @@ p {
   background: #f8fafc;
 }
 
-/* Premium app chrome — soft brand-slate wash (topbar + logo cell) */
+/* ── Module chrome (premium surfaces — visual only) ─────────────── */
+.module-header {
+  position: relative;
+}
+.module-surface {
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: #fff;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 10px 32px -14px rgba(15, 23, 42, 0.14);
+}
+.module-surface-muted {
+  border-radius: 1rem;
+  border: 1px solid rgba(191, 219, 254, 0.55);
+  background: linear-gradient(180deg, rgba(238, 246, 255, 0.55) 0%, #fff 100%);
+  box-shadow: 0 8px 24px -14px rgba(28, 102, 232, 0.12);
+}
+.module-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: rgba(241, 245, 249, 0.85);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+.module-seg__btn {
+  border-radius: 0.55rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #64748b;
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.module-seg__btn:hover {
+  color: #334155;
+}
+.module-seg__btn.is-active {
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+.module-nav-btn {
+  display: inline-flex;
+  height: 2.25rem;
+  width: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: rgba(255, 255, 255, 0.9);
+  color: #475569;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.module-nav-btn:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1c66e8;
+}
+.cal-day-chip {
+  border-radius: 0.4rem;
+  padding: 0.15rem 0.35rem;
+  font-size: 10px;
+  font-weight: 600;
+  background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+  color: #1e40af;
+  border: 1px solid rgba(147, 197, 253, 0.45);
+}
+.cal-day-cell {
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cal-day-cell:hover {
+  background: rgba(238, 246, 255, 0.65) !important;
+}
+.cal-day-cell.is-selected {
+  box-shadow: inset 0 0 0 2px #1c66e8;
+  background: rgba(238, 246, 255, 0.45) !important;
+}
+
+/* Premium topbar — soft brand-slate wash (not flat white) */
 .topbar-chrome {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(238, 246, 255, 0.72) 100%),

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, StatCard } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageContainer } from "@/components/ui/PageContainer";
+import { ModuleHeader } from "@/components/ui/ModuleHeader";
 import { Input } from "@/components/Input";
 import { DocumentActions } from "@/components/DocumentActions";
 import { apiFetch, getToken } from "@/lib/api";
@@ -206,15 +207,14 @@ export default function ReportesPage() {
 
   return (
     <PageContainer width="wide">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-page-title text-slate-800">Reportes</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Vista consolidada de Agenda, Ficha clínica y Caja. Use Actualizar en la barra
-            superior o cambie el período para refrescar los KPIs.
-          </p>
-        </div>
-      </div>
+      <ModuleHeader
+        crumbs={[
+          { label: "Inicio", href: "/dashboard" },
+          { label: "Reportes" },
+        ]}
+        title="Reportes"
+        description="Vista consolidada de Agenda, Ficha clínica y Caja. Use Actualizar en la barra superior o cambie el período para refrescar los KPIs."
+      />
 
       {error && (
         <div className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm text-danger-600">
@@ -223,7 +223,7 @@ export default function ReportesPage() {
       )}
 
       {/* Filtros */}
-      <Card>
+      <Card className="module-surface-muted !shadow-none">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <CalendarRange className="h-4 w-4 text-brand-600" />
           <span className="text-label text-slate-700">Período</span>

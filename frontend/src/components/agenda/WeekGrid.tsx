@@ -53,7 +53,7 @@ export function WeekGrid({
   );
 
   return (
-    <div className="overflow-hidden rounded-card border border-slate-200 bg-white shadow-card">
+    <div className="module-surface overflow-hidden">
       {outOfHours.length > 0 && (
         <div className="border-b border-warning-100 bg-warning-50 px-4 py-2.5">
           <p className="text-xs font-medium text-warning-800">
@@ -77,23 +77,25 @@ export function WeekGrid({
         </div>
       )}
 
-      <div className="flex border-b border-slate-200 bg-surface-subtle">
+      <div className="flex border-b border-slate-100 bg-gradient-to-r from-brand-50/50 to-transparent">
         <div className="w-16 shrink-0 sm:w-[4.5rem]" />
         {days.map((day) => {
           const isToday = isSameDay(day, today);
           return (
             <div
               key={day.toISOString()}
-              className={`flex-1 border-l border-slate-200 px-1 py-2 text-center ${
-                isToday ? "bg-brand-50" : ""
+              className={`flex-1 border-l border-slate-100/90 px-1 py-2.5 text-center ${
+                isToday ? "bg-brand-50/80" : ""
               }`}
             >
-              <p className="text-[10px] font-medium uppercase text-slate-400">
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
                 {day.toLocaleDateString("es-PE", { weekday: "short" })}
               </p>
               <p
-                className={`text-sm font-semibold ${
-                  isToday ? "text-brand-700" : "text-slate-700"
+                className={`mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${
+                  isToday
+                    ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
+                    : "text-slate-700"
                 }`}
               >
                 {day.getDate()}

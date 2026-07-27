@@ -24,7 +24,7 @@ import { apiFetch } from "@/lib/api";
 import { formatTime } from "@/lib/datetime";
 import { canAccessModule } from "@/lib/roles";
 import { openWhatsAppText, isValidPhone } from "@/lib/whatsapp";
-import { PageContainer } from "@/components/ui";
+import { ModuleHeader, PageContainer } from "@/components/ui";
 import { PacienteFichaLink } from "@/components/PacienteFichaLink";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import {
@@ -286,12 +286,11 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="dash-fade-in flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-800">
-            {greetingForHour(now.getHours())}, {firstName}
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
+      <ModuleHeader
+        crumbs={[{ label: "Inicio" }]}
+        title={`${greetingForHour(now.getHours())}, ${firstName}`}
+        description={
+          <>
             Hoy es{" "}
             <span className="font-semibold capitalize text-slate-700">{dateLabel}</span>. Tienes{" "}
             <span className="font-semibold text-brand-600">
@@ -304,10 +303,10 @@ export default function DashboardPage() {
               <span className="font-semibold text-warning-600">aún no está abierta</span>
             )}
             .
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {canCaja && (
+          </>
+        }
+        actions={
+          canCaja ? (
             <>
               <div
                 className={`flex items-center gap-2 rounded-xl border px-4 py-2 ${
@@ -337,9 +336,9 @@ export default function DashboardPage() {
                 {cash.open ? "Ir a Caja" : "Abrir Caja"}
               </Link>
             </>
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
       <div className="dash-slide-up grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard

@@ -42,10 +42,13 @@ def assert_schema_compatible_with_uuid_models() -> None:
             msg = (
                 "[dentalfacil] FATAL SCHEMA MISMATCH: Postgres users.id is INTEGER but "
                 "this build expects UUID String(36).\n"
-                "Railway staging must cut over to SQLite+UUID — see docs/RAILWAY.md "
-                "(Volume /data + DATABASE_URL=sqlite:////data/clinica.db + "
-                "python -m scripts.railway_sqlite_cutover).\n"
-                "Emergency only: ALLOW_LEGACY_POSTGRES_INT=1 (unsupported with this image)."
+                "Para DentalSimple/production HOY: NO use ${{Postgres.DATABASE_URL}} todavía.\n"
+                "Opciones:\n"
+                "  1) Quitar DATABASE_URL de Postgres y usar "
+                "DATABASE_URL=sqlite:////data/clinica.db + Volume en /data en el Backend\n"
+                "  2) Cutover UUID (scripts.railway_sqlite_cutover) y luego SQLite en /data\n"
+                "  3) Emergencia: ALLOW_LEGACY_POSTGRES_INT=1 (login puede fallar; no soportado)\n"
+                "See docs/RAILWAY.md"
             )
             logger.info(msg)
             raise SystemExit(2)

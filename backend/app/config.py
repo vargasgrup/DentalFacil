@@ -187,5 +187,10 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-settings.require_secure_jwt_in_production()
-settings.require_secure_maintenance_key_in_production()
+try:
+    settings.require_secure_jwt_in_production()
+    settings.require_secure_maintenance_key_in_production()
+except RuntimeError as exc:
+    # Ensure Railway deploy logs show the real reason (not a silent crash loop).
+    print(f"[dentalfacil] FATAL CONFIG: {exc}", flush=True)
+    raise SystemExit(1) from exc

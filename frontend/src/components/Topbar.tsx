@@ -13,12 +13,14 @@ import {
   Users,
   Menu,
   MessageCircle,
+  RefreshCw,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { canAccessModule } from "@/lib/roles";
 import { navigateToPacienteFicha } from "@/lib/pacienteRoutes";
+import { requestAppRefresh } from "@/lib/appRefresh";
 import { Button } from "./ui/Button";
 import { openWhatsAppText, isValidPhone } from "@/lib/whatsapp";
 import { formatFichaCode } from "@/lib/ficha";
@@ -79,6 +81,16 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
 
   const [userOpen, setUserOpen] = useState(false);
   const userRef = useRef<HTMLDivElement>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleGlobalRefresh = () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    requestAppRefresh();
+    void loadReminders();
+    router.refresh();
+    window.setTimeout(() => setRefreshing(false), 700);
+  };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -220,6 +232,17 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={handleGlobalRefresh}
+          disabled={refreshing}
+          className={`inline-flex ${CTRL} items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium leading-none text-slate-600 transition-smooth hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-60 sm:px-3`}
+          title="Actualizar datos del módulo actual"
+          aria-label="Actualizar"
+        >
+          <RefreshCw className={`h-4 w-4 shrink-0 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
+          <span className="hidden sm:inline">Actualizar</span>
+        </button>
         <div ref={notifRef} className="relative">
           <button
             type="button"

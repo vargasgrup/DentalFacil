@@ -15,7 +15,6 @@ import {
   LockOpen,
   MessageCircle,
   Plus,
-  RefreshCw,
   Stethoscope,
   UserPlus,
   Wallet,
@@ -26,7 +25,6 @@ import { formatTime } from "@/lib/datetime";
 import { canAccessModule } from "@/lib/roles";
 import { openWhatsAppText, isValidPhone } from "@/lib/whatsapp";
 import { PageContainer } from "@/components/ui";
-import { Button } from "@/components/ui/Button";
 import { PacienteFichaLink } from "@/components/PacienteFichaLink";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import {
@@ -34,6 +32,7 @@ import {
   type DashboardHome,
   type DashboardReminder,
 } from "@/components/dashboard/types";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 
 function greetingForHour(h: number): string {
   if (h < 12) return "Buenos días";
@@ -168,12 +167,10 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [data, setData] = useState<DashboardHome | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [sendingId, setSendingId] = useState<string | null>(null);
 
-  const load = useCallback(async (opts?: { soft?: boolean }) => {
-    if (opts?.soft) setRefreshing(true);
+  const load = useCallback(async (_opts?: { soft?: boolean }) => {
     try {
       const home = await apiFetch<DashboardHome>("/api/dashboard/home");
       setData(home);
@@ -182,13 +179,16 @@ export default function DashboardPage() {
       setError(err instanceof Error ? err.message : "No se pudo cargar el dashboard");
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useAppRefresh(() => {
+    void load({ soft: true });
+  });
 
   useEffect(() => {
     const onReconnect = () => {
@@ -307,17 +307,6 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Button
-            type="button"
-            variant="secondary"
-            loading={refreshing}
-            icon={<RefreshCw className="h-4 w-4" />}
-            onClick={() => void load({ soft: true })}
-            aria-label="Actualizar dashboard"
-            title="Actualizar datos del sistema"
-          >
-            Actualizar
-          </Button>
           {canCaja && (
             <>
               <div

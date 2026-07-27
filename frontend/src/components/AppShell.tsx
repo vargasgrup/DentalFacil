@@ -19,12 +19,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Desktop / tablet sidebar */}
       <aside
-        className={`fixed left-0 top-0 z-30 hidden h-screen ${SHELL_SIDEBAR_WIDTH} flex-col border-r border-slate-200/90 bg-gradient-to-b from-slate-100 via-slate-50 to-white shadow-[6px_0_28px_-16px_rgba(15,23,42,0.35)] md:flex`}
+        className={`fixed left-0 top-0 z-30 hidden h-dvh ${SHELL_SIDEBAR_WIDTH} flex-col border-r border-slate-200/90 bg-gradient-to-b from-slate-100 via-slate-50 to-white shadow-[6px_0_28px_-16px_rgba(15,23,42,0.35)] md:flex`}
         aria-label="Barra de navegación"
       >
-        <div className={`${SHELL_HEADER_CLASS} bg-white/95 px-3.5`}>
+        <div className={`${SHELL_HEADER_CLASS} shrink-0 bg-white px-3`}>
           <Link href="/dashboard" className="flex h-full w-full items-center" aria-label="Inicio">
-            <BrandLogo variant="sidebar" />
+            <BrandLogo variant="sidebar" className="!max-h-14" />
           </Link>
         </div>
         <div className="flex min-h-0 flex-1 flex-col">

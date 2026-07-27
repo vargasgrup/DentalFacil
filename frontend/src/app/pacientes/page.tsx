@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -90,6 +91,10 @@ export default function PacientesPage() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [especialidadFilter, estadoFilter]);
+
+  useAppRefresh(() => {
+    void load();
+  });
 
   useEffect(() => {
     if (!menuId) return;

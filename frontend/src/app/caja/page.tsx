@@ -15,6 +15,7 @@ import { TransactionsTable } from "@/components/caja/TransactionsTable";
 import type { CashSession, CashTransaction, CloseSummary, PaymentTarget } from "@/components/caja/types";
 import { isAbonoConcepto, round2 } from "@/components/caja/utils";
 import type { PickedPatient } from "@/components/PatientPicker";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 
 export default function CajaPage() {
   const [session, setSession] = useState<CashSession | null>(null);
@@ -112,6 +113,10 @@ export default function CajaPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useAppRefresh(() => {
+    void loadData();
+  });
 
   useEffect(() => {
     if (!incomePatient?.id) {

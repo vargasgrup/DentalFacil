@@ -8,7 +8,6 @@ import {
   Banknote,
   Stethoscope,
   Users,
-  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, StatCard } from "@/components/ui/Card";
@@ -17,6 +16,7 @@ import { PageContainer } from "@/components/ui/PageContainer";
 import { Input } from "@/components/Input";
 import { DocumentActions } from "@/components/DocumentActions";
 import { apiFetch, getToken } from "@/lib/api";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 
 type ReportType = "caja" | "pacientes" | "tratamientos";
 
@@ -142,6 +142,10 @@ export default function ReportesPage() {
     void loadResumen();
   }, [loadResumen]);
 
+  useAppRefresh(() => {
+    void loadResumen();
+  });
+
   const runReport = async () => {
     if (!start || !end) {
       setError("Selecciona un rango de fechas");
@@ -206,18 +210,10 @@ export default function ReportesPage() {
         <div>
           <h1 className="text-page-title text-slate-800">Reportes</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Vista consolidada de Agenda, Ficha clínica y Caja. Los datos se actualizan al
-            generar o al cambiar el período.
+            Vista consolidada de Agenda, Ficha clínica y Caja. Use Actualizar en la barra
+            superior o cambie el período para refrescar los KPIs.
           </p>
         </div>
-        <Button
-          variant="secondary"
-          icon={<RefreshCw className="h-3.5 w-3.5" />}
-          loading={resumenLoading}
-          onClick={() => void loadResumen()}
-        >
-          Actualizar KPIs
-        </Button>
       </div>
 
       {error && (

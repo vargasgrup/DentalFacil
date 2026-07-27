@@ -11,7 +11,6 @@ import {
   FileText,
   Plus,
   X,
-  RefreshCw,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime, formatTime, localDateTimeToISO, localTimeToMinutes } from "@/lib/datetime";
@@ -28,6 +27,7 @@ import { PacienteFichaLink } from "@/components/PacienteFichaLink";
 import { PatientPicker, type PickedPatient } from "@/components/PatientPicker";
 import { SpecialtySelect } from "@/components/SpecialtySelect";
 import { TreatmentAutocomplete } from "@/components/TreatmentAutocomplete";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 import {
   CalendarAppointment,
   DEFAULT_CLOSE,
@@ -185,6 +185,11 @@ function AgendaPageInner() {
     loadAppointments();
   }, [loadAppointments]);
 
+  useAppRefresh(() => {
+    setLoading(true);
+    void loadAppointments();
+  });
+
   const filtered = useMemo(() => {
     return appointments.filter((a) => {
       if (estadoFilter !== "todos" && a.estado !== estadoFilter) return false;
@@ -339,16 +344,6 @@ function AgendaPageInner() {
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => openNewForm()} icon={<Plus className="h-4 w-4" />}>
             Nueva cita
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setLoading(true);
-              loadAppointments();
-            }}
-            icon={<RefreshCw className="h-3.5 w-3.5" />}
-          >
-            Actualizar
           </Button>
           <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5">
             {viewTabs.map((t) => (

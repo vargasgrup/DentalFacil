@@ -661,7 +661,9 @@ def get_clinic_logo_file(db: Session = Depends(get_db)):
         profile.logo_abs_path,
         media_type=media,
         headers={
-            "Cache-Control": "public, max-age=120, must-revalidate",
+            # Always revalidate — clinic logo must flip instantly after upload.
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
         },
     )
 

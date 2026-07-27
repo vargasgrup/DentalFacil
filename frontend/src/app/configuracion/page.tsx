@@ -228,19 +228,26 @@ export default function ConfiguracionPage() {
       fd.append("file", file);
       const updated = await apiUpload<ClinicProfile>("/api/config/clinic/logo", fd);
       setClinic(updated);
-      notifyClinicProfileUpdated(updated);
+      // Broadcast BEFORE preview fetch so sidebar/login flip immediately.
+      notifyClinicProfileUpdated({
+        ...updated,
+        logo_version: updated.logo_version ?? Date.now(),
+      });
       const token = getToken();
       const res = await fetch(updated.logo_url || "/api/config/clinic/logo-file", {
+        cache: "no-store",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.ok) {
         const blob = await res.blob();
         setLogoPreview((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
+          if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
           return URL.createObjectURL(blob);
         });
+      } else if (updated.has_custom_logo && updated.logo_url) {
+        setLogoPreview(updated.logo_url);
       }
-      setClinicMsg("Logo actualizado. Se aplica de inmediato en toda la aplicación y en los documentos.");
+      setClinicMsg("Logo actualizado en todo el sistema.");
     } catch (err: unknown) {
       setClinicMsg(err instanceof Error ? err.message : "Error al subir logo");
     } finally {

@@ -15,10 +15,10 @@ export const SHELL_TOPBAR_CLASS = [
   "backdrop-blur-xl backdrop-saturate-150",
 ].join(" ");
 
-/** Sidebar brand strip — calm white to frame the tinted topbar. */
+/** Sidebar logo cell — same chrome wash as topbar (seamless L-shaped header). */
 export const SHELL_SIDEBAR_BRAND_CLASS = [
   SHELL_HEADER_CLASS,
-  "border-b border-slate-200/80 bg-white px-3",
+  "topbar-chrome relative border-b border-brand-100/80 px-3",
 ].join(" ");
 
 /** Desktop/tablet sidebar rail width (keep in sync with AppShell padding). */

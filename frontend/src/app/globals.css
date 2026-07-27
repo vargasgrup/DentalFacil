@@ -214,7 +214,7 @@ p {
   background: #f8fafc;
 }
 
-/* Premium topbar — soft brand-slate wash (not flat white) */
+/* Premium app chrome — soft brand-slate wash (topbar + logo cell) */
 .topbar-chrome {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(238, 246, 255, 0.72) 100%),
@@ -239,6 +239,11 @@ p {
     rgba(28, 102, 232, 0.35) 65%,
     transparent 100%
   );
+}
+
+/* Soften the vertical seam between logo cell and topbar */
+aside[aria-label="Barra de navegación"] {
+  border-right-color: rgba(191, 219, 254, 0.65);
 }
 
 .dash-kpi {

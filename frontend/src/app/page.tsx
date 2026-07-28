@@ -294,7 +294,7 @@ export default function LoginPage() {
         panelTitle={panelTitle}
         footer={
           <footer className="flex flex-col items-center gap-1.5 text-center text-[0.75rem] text-slate-500">
-            <p>© {new Date().getFullYear()} {displayName} · Todos los derechos reservados.</p>
+            <p>© {new Date().getFullYear()} N&amp;K Systemas S.A.C. · Todos los derechos reservados.</p>
             <button
               type="button"
               className="font-medium text-[#2B9FD9] underline-offset-2 transition-colors hover:text-[#1c66e8] hover:underline"

@@ -42,17 +42,25 @@ p {
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 11px;
+  height: 11px;
 }
 ::-webkit-scrollbar-track {
-  @apply bg-transparent;
+  background: #e2e8f0;
+  border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb {
-  @apply rounded-full bg-slate-300;
+  background: #94a3b8;
+  border-radius: 999px;
+  border: 2px solid #e2e8f0;
 }
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-slate-400;
+  background: #64748b;
+}
+
+html {
+  scrollbar-width: auto;
+  scrollbar-color: #94a3b8 #e2e8f0;
 }
 
 @media print {
@@ -323,9 +331,13 @@ p {
   );
 }
 
-/* Soften the vertical seam between logo cell and topbar */
+/* Vertical nav rail — stronger edge so the rail reads as a clear column */
 aside[aria-label="Barra de navegación"] {
-  border-right-color: rgba(191, 219, 254, 0.65);
+  border-right-width: 1px;
+  border-right-color: #94a3b8;
+  box-shadow:
+    8px 0 28px -14px rgba(15, 23, 42, 0.32),
+    inset -1px 0 0 rgba(148, 163, 184, 0.35);
 }
 
 .dash-kpi {
@@ -454,17 +466,17 @@ aside[aria-label="Barra de navegación"] {
   -webkit-backdrop-filter: blur(18px) saturate(1.35);
 }
 
-/* Login hero: crop to dental equipment (right); hide patient/dentist (left) */
+/* Login hero: asset is pre-cropped to equipment (dental-equipment-bg-v2) */
 .login-hero-img {
-  object-position: 82% 42%;
-  transform: scale(1.12);
-  transform-origin: 85% 45%;
+  object-position: 50% 42%;
+  transform: scale(1.04);
+  transform-origin: center center;
 }
 
 @media (min-width: 1280px) {
   .login-hero-img {
-    object-position: 88% 40%;
-    transform: scale(1.18);
+    object-position: 50% 40%;
+    transform: scale(1.06);
   }
 }
 
@@ -474,23 +486,26 @@ aside[aria-label="Barra de navegación"] {
   justify-content: safe center;
 }
 
-/* Vertical nav — thin, friendly scrollbar */
+/* Vertical nav — visible scrollbar so the rail feels interactive */
 .sidebar-nav {
-  scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-width: auto;
+  scrollbar-color: #64748b #e2e8f0;
 }
 .sidebar-nav::-webkit-scrollbar {
-  width: 6px;
+  width: 10px;
 }
 .sidebar-nav::-webkit-scrollbar-track {
-  background: transparent;
+  background: #e2e8f0;
+  border-radius: 999px;
+  margin-block: 4px;
 }
 .sidebar-nav::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
+  background-color: #64748b;
   border-radius: 999px;
+  border: 2px solid #e2e8f0;
 }
 .sidebar-nav::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8;
+  background-color: #475569;
 }
 
 .login-premium__card {

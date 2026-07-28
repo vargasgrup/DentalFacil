@@ -33,11 +33,11 @@ export function LoginPremiumShell({
       {/* safe center: centers when it fits; top-aligns when content is taller than the screen */}
       <div className="relative z-[1] mx-auto flex w-full max-w-[min(980px,100%)] flex-1 flex-col justify-safe-center px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
         <div className="login-premium__card grid w-full overflow-hidden rounded-[20px] bg-white shadow-[0_24px_80px_-28px_rgba(15,23,42,0.35),0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[24px] lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
-          {/* Visual pane — equipment crop (right of Odontologia-Moderna); height follows form */}
+          {/* Visual pane — pre-cropped equipment hero (v2 URL busts WebView cache of old HUD) */}
           <aside className="login-premium__visual relative hidden overflow-hidden lg:block">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/login/dental-hud-bg.webp"
+              src="/login/dental-equipment-bg-v2.webp?v=20260727"
               alt=""
               className="login-hero-img absolute inset-0 h-full w-full object-cover"
               decoding="async"
@@ -69,7 +69,7 @@ export function LoginPremiumShell({
           <div className="login-premium__strip relative h-[112px] overflow-hidden sm:h-[128px] lg:hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/login/dental-hud-bg.webp"
+              src="/login/dental-equipment-bg-v2.webp?v=20260727"
               alt=""
               className="login-hero-img absolute inset-0 h-full w-full object-cover"
               decoding="async"

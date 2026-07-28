@@ -17,9 +17,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen bg-surface-muted">
       <MaintenanceAlert />
 
-      {/* Desktop / tablet sidebar */}
+      {/* Desktop / tablet sidebar — stronger rail contrast vs content */}
       <aside
-        className={`fixed left-0 top-0 z-30 hidden h-dvh ${SHELL_SIDEBAR_WIDTH} flex-col border-r border-slate-200/90 bg-gradient-to-b from-slate-100 via-slate-50 to-white shadow-[6px_0_28px_-16px_rgba(15,23,42,0.35)] md:flex`}
+        className={`fixed left-0 top-0 z-30 hidden h-dvh ${SHELL_SIDEBAR_WIDTH} flex-col border-r border-slate-400/80 bg-gradient-to-b from-slate-200 via-slate-100 to-slate-50 shadow-[10px_0_32px_-12px_rgba(15,23,42,0.38)] md:flex`}
         aria-label="Barra de navegación"
       >
         <div className={`${SHELL_SIDEBAR_BRAND_CLASS} shrink-0`}>
@@ -41,7 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             aria-hidden
           />
           <aside
-            className={`fixed left-0 top-0 z-50 flex h-screen w-[min(18.5rem,88vw)] flex-col border-r border-slate-200 bg-gradient-to-b from-slate-100 via-slate-50 to-white shadow-2xl md:hidden`}
+            className={`fixed left-0 top-0 z-50 flex h-screen w-[min(18.5rem,88vw)] flex-col border-r border-slate-400/80 bg-gradient-to-b from-slate-200 via-slate-100 to-slate-50 shadow-2xl md:hidden`}
             role="dialog"
             aria-modal="true"
             aria-label="Menú de navegación"

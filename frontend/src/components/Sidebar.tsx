@@ -61,7 +61,7 @@ function NavSection({
   if (items.length === 0) return null;
   return (
     <div className="space-y-1">
-      <p className="sticky top-0 z-[1] bg-gradient-to-b from-slate-100 via-slate-100/95 to-slate-100/80 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 backdrop-blur-[2px]">
+      <p className="sticky top-0 z-[1] bg-gradient-to-b from-slate-200 via-slate-200/95 to-slate-100/90 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 backdrop-blur-[2px]">
         {title}
       </p>
       <div className="space-y-0.5 px-0.5">

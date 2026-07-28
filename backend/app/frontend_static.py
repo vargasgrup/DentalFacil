@@ -51,6 +51,11 @@ def _meipass_dir() -> Path | None:
 
 
 def ensure_web_dir_beside_exe() -> None:
+    """Mirror packaged UI beside the exe; refresh on upgrade when MEIPASS is newer.
+
+    Without a refresh, an old ``install/web`` (with a stale login HUD) can shadow
+    the updated ``_internal/web`` after an installer upgrade.
+    """
     global _mirror_attempted
     if _mirror_attempted:
         return
@@ -61,9 +66,27 @@ def ensure_web_dir_beside_exe() -> None:
         return
     dest = install / "web"
     src = meipass / "web"
-    if (dest / "index.html").is_file():
-        return
     if not (src / "index.html").is_file():
+        return
+
+    need_sync = not (dest / "index.html").is_file()
+    if not need_sync:
+        try:
+            src_mtime = (src / "index.html").stat().st_mtime
+            dest_mtime = (dest / "index.html").stat().st_mtime
+            if src_mtime > dest_mtime + 1:
+                need_sync = True
+            else:
+                # Force refresh when the new equipment login hero is missing
+                # (upgrade left an older web/ tree with only dental-hud-bg.webp).
+                hero = dest / "login" / "dental-equipment-bg-v2.webp"
+                src_hero = src / "login" / "dental-equipment-bg-v2.webp"
+                if src_hero.is_file() and not hero.is_file():
+                    need_sync = True
+        except OSError:
+            need_sync = True
+
+    if not need_sync:
         return
     try:
         if dest.exists():
@@ -174,6 +197,7 @@ class SpaStaticFiles(StaticFiles):
         try:
             response = await super().get_response(path_norm, scope)
             if getattr(response, "status_code", 200) != 404:
+                self._apply_asset_cache_headers(path_norm, response)
                 return response
         except StarletteHTTPException as exc:
             if exc.status_code != 404:
@@ -182,11 +206,21 @@ class SpaStaticFiles(StaticFiles):
         alt = pick_ui_relpath(self._root, path_norm)
         if alt and alt != path_norm.lstrip("/"):
             try:
-                return await super().get_response(alt, scope)
+                response = await super().get_response(alt, scope)
+                self._apply_asset_cache_headers(alt, response)
+                return response
             except StarletteHTTPException:
                 pass
 
         raise StarletteHTTPException(status_code=404, detail="Not Found")
+
+    @staticmethod
+    def _apply_asset_cache_headers(path: str, response: Response) -> None:
+        """Avoid sticky WebView caches for HTML shells and login hero art."""
+        lower = (path or "").replace("\\", "/").lower()
+        if lower.endswith((".html",)) or "/login/" in lower or lower.startswith("login/"):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
 
 
 _MISSING_UI_HTML = """<!DOCTYPE html>

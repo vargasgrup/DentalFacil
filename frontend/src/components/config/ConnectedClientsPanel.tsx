@@ -79,6 +79,17 @@ function uniqueSubnets(urls: string[]): string[] {
   return [...set];
 }
 
+function formatLoadError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 404) {
+      return "El servidor no expone aún la API de red local. Actualice el Backend (escritorio) o use esta sección solo en el Server LAN.";
+    }
+    return err.message || "No se pudo cargar la red de la clínica";
+  }
+  if (err instanceof Error) return err.message;
+  return "No se pudo cargar la red de la clínica";
+}
+
 /** Static panel for Railway / public web — no LAN polling. */
 function WebCloudClientsNotice() {
   return (

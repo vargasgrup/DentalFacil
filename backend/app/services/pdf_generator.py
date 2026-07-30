@@ -504,12 +504,13 @@ def generate_pdf(
     elif doc_type == "reporte":
         _build_reporte(story, data, styles, fmt)
 
-    # Footer
-    story.append(Spacer(1, 10))
-    story.append(Paragraph(
-        "Documento interno — no válido como comprobante tributario",
-        styles["small"],
-    ))
+    # Footer (no aplica a consentimientos informados — documento clínico/legal)
+    if doc_type != "consentimiento":
+        story.append(Spacer(1, 10))
+        story.append(Paragraph(
+            "Documento interno — no válido como comprobante tributario",
+            styles["small"],
+        ))
 
     pdf_bytes = _render_pdf_bytes(story, fmt, margin)
 

@@ -57,15 +57,26 @@ function roleTone(role: string): "brand" | "success" | "warning" | "neutral" {
   return "neutral";
 }
 
-function formatLoadError(err: unknown): string {
-  if (err instanceof ApiError) {
-    if (err.status === 404) {
-      return "El servidor no expone aún la API de red local. Actualice el Backend (escritorio) o use esta sección solo en el Server LAN.";
+function subnetLabel(url: string): string {
+  try {
+    const host = new URL(url).hostname;
+    const parts = host.split(".");
+    if (parts.length === 4 && parts.every((p) => /^\d+$/.test(p))) {
+      return `${parts[0]}.${parts[1]}.${parts[2]}.x`;
     }
-    return err.message || "No se pudo cargar la red de la clínica";
+  } catch {
+    /* ignore */
   }
-  if (err instanceof Error) return err.message;
-  return "No se pudo cargar la red de la clínica";
+  return "";
+}
+
+function uniqueSubnets(urls: string[]): string[] {
+  const set = new Set<string>();
+  for (const u of urls) {
+    const s = subnetLabel(u);
+    if (s) set.add(s);
+  }
+  return [...set];
 }
 
 /** Static panel for Railway / public web — no LAN polling. */
@@ -297,6 +308,17 @@ function LanConnectedClientsPanel() {
           {lan?.hint ||
             "En el Client: Pegar URL (botón Copiar abajo). Red Privada, sin VPN. Puerto TCP 8001."}
         </p>
+        {uniqueSubnets(lan?.client_urls || []).length > 1 ? (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
+            <p className="font-semibold">Varias redes en este PC servidor</p>
+            <p className="mt-1 text-amber-900/90">
+              El Client debe usar la URL de <span className="font-semibold">su misma subred</span>.
+              Ejemplo: si el Client tiene IP <span className="font-mono">192.168.100.200</span>,
+              copie <span className="font-mono">http://192.168.100.…:8001/</span> — no la Ethernet
+              de otra red (<span className="font-mono">192.168.0.…</span>).
+            </p>
+          </div>
+        ) : null}
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-brand-800">
           <Wifi className="h-3.5 w-3.5" aria-hidden />
           Escucha:{" "}
@@ -316,45 +338,54 @@ function LanConnectedClientsPanel() {
           <span className="font-mono">%ProgramData%\NKDentalSoft\IP-DEL-SERVIDOR.txt</span>).
         </p>
         <ul className="mt-3 space-y-2">
-          {(lan?.recommended_url || lan?.client_urls?.[0]) && (
-            <li className="flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-brand-300 bg-white px-3 py-3 shadow-sm">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-brand-700">
-                  URL para Clients (copiar esta)
-                </div>
-                <code className="text-base font-semibold text-slate-900">
-                  {lan.recommended_url || lan.client_urls[0]}
-                </code>
-              </div>
-              <Button
-                type="button"
-                className="!px-4 !py-2"
-                icon={<Copy className="h-3.5 w-3.5" />}
-                onClick={() => void copyUrl(lan.recommended_url || lan.client_urls[0])}
-              >
-                {copied === (lan.recommended_url || lan.client_urls[0]) ? "Copiado" : "Copiar"}
-              </Button>
-            </li>
-          )}
-          {(lan?.client_urls || [])
-            .filter((url) => url !== (lan?.recommended_url || lan?.client_urls?.[0]))
-            .map((url) => (
+          {(lan?.client_urls || []).map((url, idx) => {
+            const subnet = subnetLabel(url);
+            const isRecommended = url === (lan?.recommended_url || lan?.client_urls?.[0]);
+            return (
               <li
                 key={url}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-100 bg-white px-3 py-2"
+                className={
+                  isRecommended
+                    ? "flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-brand-300 bg-white px-3 py-3 shadow-sm"
+                    : "flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-100 bg-white px-3 py-2"
+                }
               >
-                <code className="text-sm text-slate-800">{url}</code>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-brand-700">
+                    {isRecommended ? "URL Ethernet preferida" : "URL alternativa"}
+                    {subnet ? (
+                      <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono normal-case text-slate-700">
+                        red {subnet}
+                      </span>
+                    ) : null}
+                  </div>
+                  <code
+                    className={
+                      isRecommended
+                        ? "text-base font-semibold text-slate-900"
+                        : "text-sm text-slate-800"
+                    }
+                  >
+                    {url}
+                  </code>
+                  {idx === 0 && uniqueSubnets(lan?.client_urls || []).length > 1 ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Si el Client no conecta, pruebe la otra URL (misma subred que el Client).
+                    </p>
+                  ) : null}
+                </div>
                 <Button
                   type="button"
-                  variant="secondary"
-                  className="!px-3 !py-1.5 text-xs"
+                  variant={isRecommended ? "primary" : "secondary"}
+                  className={isRecommended ? "!px-4 !py-2" : "!px-3 !py-1.5 text-xs"}
                   icon={<Copy className="h-3.5 w-3.5" />}
                   onClick={() => void copyUrl(url)}
                 >
                   {copied === url ? "Copiado" : "Copiar"}
                 </Button>
               </li>
-            ))}
+            );
+          })}
           {(lan?.client_urls || []).length === 0 ? (
             <li className="text-sm text-brand-900/70">
               No se detectó IP LAN útil. Active Ethernet o el Hotspot de clínica. Local:{" "}

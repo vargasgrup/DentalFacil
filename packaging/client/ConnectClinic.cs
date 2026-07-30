@@ -518,6 +518,70 @@ namespace NkDentalSoft.Client
             catch { return false; }
         }
 
+        public static string HostFromUrl(string url)
+        {
+            try
+            {
+                var raw = (url ?? "").Trim();
+                if (string.IsNullOrEmpty(raw)) return "";
+                if (!raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                    !raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    raw = "http://" + raw;
+                return new Uri(raw).Host;
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>
+        /// Prefer servers on the same /24 as this PC (avoids Ethernet URL when Client is on Wi-Fi subnet).
+        /// </summary>
+        public static List<ServerHit> PreferSameSubnet(IEnumerable<ServerHit> hits)
+        {
+            var list = new List<ServerHit>();
+            if (hits != null) list.AddRange(hits);
+            if (list.Count <= 1) return list;
+
+            var local = LocalLanIps();
+            int Score(ServerHit h)
+            {
+                var host = HostFromUrl(h.Url);
+                if (string.IsNullOrEmpty(host)) return 100;
+                foreach (var lip in local)
+                {
+                    if (SameSubnet24(lip, host)) return 0;
+                }
+                if (host == "127.0.0.1" || host == "::1") return 50;
+                return 20;
+            }
+
+            list.Sort((a, b) =>
+            {
+                var c = Score(a).CompareTo(Score(b));
+                if (c != 0) return c;
+                return string.CompareOrdinal(a.Url, b.Url);
+            });
+            return list;
+        }
+
+        /// <summary>
+        /// If the typed URL is on another subnet, discover a live Server on this PC's LAN.
+        /// </summary>
+        public static ServerHit FindReachableOnLocalSubnet(Action<string> status, CancellationToken ct)
+        {
+            var ranked = PreferSameSubnet(FindServers(status, ct));
+            var local = LocalLanIps();
+            foreach (var h in ranked)
+            {
+                var host = HostFromUrl(h.Url);
+                if (string.IsNullOrEmpty(host) || host == "127.0.0.1") continue;
+                foreach (var lip in local)
+                {
+                    if (SameSubnet24(lip, host)) return h;
+                }
+            }
+            return ranked.Count > 0 ? ranked[0] : null;
+        }
+
         public static List<string> LanPrefixes()
         {
             var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -948,12 +1012,13 @@ namespace NkDentalSoft.Client
                 }, token);
 
                 if (IsDisposed) return;
-                _hits.AddRange(hits ?? new List<ServerHit>());
+                var ranked = Discovery.PreferSameSubnet(hits ?? new List<ServerHit>());
+                _hits.AddRange(ranked);
                 foreach (var h in _hits) _list.Items.Add(h.ToString());
 
                 if (_hits.Count == 0)
                 {
-                    _status.Text = "No se encontro servidor. En el PC servidor pulse Copiar (Configuracion) y aqui Pegar URL — o escriba 192.168.100.28";
+                    _status.Text = "No se encontro servidor. En el PC servidor pulse Copiar (Configuracion) y aqui Pegar URL — use la URL de SU misma subred.";
                     if (string.IsNullOrWhiteSpace(_manual.Text) || _manual.Text == "192.168.")
                         _manual.Text = "192.168.100.";
                     _manual.Focus();
@@ -961,9 +1026,19 @@ namespace NkDentalSoft.Client
                 }
                 else
                 {
-                    _status.Text = "Se encontraron " + _hits.Count + " servidor(es). Pulse Conectar.";
+                    var best = _hits[0];
+                    var bestHost = Discovery.HostFromUrl(best.Url);
+                    var local = Discovery.LocalLanIps();
+                    var same = false;
+                    foreach (var lip in local)
+                    {
+                        if (Discovery.SameSubnet24(lip, bestHost)) { same = true; break; }
+                    }
+                    _status.Text = same
+                        ? ("Servidor en su red: " + best.Url + " — pulse Conectar.")
+                        : ("Se encontraron " + _hits.Count + " servidor(es). Prefiera la IP de su misma subred.");
                     _list.SelectedIndex = 0;
-                    _manual.Text = _hits[0].Url;
+                    _manual.Text = best.Url;
                 }
             }
             catch (OperationCanceledException) { _status.Text = "Busqueda cancelada."; }
@@ -1033,13 +1108,68 @@ namespace NkDentalSoft.Client
                 }
                 catch { }
 
+                // Wrong NIC / subnet (e.g. Ethernet 192.168.0.x while Client is on Wi-Fi 192.168.100.x):
+                // auto-discover a live Server on THIS PC's subnet and offer to switch.
+                if (!sameNet && localIps.Count > 0)
+                {
+                    _status.Text = "La URL no esta en su red. Buscando servidor en " +
+                                   string.Join(", ", localIps.ToArray()) + "...";
+                    Application.DoEvents();
+                    ServerHit alt = null;
+                    try
+                    {
+                        using (var cts = new CancellationTokenSource(12000))
+                        {
+                            alt = Discovery.FindReachableOnLocalSubnet(msg =>
+                            {
+                                try { _status.Text = msg; Application.DoEvents(); } catch { }
+                            }, cts.Token);
+                        }
+                    }
+                    catch (Exception ex) { Logger.Info("subnet rescue: " + ex.Message); }
+
+                    if (alt != null)
+                    {
+                        var altHost = Discovery.HostFromUrl(alt.Url);
+                        var altSame = false;
+                        foreach (var lip in localIps)
+                        {
+                            if (Discovery.SameSubnet24(lip, altHost)) { altSame = true; break; }
+                        }
+                        if (altSame || Discovery.ProbeUrl(alt.Url, 2000) != null)
+                        {
+                            var ans = MessageBox.Show(
+                                "La URL pegada (" + hostOnly + ") NO esta en la misma red que este PC (" +
+                                string.Join(", ", localIps.ToArray()) + ").\n\n" +
+                                "Se encontro el servidor en SU red:\n" + alt.Url + "\n\n" +
+                                "Conectar a esa URL? (recomendado)",
+                                "Usar servidor en su misma red",
+                                MessageBoxButtons.YesNo,
+                                MessageBoxIcon.Question);
+                            if (ans == DialogResult.Yes)
+                            {
+                                _manual.Text = alt.Url;
+                                var ok = Discovery.ProbeUrl(alt.Url, 2500);
+                                if (ok != null)
+                                {
+                                    Launcher.Open(ok.Url);
+                                    Close();
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 var extra = LanRepair.DetectVpnWarning() ?? LanRepair.DetectPublicNetworkWarning() ?? "";
                 string diag;
                 if (!sameNet && localIps.Count > 0 && Regex.IsMatch(hostOnly ?? "", @"^\d+\.\d+\.\d+\.\d+$"))
                 {
                     diag = "La IP del Server (" + hostOnly + ") NO esta en la misma red que este PC (" +
                            string.Join(", ", localIps.ToArray()) +
-                           "). En el Server pulse Copiar de nuevo (la IP pudo cambiar) o active el Hotspot de clinica.";
+                           "). En Configuracion del Server copie la URL de ESTA misma subred " +
+                           "(si el Server muestra varias IPs, no use la Ethernet de otra red). " +
+                           "O pulse Buscar aqui, o active Hotspot de clinica.";
                 }
                 else if (pingOk)
                 {
@@ -1048,7 +1178,7 @@ namespace NkDentalSoft.Client
                 else
                 {
                     diag = "No hay ping a " + hostOnly +
-                           ". Causas: IP vieja (Server ya no es .28), VPN, o aislamiento del router. " +
+                           ". Causas: IP vieja, VPN, o aislamiento del router. " +
                            "Solucion robusta: en el Server active Hotspot de clinica y conecte los Clients a ese Wi-Fi; IP tipica http://192.168.137.1:8001/";
                 }
 

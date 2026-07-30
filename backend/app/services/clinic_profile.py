@@ -51,6 +51,18 @@ class ClinicProfile:
         return " — ".join([p for p in parts if p])
 
     @property
+    def lugar_emision(self) -> str:
+        """Lugar para fecha/lugar en documentos legales (Configuración → ubigeo).
+
+        Prioridad: distrito → provincia → departamento. Sin default 'Lima'.
+        """
+        for part in (self.distrito, self.provincia, self.departamento):
+            value = (part or "").strip()
+            if value:
+                return value
+        return ""
+
+    @property
     def linea_contacto(self) -> str:
         """Dirección + teléfono (vacío si no hay datos reales)."""
         bits = [b for b in [self.direccion_completa or None, self.telefono or None] if b]

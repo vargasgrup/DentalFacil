@@ -774,6 +774,15 @@ def _spanish_long_date(dt: datetime | None = None) -> str:
     return f"{d.day} de {months[d.month - 1]} de {d.year}"
 
 
+def _consent_place_and_date(profile) -> str:
+    """Fecha y lugar del consentimiento: lugar desde Configuración (nunca 'Lima' fijo)."""
+    place = (getattr(profile, "lugar_emision", None) or "").strip()
+    date_txt = _spanish_long_date()
+    if place:
+        return f"En {_escape_xml(place)}, a {date_txt}."
+    return f"En ________________, a {date_txt}."
+
+
 def _escape_xml(text: str) -> str:
     return (
         (text or "")
@@ -880,7 +889,7 @@ def _build_consentimiento(story: list, data: dict, styles: dict, fmt: str):
     story.append(Spacer(1, 10))
     story.append(
         Paragraph(
-            f"En Lima, a {_spanish_long_date()}.",
+            _consent_place_and_date(profile),
             styles["body"],
         )
     )

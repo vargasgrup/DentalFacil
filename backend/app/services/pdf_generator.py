@@ -775,7 +775,7 @@ def _spanish_long_date(dt: datetime | None = None) -> str:
 
 
 def _consent_place_and_date(profile) -> str:
-    """Fecha y lugar del consentimiento: lugar desde Configuración (nunca 'Lima' fijo)."""
+    """Fecha y lugar del consentimiento: solo distrito desde Configuración."""
     place = (getattr(profile, "lugar_emision", None) or "").strip()
     date_txt = _spanish_long_date()
     if place:

@@ -52,15 +52,8 @@ class ClinicProfile:
 
     @property
     def lugar_emision(self) -> str:
-        """Lugar para fecha/lugar en documentos legales (Configuración → ubigeo).
-
-        Prioridad: distrito → provincia → departamento. Sin default 'Lima'.
-        """
-        for part in (self.distrito, self.provincia, self.departamento):
-            value = (part or "").strip()
-            if value:
-                return value
-        return ""
+        """Lugar para fecha/lugar en consentimientos: solo distrito (Configuración)."""
+        return (self.distrito or "").strip()
 
     @property
     def linea_contacto(self) -> str:

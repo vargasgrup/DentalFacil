@@ -3,6 +3,7 @@
 import { ArrowRight, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Odontograma } from "@/components/Odontograma";
+import { DocumentActions } from "@/components/DocumentActions";
 import { PruebasComplementarias } from "@/components/PruebasComplementarias";
 import { TreatmentAutocomplete } from "@/components/TreatmentAutocomplete";
 import { Section } from "@/components/clinical/Section";

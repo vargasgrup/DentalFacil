@@ -323,14 +323,48 @@ def download_evolucion(
     return _pdf_response(pdf_bytes, filename, doc_id)
 
 
+@router.get("/consentimiento-tipos")
+def list_consentimiento_tipos(
+    user: User = Depends(get_current_user),
+):
+    """Catálogo de consentimientos oficiales (COP) disponibles."""
+    from app.services.consent_official_templates import list_consent_templates
+
+    _ = user
+    out = []
+    for t in list_consent_templates():
+        body = (t.get("body") or "").strip()
+        if len(body) > 280:
+            cut = body[:280].rsplit(" ", 1)[0]
+            preview = f"{cut}…"
+        else:
+            preview = body
+        out.append(
+            {
+                "id": t["id"],
+                "label": t["label"],
+                "title": t["title"],
+                "preview": preview,
+            }
+        )
+    return out
+
+
 @router.get("/consentimiento/{patient_id}")
 def download_consentimiento(
     patient_id: str,
+    tipo: str | None = Query(
+        None,
+        description="Plantilla oficial COP (ej. endodoncia, ortodoncia)",
+    ),
     fmt: str = Query("A4", regex="^(80mm|A5|A4)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Generate and download an informed consent PDF."""
+    """Generate and download an informed consent PDF (membrete clínica + texto COP)."""
+    from app.services.clinic_profile import get_clinic_profile
+    from app.services.consent_official_templates import get_consent_template
+
     patient = db.get(Patient, patient_id)
     if not patient:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
@@ -339,20 +373,30 @@ def download_consentimiento(
         .filter(ClinicalRecord.patient_id == patient_id)
         .first()
     )
+    tpl = get_consent_template(tipo)
+    profile = get_clinic_profile(db)
 
     data = {
         "patient": {
             "nombres": patient.nombres,
             "apellidos": patient.apellidos,
             "numero_documento": patient.numero_documento,
+            "direccion": patient.direccion,
         },
-        "consentimiento_fecha": _format_date(record.consentimiento_fecha) if record and record.consentimiento_fecha else None,
-        "plan_items": [],
+        "doctor": {
+            "nombre": user.nombre,
+            "cop": profile.cop_registro,
+        },
+        "consent_tipo": tpl["id"],
+        "consent_title": tpl["title"],
+        "consentimiento_fecha": _format_date(record.consentimiento_fecha)
+        if record and record.consentimiento_fecha
+        else None,
+        "patient_nombre": f"{patient.nombres} {patient.apellidos}".strip(),
     }
-    if record and record.plan_tratamiento:
-        from app.odontogram.plans import active_items
-
-        data["plan_items"] = active_items(record.plan_tratamiento)
+    # Documentos legales: preferir A4/A5 (80mm queda ilegible)
+    if fmt == "80mm":
+        fmt = "A5"
     pdf_bytes, filename = generate_pdf("consentimiento", fmt, data)
     doc_id = _register_document(db, patient_id, "consentimiento", fmt, filename)
     return _pdf_response(pdf_bytes, filename, doc_id)

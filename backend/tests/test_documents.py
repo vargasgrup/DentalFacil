@@ -43,13 +43,26 @@ def test_consentimiento_whatsapp_mark_by_patient_tipo(
     patient: dict,
 ):
     """markSent must use DocumentGenerated (patient+tipo), not ClinicalRecord.id."""
+    tipos = client.get(
+        "/api/documents/consentimiento-tipos",
+        headers=admin_headers,
+    )
+    assert tipos.status_code == 200, tipos.text
+    catalog = tipos.json()
+    assert isinstance(catalog, list) and len(catalog) >= 10
+    assert all("id" in t and "label" in t for t in catalog)
+
     pdf = client.get(
-        f"/api/documents/consentimiento/{patient['id']}",
+        f"/api/documents/consentimiento/{patient['id']}?tipo=endodoncia&fmt=A4",
         headers=admin_headers,
     )
     assert pdf.status_code == 200, pdf.text
+    assert pdf.content[:4] == b"%PDF"
+    assert len(pdf.content) > 2500
     doc_id = pdf.headers.get("x-document-id")
     assert doc_id
+    cd = (pdf.headers.get("content-disposition") or "").lower()
+    assert "consentimiento" in cd and "endodoncia" in cd
 
     bad = client.post(
         f"/api/documents/whatsapp-sent/{patient['id']}",

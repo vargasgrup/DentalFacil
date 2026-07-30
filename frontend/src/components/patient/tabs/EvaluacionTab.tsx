@@ -3,7 +3,6 @@
 import { ArrowRight, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Odontograma } from "@/components/Odontograma";
-import { DocumentActions } from "@/components/DocumentActions";
 import { PruebasComplementarias } from "@/components/PruebasComplementarias";
 import { TreatmentAutocomplete } from "@/components/TreatmentAutocomplete";
 import { Section } from "@/components/clinical/Section";
@@ -16,7 +15,8 @@ import {
   type PlanItem,
   type TreatmentPlans,
 } from "@/lib/treatmentPlans";
-import { CONSENT_TEXT, FIELD_CLASS } from "../constants";
+import { ConsentimientoInformadoPanel } from "../ConsentimientoInformadoPanel";
+import { FIELD_CLASS } from "../constants";
 import type { ClinicalRecord, Patient, SaveState } from "../types";
 
 export interface EvaluacionTabProps {
@@ -31,7 +31,7 @@ export interface EvaluacionTabProps {
   setPlanItems: (items: PlanItem[] | ((prev: PlanItem[]) => PlanItem[])) => void;
   planTotals: { subtotal: number; a_cuenta: number; saldo: number };
   hasOdontogramSnapshot: boolean | null;
-  consentText: string;
+  consentText?: string;
   doctorDisplay: string;
   saveRecord: () => Promise<void>;
   recordSaved: SaveState;
@@ -55,7 +55,6 @@ export function EvaluacionTab({
   setPlanItems,
   planTotals,
   hasOdontogramSnapshot,
-  consentText,
   doctorDisplay,
   saveRecord,
   recordSaved,
@@ -393,63 +392,14 @@ export function EvaluacionTab({
       </Section>
 
       <Section title="Consentimiento informado" noSave>
-        <div className="space-y-4">
-          <div className="rounded-lg bg-surface-subtle p-4 text-sm leading-relaxed tracking-normal text-slate-600">
-            {consentText}
-          </div>
-
-          <p className="text-help text-slate-400">
-            Odontólogo: <span className="font-medium text-slate-600">{doctorDisplay}</span>
-            {" · "}
-            Paciente:{" "}
-            <span className="font-medium text-slate-600">
-              {patient.nombres} {patient.apellidos}
-            </span>
-          </p>
-          <p className="text-help text-slate-500">
-            Las firmas del odontólogo y del paciente se realizan en la hoja impresa.
-          </p>
-
-          <div className="flex flex-wrap items-center gap-4">
-            <button
-              type="button"
-              onClick={toggleConsentimiento}
-              disabled={inactive}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-smooth disabled:cursor-not-allowed disabled:opacity-50 ${
-                record.consentimiento_firmado
-                  ? "bg-success-50 text-success-700"
-                  : "bg-slate-100 text-slate-500"
-              }`}
-            >
-              <span
-                className={`flex h-5 w-5 items-center justify-center rounded ${
-                  record.consentimiento_firmado
-                    ? "bg-success-500 text-white"
-                    : "border border-slate-300"
-                }`}
-              >
-                {record.consentimiento_firmado ? "✓" : ""}
-              </span>
-              {record.consentimiento_firmado
-                ? "Consentimiento firmado"
-                : "Marcar como firmado"}
-            </button>
-            {record.consentimiento_fecha && (
-              <span className="text-sm text-slate-400">
-                {formatDateTime(record.consentimiento_fecha)}
-              </span>
-            )}
-          </div>
-
-          <DocumentActions
-            label="Consentimiento"
-            documentType="consentimiento"
-            downloadUrl={`/api/documents/consentimiento/${patientId}`}
-            telefono={patient.telefono}
-            mensaje={`Hola ${patient.nombres}, adjuntamos el consentimiento informado para tu tratamiento. Gracias.`}
-            markSentUrl={`/api/documents/whatsapp-sent?patient_id=${patientId}&tipo=consentimiento`}
-          />
-        </div>
+        <ConsentimientoInformadoPanel
+          patient={patient}
+          patientId={patientId}
+          record={record}
+          doctorDisplay={doctorDisplay}
+          inactive={inactive}
+          toggleConsentimiento={toggleConsentimiento}
+        />
       </Section>
 
       <Section title="Pruebas complementarias" noSave>

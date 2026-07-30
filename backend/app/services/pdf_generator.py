@@ -232,6 +232,34 @@ def _build_styles(fmt: str) -> dict:
             spaceAfter=4,
             textColor=colors.HexColor("#1e293b"),
         ),
+        "body_justify": ParagraphStyle(
+            "DocBodyJustify",
+            fontName="Helvetica",
+            fontSize=body_sz if fmt != "80mm" else max(7, body_sz - 0.5),
+            leading=(body_sz if fmt != "80mm" else max(7, body_sz - 0.5)) + 4,
+            spaceAfter=7,
+            alignment=4,  # TA_JUSTIFY
+            textColor=colors.HexColor("#1e293b"),
+        ),
+        "consent_title": ParagraphStyle(
+            "ConsentTitle",
+            fontName="Helvetica-Bold",
+            fontSize=body_sz + 2 if fmt != "80mm" else body_sz + 1,
+            leading=body_sz + 5,
+            alignment=1,
+            spaceAfter=10,
+            spaceBefore=2,
+            textColor=colors.HexColor("#0f172a"),
+        ),
+        "consent_meta": ParagraphStyle(
+            "ConsentMeta",
+            fontName="Helvetica",
+            fontSize=small_sz,
+            leading=small_sz + 2,
+            alignment=1,
+            spaceAfter=8,
+            textColor=colors.HexColor("#64748b"),
+        ),
         "body_right": ParagraphStyle(
             "DocBodyRight",
             fontName="Helvetica-Bold",
@@ -443,14 +471,24 @@ def generate_pdf(
     # Header (common to all) — official logo + clinic contact
     _append_document_header(story, styles, fmt)
 
-    story.append(Paragraph(type_labels.get(doc_type, doc_type.upper()), styles["section"]))
-    story.append(
-        Paragraph(
-            f"Fecha: {format_date_for_document(data.get('fecha') or datetime.now())}",
-            styles["small"],
+    # Consentimiento oficial: título propio del template COP (no etiqueta genérica)
+    if doc_type == "consentimiento" and data.get("consent_title"):
+        story.append(Paragraph(str(data["consent_title"]), styles["consent_title"]))
+        story.append(
+            Paragraph(
+                "Texto normativo adaptado · Colegio Odontológico del Perú",
+                styles["consent_meta"],
+            )
         )
-    )
-    story.append(Spacer(1, 6))
+    else:
+        story.append(Paragraph(type_labels.get(doc_type, doc_type.upper()), styles["section"]))
+        story.append(
+            Paragraph(
+                f"Fecha: {format_date_for_document(data.get('fecha') or datetime.now())}",
+                styles["small"],
+            )
+        )
+        story.append(Spacer(1, 6))
 
     # Dispatch to specific document builder
     if doc_type == "cierre_caja":
@@ -476,7 +514,11 @@ def generate_pdf(
     pdf_bytes = _render_pdf_bytes(story, fmt, margin)
 
     patient_name = data.get("patient_nombre", "")
-    fn_parts = [type_labels.get(doc_type, doc_type)]
+    if doc_type == "consentimiento":
+        tipo_label = data.get("consent_tipo") or "general"
+        fn_parts = ["Consentimiento", _safe_filename(str(tipo_label))]
+    else:
+        fn_parts = [type_labels.get(doc_type, doc_type)]
     if patient_name:
         fn_parts.append(_safe_filename(patient_name))
     fn_parts.append(datetime.now().strftime("%d-%m-%Y"))
@@ -713,68 +755,184 @@ def _build_evolucion(story: list, data: dict, styles: dict, fmt: str):
     ))
 
 
-def _build_consentimiento(story: list, data: dict, styles: dict, fmt: str):
-    """Informed consent."""
-    p = data.get("patient", {})
-    story.append(Paragraph(f"<b>Paciente:</b> {p.get('nombres', '')} {p.get('apellidos', '')}", styles["body"]))
-    story.append(Paragraph(f"DNI: {p.get('numero_documento', '—')}", styles["small"]))
-    story.append(Spacer(1, 8))
-
-    consent_text = (
-        "Por medio de la presente, el paciente manifiesta su consentimiento informado "
-        "para someterse al tratamiento odontológico descrito en el plan de tratamiento "
-        "vinculado a continuación. El odontólogo ha explicado el procedimiento, sus riesgos, "
-        "beneficios y alternativas. El paciente declara haber entendido la información "
-        "y acepta voluntariamente el tratamiento propuesto."
+def _spanish_long_date(dt: datetime | None = None) -> str:
+    months = (
+        "enero",
+        "febrero",
+        "marzo",
+        "abril",
+        "mayo",
+        "junio",
+        "julio",
+        "agosto",
+        "septiembre",
+        "octubre",
+        "noviembre",
+        "diciembre",
     )
-    story.append(Paragraph(consent_text, styles["body"]))
+    d = dt or datetime.now()
+    return f"{d.day} de {months[d.month - 1]} de {d.year}"
+
+
+def _escape_xml(text: str) -> str:
+    return (
+        (text or "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def _fill_consent_official_body(
+    body: str,
+    *,
+    doctor_name: str,
+    patient_name: str,
+    procedure_label: str = "",
+) -> str:
+    """Rellena blancos tipográficos del texto COP con datos reales."""
+    import re
+
+    text = (body or "").replace("[Título de la barra lateral]", "")
+    text = re.sub(r"[ \t]+", " ", text)
+
+    def _sub_blank(match: re.Match[str], value: str) -> str:
+        return f" {value.strip()} "
+
+    # Primeros blancos tras mención del profesional → odontólogo emisor
+    text, n = re.subn(
+        r"(Cirujano\s*[-–]?\s*Dentista|Odont[oó]logo/?Estomat[oó]logo|Odont[oó]logo|"
+        r"cirujano abajo firmante|doctor)\s*_{3,}",
+        lambda m: f"{m.group(1)} {doctor_name}",
+        text,
+        count=2,
+        flags=re.IGNORECASE,
+    )
+    if n == 0:
+        text = re.sub(
+            r"_{3,}",
+            lambda m: _sub_blank(m, doctor_name),
+            text,
+            count=1,
+        )
+
+    # Blancos restantes: paciente / procedimiento / observaciones manuscritas
+    remaining = list(
+        filter(
+            None,
+            [
+                patient_name,
+                procedure_label,
+                "____________________",
+            ],
+        )
+    )
+    for value in remaining:
+        if "___" not in text:
+            break
+        text = re.sub(r"_{3,}", lambda m, v=value: _sub_blank(m, v), text, count=1)
+
+    text = re.sub(r" {2,}", " ", text)
+    return text.strip()
+
+
+def _build_consentimiento(story: list, data: dict, styles: dict, fmt: str):
+    """Consentimiento oficial COP + membrete de clínica + datos reales."""
+    from app.services.consent_official_templates import get_consent_template
+
+    tpl = get_consent_template(data.get("consent_tipo"))
+    p = data.get("patient") or {}
+    doctor = data.get("doctor") or {}
+    profile = get_clinic_profile()
+
+    patient_name = f"{p.get('nombres', '')} {p.get('apellidos', '')}".strip() or "________________"
+    dni = str(p.get("numero_documento") or "____________")
+    address = str(p.get("direccion") or "").strip() or "________________________________"
+    doctor_name = str(doctor.get("nombre") or profile.director_nombre or "________________").strip()
+    cop = str(doctor.get("cop") or profile.cop_registro or "").strip()
+    label = str(tpl.get("label") or "")
+
+    # Identificación del paciente (membrete clínico; el cuerpo es el texto oficial COP)
+    id_line = (
+        f"<b>Paciente:</b> {_escape_xml(patient_name)} · "
+        f"<b>DNI:</b> {_escape_xml(dni)} · "
+        f"<b>Domicilio:</b> {_escape_xml(address)}"
+    )
+    story.append(Paragraph(id_line, styles["body"]))
+    doc_line = f"<b>Odontólogo que emite:</b> Dr(a). {_escape_xml(doctor_name)}"
+    if cop:
+        doc_line += f" · COP {_escape_xml(cop)}"
+    story.append(Paragraph(doc_line, styles["small"]))
     story.append(Spacer(1, 8))
 
-    plan_items = data.get("plan_items") or []
-    if plan_items:
-        story.append(Paragraph("Plan de tratamiento vinculado", styles["section"]))
-        page_w = FORMAT_DIMENSIONS[fmt][0]
-        margin = 3 * mm if fmt == "80mm" else 15 * mm
-        content_w = page_w - 2 * margin
-        rows = [["Pieza", "Tratamiento", "Estado", "Subtotal"]]
-        for it in plan_items:
-            cant = as_float(it.get("cantidad"), 1.0) or 1.0
-            unit = as_float(it.get("costo_unitario"), 0.0)
-            pieza = str(it.get("pieza_fdi") or "—")
-            rows.append([
-                pieza,
-                clean_treatment_label(it.get("item"), pieza_fdi=pieza if pieza != "—" else None),
-                strip_markdown_noise(str(it.get("estado") or "pendiente")),
-                format_price_plain(cant * unit),
-            ])
-        story.append(
-            _build_table(rows, [content_w * 0.15, content_w * 0.45, content_w * 0.2, content_w * 0.2], styles)
-        )
-        story.append(Spacer(1, 8))
+    filled = _fill_consent_official_body(
+        tpl.get("body") or "",
+        doctor_name=doctor_name,
+        patient_name=patient_name,
+        procedure_label=label,
+    )
+    for para in filled.split("\n\n"):
+        para = para.strip()
+        if not para:
+            continue
+        story.append(Paragraph(_escape_xml(para), styles["body_justify"]))
 
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 10))
+    story.append(
+        Paragraph(
+            f"En Lima, a {_spanish_long_date()}.",
+            styles["body"],
+        )
+    )
+    story.append(Spacer(1, 14))
 
     if fmt == "80mm":
-        story.append(Paragraph("Firma del paciente: _______________", styles["body"]))
+        story.append(Paragraph(f"Paciente: {patient_name}", styles["small"]))
+        story.append(Paragraph("Firma: ____________________", styles["body"]))
         story.append(Spacer(1, 8))
-        story.append(Paragraph("Firma del odontólogo: _____________", styles["body"]))
+        story.append(Paragraph(f"Odontólogo: Dr(a). {doctor_name}", styles["small"]))
+        if cop:
+            story.append(Paragraph(f"COP: {cop}", styles["small"]))
+        story.append(Paragraph("Firma: ____________________", styles["body"]))
     else:
-        story.append(Paragraph(
-            "<br/><br/>________________________<br/>Firma del paciente",
-            styles["body"],
-        ))
-        story.append(Spacer(1, 10))
-        story.append(Paragraph(
-            "<br/><br/>________________________<br/>Firma del odontólogo",
-            styles["body"],
-        ))
+        page_w = FORMAT_DIMENSIONS[fmt][0]
+        margin = 8 * mm if fmt == "A5" else 15 * mm
+        col = (page_w - 2 * margin - 8 * mm) / 2
+        left = [
+            Paragraph("<b>El paciente / representante legal</b>", styles["small"]),
+            Spacer(1, 22),
+            Paragraph("_______________________________", styles["body"]),
+            Paragraph(_escape_xml(patient_name), styles["small"]),
+            Paragraph(f"DNI {_escape_xml(dni)}", styles["small"]),
+        ]
+        right = [
+            Paragraph("<b>El odontólogo / estomatólogo</b>", styles["small"]),
+            Spacer(1, 22),
+            Paragraph("_______________________________", styles["body"]),
+            Paragraph(f"Dr(a). {_escape_xml(doctor_name)}", styles["small"]),
+        ]
+        if cop:
+            right.append(Paragraph(f"COP {_escape_xml(cop)}", styles["small"]))
+        sig = Table([[left, right]], colWidths=[col, col])
+        sig.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
+        story.append(sig)
 
     if data.get("consentimiento_fecha"):
-        story.append(Paragraph(
-            f"Consentimiento registrado el: {data['consentimiento_fecha']}",
-            styles["small"],
-        ))
-
+        story.append(Spacer(1, 8))
+        story.append(
+            Paragraph(
+                f"Registro en sistema: {data['consentimiento_fecha']}",
+                styles["small"],
+            )
+        )
 
 def _build_presupuesto(story: list, data: dict, styles: dict, fmt: str):
     """Presupuesto exportable (plan de tratamiento alternativo)."""

@@ -245,8 +245,8 @@ export function ConfigSettingsShell({ isAdmin, badges = {}, children }: Props) {
         </div>
       </nav>
 
-      <section className="flex min-h-[min(70vh,560px)] max-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm">
-        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 px-5 py-5 sm:px-6">
+      <section className="rounded-2xl border border-slate-200/90 bg-white shadow-sm">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-5 sm:px-6">
           <div className="flex min-w-0 gap-3.5">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] bg-brand-50 text-brand-600">
               <Icon className="h-5 w-5" aria-hidden strokeWidth={1.75} />
@@ -261,7 +261,7 @@ export function ConfigSettingsShell({ isAdmin, badges = {}, children }: Props) {
             </div>
           </div>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
+        <div className="px-5 py-5 sm:px-6 sm:py-6">
           <ConfigEmbedCtx.Provider value={true}>
             {children(safeActiveId, safeActive)}
           </ConfigEmbedCtx.Provider>

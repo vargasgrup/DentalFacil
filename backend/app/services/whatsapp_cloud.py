@@ -52,10 +52,16 @@ class WhatsAppCloudService:
 
     def normalize_phone(self, phone: str) -> str:
         digits = "".join(c for c in (phone or "") if c.isdigit())
+        if digits.startswith("00"):
+            digits = digits[2:]
+        if len(digits) == 10 and digits.startswith("09"):
+            digits = digits[1:]
         if not digits:
             raise ValueError("Número de teléfono inválido")
-        if not digits.startswith("51") and len(digits) <= 9:
+        if not digits.startswith("51") and 8 <= len(digits) <= 9:
             digits = "51" + digits
+        if len(digits) < 11:
+            raise ValueError("Número de teléfono inválido")
         return digits
 
     async def upload_document(

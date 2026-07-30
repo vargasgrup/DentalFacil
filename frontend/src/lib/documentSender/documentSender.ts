@@ -12,7 +12,12 @@
  */
 
 import { getToken } from "@/lib/api";
-import { isValidPhone, sanitizeWhatsAppText } from "@/lib/whatsapp";
+import {
+  isValidPhone,
+  normalizePeruPhone,
+  openWhatsAppChat,
+  sanitizeWhatsAppText,
+} from "@/lib/whatsapp";
 import { DocumentErrorHandler, DocumentSendError } from "./errorHandler";
 import { LruBlobCache } from "./lruCache";
 import { dismissDocumentNotification, showDocumentNotification } from "./notifications";
@@ -273,22 +278,42 @@ export class DocumentSender {
     pdfBlob: Blob;
     fileName: string;
     message: string;
-  }): Promise<{ success: boolean; aborted?: boolean; error?: string }> {
+    /** Paciente: abre WhatsApp en ese chat antes de compartir el PDF. */
+    phoneNumber?: string | null;
+  }): Promise<{ success: boolean; aborted?: boolean; error?: string; phoneTargeted?: boolean }> {
     const file = new File([opts.pdfBlob], opts.fileName, { type: "application/pdf" });
     if (!this.canUseWebShare(file)) {
       throw new DocumentSendError("WebShareUnsupported");
     }
+
+    const phone = normalizePeruPhone(opts.phoneNumber);
+    const cleanMsg = this.cleanChatMessage(opts.message);
+    let phoneTargeted = false;
+
+    // Prefocalizar el chat del paciente (número automático) sin await:
+    // un delay rompería el user-gesture y navigator.share fallaría.
+    if (phone) {
+      openWhatsAppChat(phone, cleanMsg, { deepLinkOnly: true });
+      phoneTargeted = true;
+    }
+
     try {
       await navigator.share({
         files: [file],
         title: opts.fileName,
-        text: this.cleanChatMessage(opts.message).slice(0, 200),
+        text: cleanMsg.slice(0, 200),
       });
-      return { success: true };
+      return { success: true, phoneTargeted };
     } catch (err) {
       const name = err instanceof Error ? err.name : "";
       if (name === "AbortError") {
-        return { success: false, aborted: true, error: "Compartir cancelado" };
+        // Si canceló el selector pero ya abrimos el chat del paciente, el número sí se usó.
+        return {
+          success: false,
+          aborted: true,
+          error: "Compartir cancelado",
+          phoneTargeted,
+        };
       }
       throw err;
     }
@@ -353,12 +378,13 @@ export class DocumentSender {
       this.validateDocument(blob, fileName);
 
       const preferCloud = params.preferCloudApi !== false;
-      const phone = params.phoneNumber;
+      // Formato E.164 PE (51…) — mismo número que usa Cloud y deep link.
+      const phone = normalizePeruPhone(params.phoneNumber);
       let lastError: string | undefined;
       let lastCode: string | undefined;
 
       // --- 1–2. Cloud API: /share luego /send-document ---
-      if (preferCloud && phone && isValidPhone(phone)) {
+      if (preferCloud && phone) {
         this.showUserNotification("Enviando por WhatsApp Cloud…", "progress", {
           id: progressId,
           progress: 45,
@@ -441,16 +467,23 @@ export class DocumentSender {
         }
       }
 
-      // --- 3. Web Share (selector nativo del SO, con archivo) ---
-      this.showUserNotification("Abriendo compartir… elige WhatsApp", "progress", {
-        id: progressId,
-        progress: 75,
-      });
+      // --- 3. Web Share (PDF adjunto) + chat del paciente preabierto ---
+      this.showUserNotification(
+        phone
+          ? "Abriendo WhatsApp del paciente y compartiendo PDF…"
+          : "Abriendo compartir… elige WhatsApp",
+        "progress",
+        {
+          id: progressId,
+          progress: 75,
+        }
+      );
       try {
         const shared = await this.sendViaWebShare({
           pdfBlob: blob,
           fileName,
           message,
+          phoneNumber: phone,
         });
         if (shared.success) {
           this.track("web_share", true);
@@ -464,8 +497,11 @@ export class DocumentSender {
           });
           dismissDocumentNotification(progressId);
           this.showUserNotification(
-            "Elige WhatsApp en el selector para enviar con el PDF adjunto",
-            "success"
+            shared.phoneTargeted
+              ? "WhatsApp abierto con el paciente. Confirma el PDF en el selector (suele aparecer arriba en recientes)."
+              : "Elige WhatsApp en el selector para enviar con el PDF adjunto",
+            "success",
+            { durationMs: 7000 }
           );
           return {
             success: true,
@@ -477,7 +513,13 @@ export class DocumentSender {
         if (shared.aborted) {
           this.track("web_share", false);
           dismissDocumentNotification(progressId);
-          this.showUserNotification("Envío cancelado", "warning");
+          this.showUserNotification(
+            shared.phoneTargeted
+              ? "Selector cancelado. WhatsApp ya está abierto con el paciente; puede reintentar WhatsApp."
+              : "Envío cancelado",
+            "warning",
+            { durationMs: 6000 }
+          );
           return {
             success: false,
             strategy: "web_share",

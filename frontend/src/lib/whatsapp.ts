@@ -31,9 +31,18 @@ export function normalizePeruPhone(telefono: string | undefined | null): string 
   if (!telefono) return null;
   let num = telefono.replace(/\D/g, "");
   if (!num) return null;
+  // Quitar 00 internacional
+  if (num.startsWith("00")) num = num.slice(2);
+  // Celulares PE a veces guardados como 09xxxxxxxx
+  if (num.length === 10 && num.startsWith("09")) num = num.slice(1);
   if (!num.startsWith("51")) {
-    num = "51" + num;
+    // 9 dígitos (móvil PE) u 8–9 locales → prefijo país
+    if (num.length >= 8 && num.length <= 9) {
+      num = "51" + num;
+    }
   }
+  // Debe quedar al menos país + abonado razonable
+  if (num.length < 11) return null;
   return num;
 }
 
@@ -54,8 +63,9 @@ export function buildWhatsAppUrl(
 
 export function isValidPhone(telefono: string | undefined | null): boolean {
   if (!telefono) return false;
+  if (normalizePeruPhone(telefono)) return true;
   const num = telefono.replace(/\D/g, "");
-  return num.length >= 6;
+  return num.length >= 9;
 }
 
 /**
@@ -64,7 +74,8 @@ export function isValidPhone(telefono: string | undefined | null): boolean {
  */
 export function openWhatsAppChat(
   telefono: string | undefined | null,
-  mensaje: string
+  mensaje: string,
+  opts?: { deepLinkOnly?: boolean }
 ): { success: boolean; error?: string } {
   const deep = buildWhatsAppUrl(telefono, mensaje, { preferDeepLink: true });
   const web = buildWhatsAppUrl(telefono, mensaje, { preferDeepLink: false });
@@ -84,10 +95,23 @@ export function openWhatsAppChat(
         /* ignore */
       }
     }, 1500);
+    // También intentar location-style deep link (WebView2 / algunos desktop)
+    try {
+      const a = document.createElement("a");
+      a.href = deep;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {
+      /* ignore */
+    }
   }
-  window.setTimeout(() => {
-    if (web) window.open(web, "_blank", "noopener,noreferrer");
-  }, deep ? 700 : 0);
+  if (!opts?.deepLinkOnly) {
+    window.setTimeout(() => {
+      if (web) window.open(web, "_blank", "noopener,noreferrer");
+    }, deep ? 700 : 0);
+  }
   return { success: true };
 }
 

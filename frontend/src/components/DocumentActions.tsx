@@ -278,7 +278,11 @@ export function DocumentActions({
         if (result.cloud_api_sent) {
           setSendHint("Enviado automáticamente al WhatsApp del paciente (Cloud API).");
         } else if (result.strategy === "web_share") {
-          setSendHint("Elige WhatsApp en el selector del sistema (PDF adjunto).");
+          setSendHint(
+            hasPhone
+              ? "WhatsApp abierto con el número del paciente. Confirme el PDF en el selector del sistema."
+              : "Elige WhatsApp en el selector del sistema (PDF adjunto)."
+          );
         } else {
           setSendHint(null);
         }

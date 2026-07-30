@@ -50,7 +50,7 @@ export function DocumentSendToast() {
 
   return (
     <div
-      className="pointer-events-none fixed bottom-4 right-4 z-[200] flex w-[min(100vw-2rem,22rem)] flex-col gap-2"
+      className="pointer-events-none fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] right-4 z-[200] flex w-[min(100vw-2rem,22rem)] flex-col gap-2 md:bottom-4"
       aria-live="polite"
       role="status"
     >

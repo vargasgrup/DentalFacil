@@ -10,7 +10,7 @@ interface FichaTabNavProps {
 
 export function FichaTabNav({ activeTab, onTabChange }: FichaTabNavProps) {
   return (
-    <div className="sticky top-0 z-20 -mx-1 border-b border-slate-200 bg-white/95 px-1 py-3 backdrop-blur-sm">
+    <div className="sticky top-16 z-20 -mx-1 border-b border-slate-200 bg-white/95 px-1 py-3 backdrop-blur-sm sm:top-[4.5rem] md:top-20">
       <div
         className="flex flex-wrap gap-2"
         role="tablist"

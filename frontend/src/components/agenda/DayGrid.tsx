@@ -203,21 +203,23 @@ export function DayGrid({
         </div>
       )}
       {multi && (
-        <div className="flex border-b border-slate-100 bg-gradient-to-r from-brand-50/50 to-transparent">
-          <div className="w-[4.5rem] shrink-0" />
-          {columns.map((d) => (
-            <div
-              key={d.id}
-              className="flex-1 border-l border-slate-100/90 px-2 py-3 text-center text-xs font-bold tracking-tight text-slate-700"
-            >
-              {d.nombre}
-            </div>
-          ))}
+        <div className="overflow-x-auto border-b border-slate-100 bg-gradient-to-r from-brand-50/50 to-transparent">
+          <div className="flex min-w-max md:min-w-0">
+            <div className="w-[4.5rem] shrink-0" />
+            {columns.map((d) => (
+              <div
+                key={d.id}
+                className="min-w-[9.5rem] flex-1 border-l border-slate-100/90 px-2 py-3 text-center text-xs font-bold tracking-tight text-slate-700 md:min-w-0"
+              >
+                {d.nombre}
+              </div>
+            ))}
+          </div>
         </div>
       )}
       <div
         ref={scrollRef}
-        className="flex max-h-[calc(100vh-16rem)] overflow-y-auto"
+        className="flex overflow-x-auto md:max-h-[calc(100vh-16rem)] md:overflow-y-auto"
       >
         <div className="relative w-[4.5rem] shrink-0 bg-surface-subtle/50" style={{ height: totalHeight }}>
           {marks.slice(0, -1).map((m) => (
@@ -235,23 +237,30 @@ export function DayGrid({
             </div>
           ))}
         </div>
-        <div className="flex flex-1" style={{ height: totalHeight }}>
+        <div
+          className={`flex flex-1 ${multi ? "min-w-max md:min-w-0" : ""}`}
+          style={{ height: totalHeight }}
+        >
           {columns.map((doc) => {
             const colAppts = multi
               ? dayAppts.filter((a) => a.doctor_id === doc.id)
               : dayAppts;
             return (
-              <Column
+              <div
                 key={doc.id || "single"}
-                date={date}
-                appointments={colAppts}
-                dayStartMin={startMin}
-                dayEndMin={endMin}
-                marks={marks}
-                doctorId={multi ? doc.id : undefined}
-                onSlotClick={onSlotClick}
-                onAppointmentClick={onAppointmentClick}
-              />
+                className={multi ? "min-w-[9.5rem] flex-1 md:min-w-0" : "flex-1"}
+              >
+                <Column
+                  date={date}
+                  appointments={colAppts}
+                  dayStartMin={startMin}
+                  dayEndMin={endMin}
+                  marks={marks}
+                  doctorId={multi ? doc.id : undefined}
+                  onSlotClick={onSlotClick}
+                  onAppointmentClick={onAppointmentClick}
+                />
+              </div>
             );
           })}
         </div>

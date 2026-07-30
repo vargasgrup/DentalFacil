@@ -166,7 +166,7 @@ export function MonthGrid({
             </button>
           </div>
         ) : (
-          <ul className="max-h-[28rem] divide-y divide-slate-50 overflow-y-auto">
+          <ul className="divide-y divide-slate-50 md:max-h-[28rem] md:overflow-y-auto">
             {selectedDayAppts.map((a) => {
               const est = estadoBadgeVariant[a.estado] || "info";
               return (

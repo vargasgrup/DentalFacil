@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { X } from "lucide-react";
 import { Sidebar } from "./Sidebar";
@@ -13,8 +13,17 @@ import { SHELL_SIDEBAR_BRAND_CLASS, SHELL_SIDEBAR_WIDTH } from "./shell";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [sidebarOpen]);
+
   return (
-    <div className="flex min-h-screen bg-surface-muted">
+    <div className="flex min-h-dvh bg-surface-muted">
       <MaintenanceAlert />
 
       {/* Desktop / tablet sidebar — stronger rail contrast vs content */}
@@ -41,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             aria-hidden
           />
           <aside
-            className={`fixed left-0 top-0 z-50 flex h-screen w-[min(18.5rem,88vw)] flex-col border-r border-slate-400/80 bg-gradient-to-b from-slate-200 via-slate-100 to-slate-50 shadow-2xl md:hidden`}
+            className={`fixed left-0 top-0 z-50 flex h-dvh w-[min(18.5rem,88vw)] flex-col border-r border-slate-400/80 bg-gradient-to-b from-slate-200 via-slate-100 to-slate-50 shadow-2xl md:hidden`}
             role="dialog"
             aria-modal="true"
             aria-label="Menú de navegación"
@@ -58,20 +67,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={() => setSidebarOpen(false)}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition-smooth hover:bg-slate-50 hover:text-slate-900"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition-smooth hover:bg-slate-50 hover:text-slate-900"
                 aria-label="Cerrar menú"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <Sidebar onNavigate={() => setSidebarOpen(false)} />
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <Sidebar onNavigate={() => setSidebarOpen(false)} />
+            </div>
           </aside>
         </>
       )}
 
       <div className={`flex min-w-0 flex-1 flex-col md:pl-64`}>
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 overflow-x-hidden p-4 pb-24 sm:p-6 md:pb-6">{children}</main>
+        <main className="min-w-0 flex-1 p-4 pb-24 sm:p-6 md:pb-6">{children}</main>
         <MobileBottomNav />
       </div>
     </div>

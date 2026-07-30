@@ -105,7 +105,7 @@ export function WeekGrid({
         })}
       </div>
 
-      <div className="flex max-h-[calc(100vh-14rem)] overflow-y-auto overflow-x-auto">
+      <div className="flex overflow-x-auto md:max-h-[calc(100vh-14rem)] md:overflow-y-auto">
         <div className="relative w-16 shrink-0 sm:w-[4.5rem]" style={{ height: totalHeight }}>
           {rowMarks.map((m) => (
             <div

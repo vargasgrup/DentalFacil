@@ -298,7 +298,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
               )}
             </button>
             {notifOpen && (
-              <div className="absolute right-0 z-50 mt-2 w-80 overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.28)] backdrop-blur-md sm:w-96">
+              <div className="absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.28)] backdrop-blur-md sm:w-96">
                 <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-2.5">
                   <p className="text-sm font-semibold text-slate-800">
                     Recordatorios pendientes {reminders.length > 0 && `(${reminders.length})`}
@@ -424,7 +424,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             {userOpen && (
               <div
                 role="menu"
-                className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 py-1 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.28)] backdrop-blur-md"
+                className="absolute right-0 z-50 mt-2 w-[min(14rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 py-1 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.28)] backdrop-blur-md"
               >
                 <div className="border-b border-slate-100 bg-gradient-to-r from-brand-50/80 to-white px-4 py-3">
                   <p className="truncate text-sm font-semibold text-slate-800">{user?.nombre}</p>

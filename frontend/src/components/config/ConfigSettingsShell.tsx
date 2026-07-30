@@ -179,26 +179,41 @@ export function ConfigSettingsShell({ isAdmin, badges = {}, children }: Props) {
         className="rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-sm lg:sticky lg:top-4"
         aria-label="Secciones de configuración"
       >
-        <label className="mb-3.5 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+        <label className="mb-3.5 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2.5 lg:py-2">
           <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Buscar sección…"
-            className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+            className="hidden w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400 lg:block"
             aria-label="Filtrar secciones"
           />
+          {/* Móvil/tablet: selector nativo — sin carrusel horizontal */}
+          <select
+            value={safeActiveId}
+            onChange={(e) => setActiveId(e.target.value as ConfigSectionId)}
+            className="w-full bg-transparent text-sm font-medium text-slate-800 outline-none lg:hidden"
+            aria-label="Sección de configuración"
+          >
+            {allItems
+              .filter((it) => (q ? it.label.toLowerCase().includes(q) : true))
+              .map((it) => (
+                <option key={it.id} value={it.id}>
+                  {it.label}
+                </option>
+              ))}
+          </select>
         </label>
 
-        <div className="flex gap-1.5 overflow-x-auto pb-1 lg:block lg:overflow-visible lg:pb-0">
+        <div className="hidden gap-1.5 lg:block lg:overflow-visible">
           {visibleGroups.map((group) => {
             const items = group.items.filter((it) =>
               q ? it.label.toLowerCase().includes(q) : true,
             );
             if (!items.length) return null;
             return (
-              <div key={group.title} className="mb-0 flex shrink-0 gap-1.5 lg:mb-4 lg:block lg:last:mb-0">
-                <p className="mb-1.5 hidden px-2.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-slate-400 lg:block">
+              <div key={group.title} className="mb-4 last:mb-0">
+                <p className="mb-1.5 px-2.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-slate-400">
                   {group.title}
                 </p>
                 {items.map((it) => {
@@ -210,10 +225,10 @@ export function ConfigSettingsShell({ isAdmin, badges = {}, children }: Props) {
                       key={it.id}
                       type="button"
                       onClick={() => setActiveId(it.id)}
-                      className={`flex w-auto min-w-max items-center gap-2.5 rounded-lg border-b-2 border-transparent px-2.5 py-2 text-left text-[13.5px] font-medium transition-all duration-150 lg:w-full lg:border-b-0 lg:border-l-[3px] ${
+                      className={`flex min-h-11 w-full items-center gap-2.5 rounded-lg border-l-[3px] px-2.5 py-2.5 text-left text-[13.5px] font-medium transition-all duration-150 ${
                         selected
-                          ? "border-brand-600 bg-brand-50 font-bold text-brand-800 lg:border-brand-600"
-                          : "border-transparent text-slate-700 hover:bg-slate-50 lg:border-transparent"
+                          ? "border-brand-600 bg-brand-50 font-bold text-brand-800"
+                          : "border-transparent text-slate-700 hover:bg-slate-50"
                       }`}
                       aria-current={selected ? "page" : undefined}
                     >
@@ -227,7 +242,7 @@ export function ConfigSettingsShell({ isAdmin, badges = {}, children }: Props) {
                       <span className="flex-1 leading-snug">{it.label}</span>
                       {badge ? (
                         <span
-                          className={`hidden shrink-0 rounded-full px-1.5 py-0.5 text-[10.5px] font-bold lg:inline ${
+                          className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10.5px] font-bold ${
                             badge.tone === "warning"
                               ? "bg-warning-50 text-warning-700"
                               : "bg-brand-50 text-brand-700"

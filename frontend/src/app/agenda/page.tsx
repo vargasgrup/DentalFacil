@@ -378,7 +378,7 @@ function AgendaPageInner() {
             <option value="cancelada">Cancelada</option>
           </select>
         </label>
-        <div className="block min-w-[240px] flex-1">
+        <div className="block w-full min-w-0 flex-1 sm:min-w-[240px]">
           <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Paciente
           </span>

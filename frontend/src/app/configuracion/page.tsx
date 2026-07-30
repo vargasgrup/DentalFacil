@@ -626,7 +626,7 @@ export default function ConfiguracionPage() {
           { label: "Configuración" },
         ]}
         title="Configuración"
-        description="Datos del centro, cuenta, horario, recordatorios y usuarios — un solo panel a la vez, sin scroll interminable."
+        description="Datos del centro, cuenta, horario, recordatorios y usuarios."
       />
       {error && (
         <div className="rounded-xl border border-danger-200 bg-danger-50 p-3 text-sm text-danger-600">

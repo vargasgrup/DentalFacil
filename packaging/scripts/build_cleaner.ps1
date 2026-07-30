@@ -25,23 +25,37 @@ New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 Copy-Item -LiteralPath $ps1 -Destination (Join-Path $outDir "clean_all_installs.ps1") -Force
 
-# Dist-local BAT: same folder as clean_all_installs.ps1
+# Dist-local BAT: same folder as clean_all_installs.ps1 (full wipe)
 $distBatPath = Join-Path $outDir "Limpiar-Instalaciones-NKDentalSoft.bat"
 $distBatLines = @(
   '@echo off',
-  'REM Dist launcher - limpia instalaciones N&K DentalSoft (Admin).',
+  'REM Desinstalacion / limpieza TOTAL N&K DentalSoft (Admin).',
+  'REM Log: Escritorio\NKDentalSoft-limpia.log',
   'setlocal',
   'cd /d "%~dp0"',
-  'set "EXTRA="',
-  'if /I "%~1"=="/wipe" set "EXTRA=-WipeClinicData"',
+  'set "PS1=%~dp0clean_all_installs.ps1"',
+  'if not exist "%PS1%" (',
+  '  echo No se encontro clean_all_installs.ps1',
+  '  pause',
+  '  exit /b 1',
+  ')',
+  'echo.',
+  'echo  N^&K DentalSoft - DESINSTALACION / LIMPIEZA TOTAL',
+  'echo  Se borraran Server, Client y datos en ProgramData.',
+  'echo.',
   'net session >nul 2>&1',
   'if errorlevel 1 (',
-  '  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath ''%ComSpec%'' -Verb RunAs -ArgumentList ''/c \"\"%~f0\" %* & pause\"''"',
+  '  echo Solicitando Administrador...',
+  '  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath ''powershell.exe'' -Verb RunAs -ArgumentList ''-NoProfile -ExecutionPolicy Bypass -File \"\"%PS1%\"\" -NoElevate'' -Wait"',
+  '  echo Revise NKDentalSoft-limpia.log en el Escritorio.',
+  '  pause',
   '  exit /b 0',
   ')',
-  'powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0clean_all_installs.ps1" %EXTRA%',
-  'echo.',
-  'pause'
+  'powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -NoElevate',
+  'set "RC=%ERRORLEVEL%"',
+  'echo Codigo=%RC%  Log: Escritorio\NKDentalSoft-limpia.log',
+  'pause',
+  'exit /b %RC%'
 )
 Set-Content -LiteralPath $distBatPath -Value $distBatLines -Encoding ASCII
 

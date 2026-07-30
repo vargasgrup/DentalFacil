@@ -18,6 +18,10 @@ import { UsersAdminPanel } from "@/components/config/UsersAdminPanel";
 import { BackupMigrationPanel } from "@/components/config/BackupMigrationPanel";
 import { PasswordResetRequestsPanel } from "@/components/config/PasswordResetRequestsPanel";
 import { ConnectedClientsPanel } from "@/components/config/ConnectedClientsPanel";
+import {
+  ConfigSettingsShell,
+  type ConfigSectionId,
+} from "@/components/config/ConfigSettingsShell";
 import { emptyClinic, type ClinicProfile, type User } from "@/components/config/types";
 import {
   APP_MODULES,
@@ -500,7 +504,7 @@ export default function ConfiguracionPage() {
 
   if (loading) {
     return (
-      <PageContainer width="default">
+      <PageContainer width="wide">
         <div className="skeleton h-8 w-40 rounded-lg" />
         <div className="skeleton h-40 rounded-card" />
         <div className="skeleton h-40 rounded-card" />
@@ -510,15 +514,119 @@ export default function ConfiguracionPage() {
 
   const isAdmin = currentUser?.rol === "ADMIN";
 
+  const renderSection = (section: ConfigSectionId) => {
+    switch (section) {
+      case "datos":
+        return isAdmin ? (
+          <ClinicProfileForm
+            clinic={clinic}
+            setClinic={setClinic}
+            logoPreview={logoPreview}
+            logoBusy={logoBusy}
+            clinicSaving={clinicSaving}
+            clinicMsg={clinicMsg}
+            onSubmit={saveClinicConfig}
+            onLogoSelected={onLogoSelected}
+            onClearLogo={() => void clearLogo()}
+          />
+        ) : null;
+      case "cuenta":
+        return (
+          <AccountSettingsForm
+            initialNombre={currentUser?.nombre || ""}
+            initialEmail={currentUser?.email || ""}
+            busy={accountBusy}
+            msg={accountMsg}
+            err={accountErr}
+            onSubmit={handleAccountUpdate}
+          />
+        );
+      case "horario":
+        return (
+          <HoursConfigForm
+            horaApertura={horaApertura}
+            setHoraApertura={setHoraApertura}
+            horaCierre={horaCierre}
+            setHoraCierre={setHoraCierre}
+            hoursMsg={hoursMsg}
+            onSubmit={saveHoursConfig}
+            readOnly={!isAdmin}
+          />
+        );
+      case "especialidades":
+        return (
+          <SpecialtiesConfig
+            isAdmin={isAdmin}
+            espItems={espItems}
+            espSelected={espSelected}
+            setEspSelected={setEspSelected}
+            espDraft={espDraft}
+            setEspDraft={setEspDraft}
+            espMsg={espMsg}
+            espSaving={espSaving}
+            espIsDefault={espIsDefault}
+            onAdd={addEspecialidad}
+            onRemove={removeEspecialidadByName}
+            onSave={() => void saveEspecialidades()}
+            onReset={() => void resetEspecialidades()}
+          />
+        );
+      case "recordatorios":
+        return (
+          <ReminderConfigForm
+            reminderHours={reminderHours}
+            setReminderHours={setReminderHours}
+            reminderTemplate={reminderTemplate}
+            setReminderTemplate={setReminderTemplate}
+            reminderMsg={reminderMsg}
+            onSubmit={saveReminderConfig}
+          />
+        );
+      case "equipos":
+        return isAdmin ? <ConnectedClientsPanel /> : null;
+      case "usuarios":
+        return isAdmin ? (
+          <UsersAdminPanel
+            users={users}
+            showCreate={showCreate}
+            setShowCreate={setShowCreate}
+            nombre={nombre}
+            setNombre={setNombre}
+            email={email}
+            setEmail={setEmail}
+            password={password}
+            setPassword={setPassword}
+            rol={rol}
+            setRol={setRol}
+            modulos={modulos}
+            setModulos={setModulos}
+            formError={userFormError}
+            creating={creatingUser}
+            onCreate={handleCreate}
+            onToggleActivo={toggleActivo}
+            onResetPassword={handleResetPassword}
+            onChangeRol={changeRol}
+            onChangeModulos={changeModulos}
+          />
+        ) : null;
+      case "recuperacion":
+        return isAdmin ? <PasswordResetRequestsPanel /> : null;
+      case "respaldo":
+        return isAdmin ? <BackupMigrationPanel /> : null;
+      default:
+        return null;
+    }
+  };
+
   return (
-    <PageContainer width="default" className="!space-y-5">
+    <PageContainer width="wide" className="!space-y-5">
       <ModuleHeader
         crumbs={[
           { label: "Inicio", href: "/dashboard" },
           { label: "Configuración" },
         ]}
         title="Configuración"
-        description="Datos del centro, cuenta de acceso, horario, recordatorios y usuarios."
+        description="Datos del centro, cuenta, horario, recordatorios y usuarios — un solo panel a la vez, sin scroll interminable."
       />
       {error && (
         <div className="rounded-xl border border-danger-200 bg-danger-50 p-3 text-sm text-danger-600">
@@ -526,94 +634,30 @@ export default function ConfiguracionPage() {
         </div>
       )}
 
-      {isAdmin && (
-        <ClinicProfileForm
-          clinic={clinic}
-          setClinic={setClinic}
-          logoPreview={logoPreview}
-          logoBusy={logoBusy}
-          clinicSaving={clinicSaving}
-          clinicMsg={clinicMsg}
-          onSubmit={saveClinicConfig}
-          onLogoSelected={onLogoSelected}
-          onClearLogo={() => void clearLogo()}
-        />
-      )}
-
-      <AccountSettingsForm
-        initialNombre={currentUser?.nombre || ""}
-        initialEmail={currentUser?.email || ""}
-        busy={accountBusy}
-        msg={accountMsg}
-        err={accountErr}
-        onSubmit={handleAccountUpdate}
-      />
-
-      <HoursConfigForm
-        horaApertura={horaApertura}
-        setHoraApertura={setHoraApertura}
-        horaCierre={horaCierre}
-        setHoraCierre={setHoraCierre}
-        hoursMsg={hoursMsg}
-        onSubmit={saveHoursConfig}
-        readOnly={!isAdmin}
-      />
-
-      <SpecialtiesConfig
-        isAdmin={isAdmin}
-        espItems={espItems}
-        espSelected={espSelected}
-        setEspSelected={setEspSelected}
-        espDraft={espDraft}
-        setEspDraft={setEspDraft}
-        espMsg={espMsg}
-        espSaving={espSaving}
-        espIsDefault={espIsDefault}
-        onAdd={addEspecialidad}
-        onRemove={removeEspecialidadByName}
-        onSave={() => void saveEspecialidades()}
-        onReset={() => void resetEspecialidades()}
-      />
-
-      <ReminderConfigForm
-        reminderHours={reminderHours}
-        setReminderHours={setReminderHours}
-        reminderTemplate={reminderTemplate}
-        setReminderTemplate={setReminderTemplate}
-        reminderMsg={reminderMsg}
-        onSubmit={saveReminderConfig}
-      />
-
-      {isAdmin && <ConnectedClientsPanel />}
-
-      {isAdmin && (
-        <UsersAdminPanel
-          users={users}
-          showCreate={showCreate}
-          setShowCreate={setShowCreate}
-          nombre={nombre}
-          setNombre={setNombre}
-          email={email}
-          setEmail={setEmail}
-          password={password}
-          setPassword={setPassword}
-          rol={rol}
-          setRol={setRol}
-          modulos={modulos}
-          setModulos={setModulos}
-          formError={userFormError}
-          creating={creatingUser}
-          onCreate={handleCreate}
-          onToggleActivo={toggleActivo}
-          onResetPassword={handleResetPassword}
-          onChangeRol={changeRol}
-          onChangeModulos={changeModulos}
-        />
-      )}
-
-      {isAdmin && <PasswordResetRequestsPanel />}
-
-      {isAdmin && <BackupMigrationPanel />}
+      <ConfigSettingsShell
+        isAdmin={!!isAdmin}
+        badges={{
+          ...(isAdmin
+            ? {
+                usuarios: {
+                  label: `${users.filter((u) => u.rol === "ADMIN").length}/2 admin`,
+                  tone: "info" as const,
+                },
+                especialidades: {
+                  label: String(espItems.length),
+                  tone: "info" as const,
+                },
+              }
+            : {
+                especialidades: {
+                  label: String(espItems.length),
+                  tone: "info" as const,
+                },
+              }),
+        }}
+      >
+        {(section) => renderSection(section)}
+      </ConfigSettingsShell>
     </PageContainer>
   );
 }

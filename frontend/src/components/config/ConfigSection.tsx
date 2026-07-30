@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useConfigEmbedded } from "@/components/config/configEmbedContext";
 import { Card } from "@/components/ui/Card";
 
 interface ConfigSectionProps {
@@ -15,6 +16,7 @@ interface ConfigSectionProps {
 
 /**
  * Shared premium shell for Configuración panels — presentation only.
+ * Inside ConfigSettingsShell, chrome collapses so the side-nav panel owns the header.
  */
 export function ConfigSection({
   title,
@@ -25,6 +27,19 @@ export function ConfigSection({
   className = "",
   padding = "md",
 }: ConfigSectionProps) {
+  const embedded = useConfigEmbedded();
+
+  if (embedded) {
+    return (
+      <div className={`space-y-4 ${className}`.trim()}>
+        {actions ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div>
+        ) : null}
+        {children}
+      </div>
+    );
+  }
+
   return (
     <Card
       padding={padding}

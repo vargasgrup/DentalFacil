@@ -320,45 +320,47 @@ def _pick_directory_tk(title: str, initial_dir: str | None) -> str | None:
 
 
 def _pick_directory_windows_ps(title: str, initial_dir: str | None) -> str | None:
-    """Fallback: FolderBrowserDialog via absolute powershell.exe + STA."""
+    """
+    FolderBrowserDialog via powershell.exe + STA (desktop installer path).
+
+    Important:
+    - json.dumps(..., ensure_ascii=False): PowerShell does NOT expand \\u00e1 escapes,
+      so ensure_ascii=True showed literal \"\\\\u00e1\" in the dialog description.
+    - CREATE_NO_WINDOW + -WindowStyle Hidden: avoid a flashing console behind the dialog.
+    - No invisible owner Form: Opacity=0 owners often make ShowDialog return Cancel.
+    """
     import json
     import subprocess
     import tempfile
 
     start = _normalize_initial_dir(initial_dir)
     ps_exe = _windows_powershell_exe()
+    # Real Unicode in the .ps1 (BOM); never \\uXXXX escapes for PS string literals.
+    title_lit = json.dumps(title, ensure_ascii=False)
+    start_lit = json.dumps(start, ensure_ascii=False)
     script = f"""
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms | Out-Null
 [System.Windows.Forms.Application]::EnableVisualStyles()
-$start = {json.dumps(start)}
-if (-not (Test-Path -LiteralPath $start)) {{
+$start = {start_lit}
+$title = {title_lit}
+if (-not $start -or -not (Test-Path -LiteralPath $start)) {{
   $start = [Environment]::GetFolderPath('MyDocuments')
+  if (-not $start) {{ $start = $env:USERPROFILE }}
 }}
 $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = {json.dumps(title)}
+$dialog.Description = $title
 $dialog.SelectedPath = $start
 $dialog.ShowNewFolderButton = $true
-try {{ $dialog.RootFolder = [Environment+SpecialFolder]::MyComputer }} catch {{ }}
-$form = New-Object System.Windows.Forms.Form
-$form.TopMost = $true
-$form.ShowInTaskbar = $true
-$form.Text = {json.dumps(title)}
-$form.Opacity = 0
-$form.Width = 1
-$form.Height = 1
-$form.StartPosition = 'CenterScreen'
-[void]$form.Show()
-$form.Activate()
-$form.BringToFront()
 try {{
-  $r = $dialog.ShowDialog($form)
+  $r = $dialog.ShowDialog()
   if ($r -eq [System.Windows.Forms.DialogResult]::OK -and $dialog.SelectedPath) {{
-    [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-    Write-Output $dialog.SelectedPath
+    $utf8 = New-Object System.Text.UTF8Encoding $false
+    [Console]::OutputEncoding = $utf8
+    [Console]::Out.WriteLine($dialog.SelectedPath)
   }}
 }} finally {{
-  $form.Close(); $form.Dispose(); $dialog.Dispose()
+  $dialog.Dispose()
 }}
 """
     with tempfile.NamedTemporaryFile(
@@ -366,12 +368,18 @@ try {{
     ) as fh:
         fh.write(script)
         script_path = fh.name
+    creationflags = 0
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
     try:
         proc = subprocess.run(
             [
                 ps_exe,
+                "-NoLogo",
                 "-NoProfile",
                 "-STA",
+                "-WindowStyle",
+                "Hidden",
                 "-ExecutionPolicy",
                 "Bypass",
                 "-File",
@@ -382,6 +390,7 @@ try {{
             encoding="utf-8",
             errors="replace",
             timeout=600,
+            creationflags=creationflags,
         )
     finally:
         try:
@@ -454,7 +463,7 @@ def list_suggested_backup_directories() -> list[dict[str, str]]:
                 ("Escritorio", home / "Desktop" / "NKDentalSoft-Backups"),
             ]
         )
-        for letter in ("D", "E", "F"):
+        for letter in ("D", "E", "F", "G", "H", "I"):
             root = Path(f"{letter}:/")
             if root.exists():
                 suggestions.append((f"Disco {letter}:", root / "Backups" / "NKDentalSoft"))
@@ -509,7 +518,9 @@ def pick_backup_directory_interactive(
         )
 
     product = _product_name()
-    title = title or f"Seleccione la carpeta donde {product} guardará los backups"
+    # Avoid bare "&" in WinForms titles (can look odd); keep accents.
+    product_ui = product.replace("&", "y")
+    title = title or f"Seleccione la carpeta donde {product_ui} guardará los backups"
     if not _pick_lock.acquire(blocking=False):
         raise HTTPException(
             status_code=409,

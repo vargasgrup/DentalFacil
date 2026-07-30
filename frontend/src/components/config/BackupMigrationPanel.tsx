@@ -169,7 +169,9 @@ export function BackupMigrationPanel() {
         return;
       }
       if (result.cancelled) {
-        setMsg("No se cambió la carpeta (selección cancelada).");
+        setMsg(
+          "No se cambió la carpeta. Si cerró el diálogo, vuelva a pulsar Elegir carpeta… o use una carpeta sugerida (Disco E:/I:)."
+        );
         return;
       }
       if (result.settings) {

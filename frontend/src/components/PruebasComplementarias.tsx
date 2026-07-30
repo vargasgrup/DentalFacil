@@ -1,10 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Eye, Trash2, Upload } from "lucide-react";
+import {
+  Camera,
+  Eye,
+  FileText,
+  FlaskConical,
+  Scan,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { apiFetch, apiUpload, apiFetchBlob, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
-import { Button } from "@/components/ui/Button";
 import { DigitizedDocumentViewer } from "@/components/DigitizedDocumentViewer";
 
 type Categoria = "radiografia" | "fotografia_clinica" | "laboratorio";
@@ -25,16 +32,21 @@ interface ComplementaryItem {
 const CATEGORIES: {
   id: Categoria;
   title: string;
-  description: string;
+  short: string;
+  icon: typeof Scan;
+  accent: string;
+  iconBg: string;
   subtypes: { id: string; label: string }[];
 }[] = [
   {
     id: "radiografia",
     title: "Radiografías",
-    description:
-      "Ortopantomografía (panorámica), periapicales, oclusales, aleta de mordida o telerradiografía.",
+    short: "Panorámica, periapical, oclusal…",
+    icon: Scan,
+    accent: "text-brand-700",
+    iconBg: "bg-brand-50 text-brand-600 ring-brand-100",
     subtypes: [
-      { id: "ortopantomografia", label: "Ortopantomografía (panorámica)" },
+      { id: "ortopantomografia", label: "Ortopantomografía" },
       { id: "periapical", label: "Periapical" },
       { id: "oclusal", label: "Oclusal" },
       { id: "aleta_mordida", label: "Aleta de mordida" },
@@ -43,8 +55,11 @@ const CATEGORIES: {
   },
   {
     id: "fotografia_clinica",
-    title: "Fotografías clínicas",
-    description: "Imágenes intraorales y extraorales para documentar la evolución.",
+    title: "Fotografías",
+    short: "Intraoral y extraoral",
+    icon: Camera,
+    accent: "text-sky-800",
+    iconBg: "bg-sky-50 text-sky-600 ring-sky-100",
     subtypes: [
       { id: "intraoral", label: "Intraoral" },
       { id: "extraoral", label: "Extraoral" },
@@ -52,8 +67,11 @@ const CATEGORIES: {
   },
   {
     id: "laboratorio",
-    title: "Resultados de laboratorio",
-    description: "Informes de laboratorio, análisis de biopsias y estudios relacionados.",
+    title: "Laboratorio",
+    short: "Informes y biopsias",
+    icon: FlaskConical,
+    accent: "text-teal-800",
+    iconBg: "bg-teal-50 text-teal-600 ring-teal-100",
     subtypes: [
       { id: "laboratorio", label: "Estudio de laboratorio" },
       { id: "biopsia", label: "Análisis de biopsia" },
@@ -233,11 +251,15 @@ export function PruebasComplementarias({
   };
 
   return (
-    <div className="space-y-5">
-      <p className="text-help text-slate-500">
-        Archivos digitales de pruebas realizadas (imágenes y PDF). Sin límite de
-        tamaño por archivo en instalaciones locales de escritorio.
-      </p>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-slate-500">
+          Imágenes o PDF · máx. práctico 10&nbsp;MB en escritorio
+        </p>
+        {loading && (
+          <span className="text-xs font-medium text-slate-400">Cargando…</span>
+        )}
+      </div>
 
       {error && (
         <p
@@ -248,124 +270,174 @@ export function PruebasComplementarias({
         </p>
       )}
 
-      {loading && <p className="text-sm text-slate-400">Cargando archivos…</p>}
+      {/* Una fila · 3 columnas en desktop; apilado en móvil */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-3 lg:gap-4">
+        {CATEGORIES.map((cat) => {
+          const Icon = cat.icon;
+          const list = byCategory[cat.id];
+          const busy = uploadingCat === cat.id;
+          const count = list.length;
 
-      {CATEGORIES.map((cat) => (
-        <div
-          key={cat.id}
-          className="rounded-lg border border-slate-200 bg-surface-subtle p-4"
-        >
-          <div className="mb-3">
-            <h3 className="text-sm font-semibold text-slate-800">{cat.title}</h3>
-            <p className="mt-0.5 text-help text-slate-500">{cat.description}</p>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <label className="block min-w-[12rem] flex-1">
-              <span className="mb-1 block text-label text-slate-700">Tipo</span>
-              <select
-                value={subtipos[cat.id]}
-                onChange={(e) =>
-                  setSubtipos((prev) => ({ ...prev, [cat.id]: e.target.value }))
-                }
-                disabled={readOnly}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:opacity-60"
-              >
-                {cat.subtypes.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block min-w-[12rem] flex-[1.4]">
-              <span className="mb-1 block text-label text-slate-700">
-                Notas (opcional)
-              </span>
-              <input
-                value={notas[cat.id]}
-                onChange={(e) =>
-                  setNotas((prev) => ({ ...prev, [cat.id]: e.target.value }))
-                }
-                placeholder="Referencia clínica breve"
-                disabled={readOnly}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:opacity-60"
-              />
-            </label>
-            {!readOnly && (
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">
-              <Upload className="h-4 w-4" aria-hidden />
-              {uploadingCat === cat.id ? "Subiendo…" : "Cargar archivo"}
-              <input
-                type="file"
-                accept={ACCEPT}
-                className="sr-only"
-                disabled={uploadingCat === cat.id}
-                onChange={(e) => {
-                  void onUpload(cat.id, e.target.files?.[0] || null);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-            )}
-          </div>
-
-          {byCategory[cat.id].length === 0 ? (
-            <p className="mt-3 text-sm text-slate-400">Sin archivos en esta categoría.</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white">
-              {byCategory[cat.id].map((item) => (
-                <li
-                  key={item.id}
-                  className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5"
+          return (
+            <article
+              key={cat.id}
+              className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-shadow hover:shadow-[0_4px_14px_-6px_rgba(15,23,42,0.12)]"
+            >
+              {/* Cabecera compacta */}
+              <header className="flex items-start gap-3 border-b border-slate-100 px-3.5 py-3">
+                <span
+                  className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${cat.iconBg}`}
+                  aria-hidden
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-slate-800" title={item.filename}>
-                      {item.filename}
-                    </p>
-                    <p className="text-help text-slate-500">
-                      {subtypeLabel(item.categoria, item.subtipo)}
-                      {" · "}
-                      {isPdf(item) ? "PDF" : "Imagen"}
-                      {" · "}
-                      {formatBytes(item.size_bytes)}
-                      {" · "}
-                      {formatDateTime(item.created_at)}
-                      {item.notas ? ` · ${item.notas}` : ""}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      disabled={loadingId === item.id}
-                      icon={<Eye className="h-3.5 w-3.5" />}
-                      onClick={() => void openViewer(item)}
+                  <Icon className="h-[1.125rem] w-[1.125rem]" strokeWidth={2} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className={`truncate text-sm font-semibold tracking-tight ${cat.accent}`}>
+                      {cat.title}
+                    </h3>
+                    <span
+                      className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
+                        count > 0
+                          ? "bg-brand-600 text-white"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                      title={`${count} archivo${count === 1 ? "" : "s"}`}
                     >
-                      {loadingId === item.id ? "Cargando…" : "Visualizar"}
-                    </Button>
-                    {!readOnly && (
-                    <button
-                      type="button"
-                      onClick={() => void onDelete(item)}
-                      className="rounded p-2 text-slate-400 hover:bg-danger-50 hover:text-danger-600"
-                      aria-label={`Eliminar ${item.filename}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                    )}
+                      {count}
+                    </span>
                   </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ))}
+                  <p className="mt-0.5 truncate text-[11px] leading-snug text-slate-500">
+                    {cat.short}
+                  </p>
+                </div>
+              </header>
+
+              {/* Controles de carga */}
+              <div className="flex flex-1 flex-col gap-2.5 px-3.5 py-3">
+                <label className="block">
+                  <span className="sr-only">Tipo — {cat.title}</span>
+                  <select
+                    value={subtipos[cat.id]}
+                    onChange={(e) =>
+                      setSubtipos((prev) => ({ ...prev, [cat.id]: e.target.value }))
+                    }
+                    disabled={readOnly || busy}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-2 text-xs font-medium text-slate-700 transition-colors focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60"
+                  >
+                    {cat.subtypes.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="sr-only">Notas — {cat.title}</span>
+                  <input
+                    value={notas[cat.id]}
+                    onChange={(e) =>
+                      setNotas((prev) => ({ ...prev, [cat.id]: e.target.value }))
+                    }
+                    placeholder="Nota breve (opcional)"
+                    disabled={readOnly || busy}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60"
+                  />
+                </label>
+
+                {!readOnly && (
+                  <label
+                    className={`group inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors ${
+                      busy
+                        ? "cursor-wait bg-brand-100 text-brand-700"
+                        : "bg-brand-600 text-white shadow-sm shadow-brand-600/20 hover:bg-brand-700"
+                    }`}
+                  >
+                    <Upload className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
+                    {busy ? "Subiendo…" : "Cargar archivo"}
+                    <input
+                      type="file"
+                      accept={ACCEPT}
+                      className="sr-only"
+                      disabled={busy}
+                      onChange={(e) => {
+                        void onUpload(cat.id, e.target.files?.[0] || null);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                )}
+
+                {/* Lista compacta de archivos */}
+                <div className="mt-auto min-h-[4.5rem] rounded-lg border border-dashed border-slate-200 bg-slate-50/60">
+                  {count === 0 ? (
+                    <div className="flex h-full min-h-[4.5rem] flex-col items-center justify-center gap-1 px-2 py-3 text-center">
+                      <FileText className="h-4 w-4 text-slate-300" aria-hidden />
+                      <p className="text-[11px] text-slate-400">Sin archivos</p>
+                    </div>
+                  ) : (
+                    <ul className="max-h-36 divide-y divide-slate-100 overflow-y-auto">
+                      {list.map((item) => (
+                        <li
+                          key={item.id}
+                          className="flex items-center gap-1.5 px-2 py-1.5"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className="truncate text-[11px] font-medium text-slate-800"
+                              title={item.filename}
+                            >
+                              {item.filename}
+                            </p>
+                            <p className="truncate text-[10px] text-slate-500">
+                              {subtypeLabel(item.categoria, item.subtipo)}
+                              {" · "}
+                              {isPdf(item) ? "PDF" : "Img"}
+                              {" · "}
+                              {formatBytes(item.size_bytes)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={loadingId === item.id}
+                            onClick={() => void openViewer(item)}
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-white hover:text-brand-700 disabled:opacity-50"
+                            title="Visualizar"
+                            aria-label={`Visualizar ${item.filename}`}
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              onClick={() => void onDelete(item)}
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-danger-50 hover:text-danger-600"
+                              aria-label={`Eliminar ${item.filename}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      {/* Fecha oculta en filas compactas: tooltip vía title en filename; detalle en visor */}
+      <p className="sr-only">
+        {items.map((i) => `${i.filename} ${formatDateTime(i.created_at)}`).join(", ")}
+      </p>
 
       {viewer && (
         <DigitizedDocumentViewer
           title={subtypeLabel(viewer.item.categoria, viewer.item.subtipo)}
-          subtitle={viewer.item.filename}
+          subtitle={`${viewer.item.filename} · ${formatDateTime(viewer.item.created_at)}`}
           src={viewer.src}
           kind={isPdf(viewer.item) ? "pdf" : "image"}
           onClose={closeViewer}

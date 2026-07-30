@@ -1,18 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, FileText, Scale } from "lucide-react";
 import { DocumentActions } from "@/components/DocumentActions";
-import { apiFetch } from "@/lib/api";
+import {
+  CONSENT_CATALOG,
+  DEFAULT_CONSENT_TIPO,
+  type ConsentCatalogItem,
+} from "@/lib/consentCatalog";
 import { formatDateTime } from "@/lib/datetime";
 import type { ClinicalRecord, Patient } from "./types";
-
-type ConsentTipo = {
-  id: string;
-  label: string;
-  title: string;
-  preview?: string;
-};
 
 type Props = {
   patient: Patient;
@@ -31,41 +28,17 @@ export function ConsentimientoInformadoPanel({
   inactive,
   toggleConsentimiento,
 }: Props) {
-  const [tipos, setTipos] = useState<ConsentTipo[]>([]);
-  const [tipoId, setTipoId] = useState("exodoncia_simple");
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setLoadError(null);
-      try {
-        const data = await apiFetch<ConsentTipo[]>("/api/documents/consentimiento-tipos");
-        if (cancelled) return;
-        setTipos(data);
-        if (data.length && !data.some((t) => t.id === tipoId)) {
-          setTipoId(data[0].id);
-        }
-      } catch {
-        if (!cancelled) setLoadError("No se pudo cargar el catálogo de consentimientos.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- carga única al montar
-  }, []);
+  const tipos: ConsentCatalogItem[] = CONSENT_CATALOG;
+  const [tipoId, setTipoId] = useState(DEFAULT_CONSENT_TIPO);
 
   const selected = useMemo(
-    () => tipos.find((t) => t.id === tipoId) ?? null,
+    () => tipos.find((t) => t.id === tipoId) ?? tipos[0] ?? null,
     [tipos, tipoId],
   );
 
-  const downloadUrl = `/api/documents/consentimiento/${patientId}?tipo=${encodeURIComponent(tipoId)}`;
+  const downloadUrl = `/api/documents/consentimiento/${patientId}?tipo=${encodeURIComponent(
+    selected?.id ?? DEFAULT_CONSENT_TIPO,
+  )}`;
   const patientName = `${patient.nombres} ${patient.apellidos}`.trim();
 
   return (
@@ -96,19 +69,17 @@ export function ConsentimientoInformadoPanel({
               aria-hidden
             />
             <select
-              value={tipoId}
+              value={selected?.id ?? DEFAULT_CONSENT_TIPO}
               onChange={(e) => setTipoId(e.target.value)}
-              disabled={loading || inactive || tipos.length === 0}
+              disabled={inactive}
               className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-10 text-sm font-medium text-slate-800 shadow-sm transition-smooth focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
               aria-label="Seleccionar consentimiento informado"
             >
-              {loading && <option value={tipoId}>Cargando catálogo…</option>}
-              {!loading &&
-                tipos.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                  </option>
-                ))}
+              {tipos.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
             </select>
             <ChevronDown
               className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
@@ -116,40 +87,32 @@ export function ConsentimientoInformadoPanel({
             />
           </div>
 
-          {!loading && tipos.length > 0 && (
-            <div
-              className="flex flex-wrap gap-1.5"
-              role="listbox"
-              aria-label="Acceso rápido a consentimientos"
-            >
-              {tipos.map((t) => {
-                const active = t.id === tipoId;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    role="option"
-                    aria-selected={active}
-                    disabled={inactive}
-                    onClick={() => setTipoId(t.id)}
-                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-smooth disabled:cursor-not-allowed disabled:opacity-50 ${
-                      active
-                        ? "bg-brand-600 text-white shadow-sm"
-                        : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-800"
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {loadError && (
-            <p className="text-sm text-danger-600" role="alert">
-              {loadError}
-            </p>
-          )}
+          <div
+            className="flex flex-wrap gap-1.5"
+            role="listbox"
+            aria-label="Acceso rápido a consentimientos"
+          >
+            {tipos.map((t) => {
+              const active = t.id === (selected?.id ?? "");
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  disabled={inactive}
+                  onClick={() => setTipoId(t.id)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-smooth disabled:cursor-not-allowed disabled:opacity-50 ${
+                    active
+                      ? "bg-brand-600 text-white shadow-sm"
+                      : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-800"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
 
           {selected && (
             <div className="rounded-lg border border-slate-200 bg-white/90 p-4">
@@ -160,8 +123,7 @@ export function ConsentimientoInformadoPanel({
                 {selected.title}
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-600 [text-align:justify]">
-                {selected.preview ||
-                  "El documento PDF incluirá el texto normativo completo con justificación tipográfica, listo para impresión."}
+                {selected.preview}
               </p>
               <p className="mt-3 border-t border-slate-100 pt-2 text-help text-slate-400">
                 Odontólogo:{" "}

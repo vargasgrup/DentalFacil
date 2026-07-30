@@ -397,6 +397,7 @@ export function EvaluacionTab({
           patient={patient}
           patientId={patientId}
           record={record}
+          planItems={planItems}
           doctorDisplay={doctorDisplay}
           inactive={inactive}
           toggleConsentimiento={toggleConsentimiento}

@@ -64,6 +64,16 @@ def test_consentimiento_whatsapp_mark_by_patient_tipo(
     cd = (pdf.headers.get("content-disposition") or "").lower()
     assert "consentimiento" in cd and "endodoncia" in cd
 
+    plan_pdf = client.get(
+        f"/api/documents/consentimiento/{patient['id']}?origen=plan&fmt=A4",
+        headers=admin_headers,
+    )
+    assert plan_pdf.status_code == 200, plan_pdf.text
+    assert plan_pdf.content[:4] == b"%PDF"
+    assert len(plan_pdf.content) > 2500
+    plan_cd = (plan_pdf.headers.get("content-disposition") or "").lower()
+    assert "consentimiento" in plan_cd and "plan" in plan_cd
+
     bad = client.post(
         f"/api/documents/whatsapp-sent/{patient['id']}",
         headers=admin_headers,

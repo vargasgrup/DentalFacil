@@ -471,15 +471,15 @@ def generate_pdf(
     # Header (common to all) — official logo + clinic contact
     _append_document_header(story, styles, fmt)
 
-    # Consentimiento oficial: título propio del template COP (no etiqueta genérica)
+    # Consentimiento: título según origen (plan clínico o COP)
     if doc_type == "consentimiento" and data.get("consent_title"):
         story.append(Paragraph(str(data["consent_title"]), styles["consent_title"]))
-        story.append(
-            Paragraph(
-                "Texto normativo adaptado · Colegio Odontológico del Perú",
-                styles["consent_meta"],
-            )
+        meta = data.get("consent_meta") or (
+            "Texto normativo adaptado · Colegio Odontológico del Perú"
+            if data.get("consent_origen") != "plan"
+            else "Basado en el plan de tratamiento activo de la ficha clínica"
         )
+        story.append(Paragraph(str(meta), styles["consent_meta"]))
     else:
         story.append(Paragraph(type_labels.get(doc_type, doc_type.upper()), styles["section"]))
         story.append(
@@ -515,7 +515,8 @@ def generate_pdf(
 
     patient_name = data.get("patient_nombre", "")
     if doc_type == "consentimiento":
-        tipo_label = data.get("consent_tipo") or "general"
+        origen = data.get("consent_origen") or "cop"
+        tipo_label = "plan" if origen == "plan" else (data.get("consent_tipo") or "general")
         fn_parts = ["Consentimiento", _safe_filename(str(tipo_label))]
     else:
         fn_parts = [type_labels.get(doc_type, doc_type)]
@@ -845,23 +846,16 @@ def _fill_consent_official_body(
     return text.strip()
 
 
-def _build_consentimiento(story: list, data: dict, styles: dict, fmt: str):
-    """Consentimiento oficial COP + membrete de clínica + datos reales."""
-    from app.services.consent_official_templates import get_consent_template
-
-    tpl = get_consent_template(data.get("consent_tipo"))
-    p = data.get("patient") or {}
-    doctor = data.get("doctor") or {}
-    profile = get_clinic_profile()
-
-    patient_name = f"{p.get('nombres', '')} {p.get('apellidos', '')}".strip() or "________________"
-    dni = str(p.get("numero_documento") or "____________")
-    address = str(p.get("direccion") or "").strip() or "________________________________"
-    doctor_name = str(doctor.get("nombre") or profile.director_nombre or "________________").strip()
-    cop = str(doctor.get("cop") or profile.cop_registro or "").strip()
-    label = str(tpl.get("label") or "")
-
-    # Identificación del paciente (membrete clínico; el cuerpo es el texto oficial COP)
+def _consent_patient_doctor_block(
+    story: list,
+    styles: dict,
+    *,
+    patient_name: str,
+    dni: str,
+    address: str,
+    doctor_name: str,
+    cop: str,
+) -> None:
     id_line = (
         f"<b>Paciente:</b> {_escape_xml(patient_name)} · "
         f"<b>DNI:</b> {_escape_xml(dni)} · "
@@ -874,25 +868,20 @@ def _build_consentimiento(story: list, data: dict, styles: dict, fmt: str):
     story.append(Paragraph(doc_line, styles["small"]))
     story.append(Spacer(1, 8))
 
-    filled = _fill_consent_official_body(
-        tpl.get("body") or "",
-        doctor_name=doctor_name,
-        patient_name=patient_name,
-        procedure_label=label,
-    )
-    for para in filled.split("\n\n"):
-        para = para.strip()
-        if not para:
-            continue
-        story.append(Paragraph(_escape_xml(para), styles["body_justify"]))
 
+def _consent_signature_block(
+    story: list,
+    styles: dict,
+    fmt: str,
+    *,
+    patient_name: str,
+    dni: str,
+    doctor_name: str,
+    cop: str,
+    consentimiento_fecha: str | None = None,
+) -> None:
     story.append(Spacer(1, 10))
-    story.append(
-        Paragraph(
-            _consent_place_and_date(profile),
-            styles["body"],
-        )
-    )
+    story.append(Paragraph(_consent_place_and_date(get_clinic_profile()), styles["body"]))
     story.append(Spacer(1, 14))
 
     if fmt == "80mm":
@@ -934,14 +923,151 @@ def _build_consentimiento(story: list, data: dict, styles: dict, fmt: str):
         )
         story.append(sig)
 
-    if data.get("consentimiento_fecha"):
+    if consentimiento_fecha:
         story.append(Spacer(1, 8))
         story.append(
+            Paragraph(f"Registro en sistema: {consentimiento_fecha}", styles["small"])
+        )
+
+
+def _build_consentimiento_plan(story: list, data: dict, styles: dict, fmt: str) -> None:
+    """Consentimiento clínico generado desde el plan de tratamiento activo."""
+    p = data.get("patient") or {}
+    doctor = data.get("doctor") or {}
+    profile = get_clinic_profile()
+
+    patient_name = f"{p.get('nombres', '')} {p.get('apellidos', '')}".strip() or "________________"
+    dni = str(p.get("numero_documento") or "____________")
+    address = str(p.get("direccion") or "").strip() or "________________________________"
+    doctor_name = str(doctor.get("nombre") or profile.director_nombre or "________________").strip()
+    cop = str(doctor.get("cop") or profile.cop_registro or "").strip()
+    diagnostico = str(data.get("diagnostico") or "").strip()
+
+    _consent_patient_doctor_block(
+        story,
+        styles,
+        patient_name=patient_name,
+        dni=dni,
+        address=address,
+        doctor_name=doctor_name,
+        cop=cop,
+    )
+
+    body = (
+        f"Yo, <b>{_escape_xml(patient_name)}</b>, identificado(a) con DNI "
+        f"<b>{_escape_xml(dni)}</b>, declaro que he sido informado(a) sobre mi "
+        f"diagnóstico odontológico"
+    )
+    if diagnostico:
+        body += f" (<i>{_escape_xml(diagnostico)}</i>)"
+    body += (
+        f" y el plan de tratamiento propuesto por el/la Dr.(a) "
+        f"<b>{_escape_xml(doctor_name)}</b>. He comprendido los beneficios, riesgos "
+        f"y alternativas del tratamiento, así como las consecuencias de no recibirlo. "
+        f"Autorizo al profesional mencionado a realizar los procedimientos necesarios "
+        f"para mi atención odontológica, conforme al plan que se detalla a continuación."
+    )
+    story.append(Paragraph(body, styles["body_justify"]))
+    story.append(Spacer(1, 8))
+
+    items = data.get("plan_items") or []
+    if items:
+        story.append(Paragraph("<b>Plan de tratamiento aceptado</b>", styles["body"]))
+        page_w = FORMAT_DIMENSIONS[fmt][0]
+        margin = 8 * mm if fmt == "A5" else 15 * mm
+        if fmt == "80mm":
+            margin = 3 * mm
+        content_w = page_w - 2 * margin
+        widths = [content_w * 0.18, content_w * 0.52, content_w * 0.30]
+        rows: list[list] = [["Pieza", "Tratamiento", "Estado"]]
+        for it in items:
+            pieza = str(it.get("pieza_fdi") or "—")
+            label = clean_treatment_label(
+                it.get("item"),
+                pieza_fdi=pieza if pieza != "—" else None,
+            )
+            estado = strip_markdown_noise(str(it.get("estado") or "pendiente"))
+            rows.append([pieza, label, estado])
+        story.append(_build_table(rows, widths, styles))
+    else:
+        story.append(
             Paragraph(
-                f"Registro en sistema: {data['consentimiento_fecha']}",
-                styles["small"],
+                "No hay ítems activos en el plan de tratamiento al momento de emitir "
+                "este documento. El consentimiento cubre el diagnóstico y el plan "
+                "clínico que el odontólogo explique verbalmente.",
+                styles["body_justify"],
             )
         )
+
+    _consent_signature_block(
+        story,
+        styles,
+        fmt,
+        patient_name=patient_name,
+        dni=dni,
+        doctor_name=doctor_name,
+        cop=cop,
+        consentimiento_fecha=data.get("consentimiento_fecha"),
+    )
+
+
+def _build_consentimiento_cop(story: list, data: dict, styles: dict, fmt: str) -> None:
+    """Consentimiento oficial COP + membrete de clínica + datos reales."""
+    from app.services.consent_official_templates import get_consent_template
+
+    tpl = get_consent_template(data.get("consent_tipo"))
+    p = data.get("patient") or {}
+    doctor = data.get("doctor") or {}
+    profile = get_clinic_profile()
+
+    patient_name = f"{p.get('nombres', '')} {p.get('apellidos', '')}".strip() or "________________"
+    dni = str(p.get("numero_documento") or "____________")
+    address = str(p.get("direccion") or "").strip() or "________________________________"
+    doctor_name = str(doctor.get("nombre") or profile.director_nombre or "________________").strip()
+    cop = str(doctor.get("cop") or profile.cop_registro or "").strip()
+    label = str(tpl.get("label") or "")
+
+    _consent_patient_doctor_block(
+        story,
+        styles,
+        patient_name=patient_name,
+        dni=dni,
+        address=address,
+        doctor_name=doctor_name,
+        cop=cop,
+    )
+
+    filled = _fill_consent_official_body(
+        tpl.get("body") or "",
+        doctor_name=doctor_name,
+        patient_name=patient_name,
+        procedure_label=label,
+    )
+    for para in filled.split("\n\n"):
+        para = para.strip()
+        if not para:
+            continue
+        story.append(Paragraph(_escape_xml(para), styles["body_justify"]))
+
+    _consent_signature_block(
+        story,
+        styles,
+        fmt,
+        patient_name=patient_name,
+        dni=dni,
+        doctor_name=doctor_name,
+        cop=cop,
+        consentimiento_fecha=data.get("consentimiento_fecha"),
+    )
+
+
+def _build_consentimiento(story: list, data: dict, styles: dict, fmt: str):
+    """Despacha consentimiento por plan clínico u oficial COP."""
+    if (data.get("consent_origen") or "cop") == "plan":
+        _build_consentimiento_plan(story, data, styles, fmt)
+    else:
+        _build_consentimiento_cop(story, data, styles, fmt)
+
 
 def _build_presupuesto(story: list, data: dict, styles: dict, fmt: str):
     """Presupuesto exportable (plan de tratamiento alternativo)."""

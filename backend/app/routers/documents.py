@@ -353,15 +353,20 @@ def list_consentimiento_tipos(
 @router.get("/consentimiento/{patient_id}")
 def download_consentimiento(
     patient_id: str,
+    origen: str = Query(
+        "cop",
+        regex="^(cop|plan)$",
+        description="cop = plantilla oficial COP; plan = plan de tratamiento activo",
+    ),
     tipo: str | None = Query(
         None,
-        description="Plantilla oficial COP (ej. endodoncia, ortodoncia)",
+        description="Plantilla oficial COP (ej. endodoncia, ortodoncia). Solo si origen=cop",
     ),
     fmt: str = Query("A4", regex="^(80mm|A5|A4)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Generate and download an informed consent PDF (membrete clínica + texto COP)."""
+    """Generate informed consent PDF (plan clínico o texto oficial COP)."""
     from app.services.clinic_profile import get_clinic_profile
     from app.services.consent_official_templates import get_consent_template
 
@@ -373,10 +378,9 @@ def download_consentimiento(
         .filter(ClinicalRecord.patient_id == patient_id)
         .first()
     )
-    tpl = get_consent_template(tipo)
     profile = get_clinic_profile(db)
 
-    data = {
+    base = {
         "patient": {
             "nombres": patient.nombres,
             "apellidos": patient.apellidos,
@@ -387,13 +391,37 @@ def download_consentimiento(
             "nombre": user.nombre,
             "cop": profile.cop_registro,
         },
-        "consent_tipo": tpl["id"],
-        "consent_title": tpl["title"],
         "consentimiento_fecha": _format_date(record.consentimiento_fecha)
         if record and record.consentimiento_fecha
         else None,
         "patient_nombre": f"{patient.nombres} {patient.apellidos}".strip(),
+        "diagnostico": (record.diagnostico if record else None) or "",
     }
+
+    if origen == "plan":
+        from app.odontogram.plans import active_items
+
+        plan_items = (
+            active_items(record.plan_tratamiento) if record and record.plan_tratamiento else []
+        )
+        data = {
+            **base,
+            "consent_origen": "plan",
+            "consent_tipo": "plan",
+            "consent_title": "CONSENTIMIENTO INFORMADO — PLAN DE TRATAMIENTO",
+            "consent_meta": "Basado en el plan de tratamiento activo de la ficha clínica",
+            "plan_items": plan_items,
+        }
+    else:
+        tpl = get_consent_template(tipo)
+        data = {
+            **base,
+            "consent_origen": "cop",
+            "consent_tipo": tpl["id"],
+            "consent_title": tpl["title"],
+            "consent_meta": "Texto normativo adaptado · Colegio Odontológico del Perú",
+        }
+
     # Documentos legales: preferir A4/A5 (80mm queda ilegible)
     if fmt == "80mm":
         fmt = "A5"

@@ -13,8 +13,8 @@ PDF (RAM)
 
 1. **Cloud API** — opcional; Meta Graph solo en servidor.
 2. **Web Share** — selector nativo con archivo adjunto.
-3. **WhatsApp app** — sin Cloud API: descarga el PDF desde Blob, abre el chat del paciente
-   (`whatsapp://` + `web.whatsapp.com/send`) con su número. Adjuntar con 📎 o Ctrl+V.
+3. **WhatsApp app** — sin Cloud API: PDF **en RAM** (portapapeles / Web Share), abre el chat del paciente
+   (`whatsapp://` + `web.whatsapp.com/send`). **No** dispara «Guardar como». Pegar con Ctrl+V en el chat.
 
 El teléfono se toma **siempre** de la ficha del paciente (no se digita a mano).
 

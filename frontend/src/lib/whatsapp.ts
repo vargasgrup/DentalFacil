@@ -177,17 +177,36 @@ export function downloadPdfBlob(blob: Blob, fileName: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-/** Intenta copiar el PDF al portapapeles (Ctrl+V en WhatsApp Desktop). */
-export async function tryCopyPdfToClipboard(blob: Blob): Promise<boolean> {
+/** Intenta copiar el PDF al portapapeles desde un Blob (sigue en RAM; sin Guardar como). */
+export async function tryCopyPdfToClipboard(
+  blob: Blob,
+  fileName = "documento.pdf"
+): Promise<boolean> {
   try {
     if (!navigator.clipboard || typeof ClipboardItem === "undefined") return false;
     const pdf =
       blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" });
-    await navigator.clipboard.write([
-      new ClipboardItem({
-        "application/pdf": pdf,
-      }),
-    ]);
+    const name = fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`;
+    const file = new File([pdf], name, { type: "application/pdf" });
+
+    const tryWrite = async (item: Record<string, Blob | Promise<Blob>>) => {
+      await navigator.clipboard.write([new ClipboardItem(item)]);
+    };
+
+    // Variantes: algunos Chromium exigen Promise<Blob> o File tipado.
+    try {
+      await tryWrite({ "application/pdf": file });
+      return true;
+    } catch {
+      /* continue */
+    }
+    try {
+      await tryWrite({ "application/pdf": Promise.resolve(pdf) });
+      return true;
+    } catch {
+      /* continue */
+    }
+    await tryWrite({ "application/pdf": pdf });
     return true;
   } catch {
     return false;

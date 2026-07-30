@@ -20,11 +20,12 @@ Orden fijo:
 3. **Web Share API** — PDF en RAM + mensaje → selector del SO → WhatsApp con archivo.  
    Si el navegador soporta `navigator.share({ files })`.
 
-4. **WhatsApp Desktop / WhatsApp Web (sin Cloud API)** — permanente cuando 1–3 no aplican:  
-   - PDF en **RAM** → descarga del Blob en el cliente (no disco del servidor).  
+4. **WhatsApp Desktop / WhatsApp Web (sin Cloud API)** — cuando 1–3 no aplican:  
+   - PDF **solo en RAM** (Blob / portapapeles). **Prohibido** disparar «Guardar como» / descarga a disco en este clic.  
    - Abrir chat del **paciente** con su teléfono (`whatsapp://` + `web.whatsapp.com/send`).  
    - Mensaje limpio (sin base64/PDF en el texto).  
-   - **Sin** modal de arrastre. Toast breve si hace falta adjuntar el PDF descargado (📎 / Ctrl+V).
+   - Toast: pegar con Ctrl+V en el chat si el portapapeles aceptó el PDF.  
+   - El botón **Descargar** aparte sigue disponible si el usuario quiere el archivo en disco.
 
 ## Obligatorio
 

@@ -13,7 +13,6 @@
 
 import { getToken } from "@/lib/api";
 import {
-  downloadPdfBlob,
   normalizePeruPhone,
   openWhatsAppChat,
   sanitizeWhatsAppText,
@@ -262,15 +261,20 @@ export class DocumentSender {
     });
   }
 
+  /** True si el navegador expone Web Share (puede o no aceptar files). */
+  canAttemptWebShare(): boolean {
+    return typeof navigator !== "undefined" && typeof navigator.share === "function";
+  }
+
   canUseWebShare(file: File): boolean {
-    if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
-      return false;
-    }
+    if (!this.canAttemptWebShare()) return false;
     if (typeof navigator.canShare === "function") {
       try {
-        return navigator.canShare({ files: [file] });
+        // En Chrome/Edge desktop canShare({files}) a veces es false de más;
+        // aún así intentamos share más abajo.
+        return navigator.canShare({ files: [file] }) || navigator.canShare({ text: "x" });
       } catch {
-        return false;
+        return true;
       }
     }
     return true;
@@ -280,49 +284,62 @@ export class DocumentSender {
     pdfBlob: Blob;
     fileName: string;
     message: string;
-    /** Paciente: abre WhatsApp en ese chat antes de compartir el PDF. */
     phoneNumber?: string | null;
   }): Promise<{ success: boolean; aborted?: boolean; error?: string; phoneTargeted?: boolean }> {
-    const file = new File([opts.pdfBlob], opts.fileName, { type: "application/pdf" });
-    if (!this.canUseWebShare(file)) {
+    if (!this.canAttemptWebShare()) {
       throw new DocumentSendError("WebShareUnsupported");
     }
 
+    const file = new File([opts.pdfBlob], opts.fileName, { type: "application/pdf" });
     const phone = normalizePeruPhone(opts.phoneNumber);
     const cleanMsg = this.cleanChatMessage(opts.message);
-    let phoneTargeted = false;
 
-    // Prefocalizar el chat del paciente (número automático) sin await:
-    // un delay rompería el user-gesture y navigator.share fallaría.
-    if (phone) {
-      openWhatsAppChat(phone, cleanMsg, { deepLinkOnly: true });
-      phoneTargeted = true;
-    }
-
+    // No abrir WhatsApp antes del share: el diálogo del protocolo cancela el gesto
+    // y fuerza el fallback. El PDF debe viajar solo por Web Share (sigue en RAM).
     try {
-      await navigator.share({
+      const payload: ShareData = {
         files: [file],
         title: opts.fileName,
         text: cleanMsg.slice(0, 200),
-      });
+      };
+      if (typeof navigator.canShare === "function") {
+        try {
+          if (!navigator.canShare({ files: [file] })) {
+            throw new DocumentSendError("WebShareUnsupported");
+          }
+        } catch (err) {
+          if (err instanceof DocumentSendError) throw err;
+          throw new DocumentSendError("WebShareUnsupported");
+        }
+      }
+      await navigator.share(payload);
+
+      // Tras compartir el PDF en RAM, enfocar el chat del paciente (número automático).
+      let phoneTargeted = false;
+      if (phone) {
+        openWhatsAppChat(phone, cleanMsg, { deepLinkOnly: true });
+        phoneTargeted = true;
+      }
       return { success: true, phoneTargeted };
     } catch (err) {
+      if (err instanceof DocumentSendError) throw err;
       const name = err instanceof Error ? err.name : "";
       if (name === "AbortError") {
         return {
           success: false,
           aborted: true,
           error: "Compartir cancelado",
-          phoneTargeted,
+          phoneTargeted: false,
         };
       }
-      throw err;
+      // DataError / NotAllowedError / TypeError → fallback sin descarga
+      throw new DocumentSendError("WebShareUnsupported");
     }
   }
 
   /**
-   * Fallback permanente sin Cloud API: PDF desde Blob + WhatsApp Desktop/Web
-   * con el número del paciente ya seleccionado.
+   * Sin Cloud / sin Web Share: PDF permanece en RAM (portapapeles) + chat del paciente.
+   * Nunca dispara «Guardar como» / descarga a disco.
    */
   async sendViaWhatsAppApp(opts: {
     pdfBlob: Blob;
@@ -336,13 +353,10 @@ export class DocumentSender {
     }
     const cleanMsg = this.cleanChatMessage(opts.message);
 
-    // 1) PDF listo en el cliente (desde RAM)
-    downloadPdfBlob(opts.pdfBlob, opts.fileName);
+    // PDF solo en RAM → portapapeles (Ctrl+V en WhatsApp Desktop)
+    const clipboardOk = await tryCopyPdfToClipboard(opts.pdfBlob, opts.fileName);
 
-    // 2) Portapapeles (si el SO lo permite) → Ctrl+V en Desktop
-    const clipboardOk = await tryCopyPdfToClipboard(opts.pdfBlob);
-
-    // 3) Abrir chat del paciente: app de escritorio + WhatsApp Web
+    // Chat del paciente (número automático) — Desktop + Web
     const opened = openWhatsAppChat(phone, cleanMsg, { desktopAndWeb: true });
     if (!opened.success) {
       return {
@@ -502,12 +516,11 @@ export class DocumentSender {
         }
       }
 
-      // --- 3. Web Share (si el navegador puede adjuntar archivos) ---
-      const shareFile = new File([blob], fileName, { type: "application/pdf" });
-      if (this.canUseWebShare(shareFile)) {
+      // --- 3. Web Share (PDF en RAM → selector SO; sin descarga) ---
+      if (this.canAttemptWebShare()) {
         this.showUserNotification(
           phone
-            ? "Abriendo WhatsApp del paciente y compartiendo PDF…"
+            ? "Compartiendo PDF en memoria hacia WhatsApp…"
             : "Abriendo compartir… elige WhatsApp",
           "progress",
           { id: progressId, progress: 75 }
@@ -532,8 +545,8 @@ export class DocumentSender {
             dismissDocumentNotification(progressId);
             this.showUserNotification(
               shared.phoneTargeted
-                ? "WhatsApp abierto con el paciente. Confirma el PDF en el selector."
-                : "Elige WhatsApp en el selector para enviar con el PDF adjunto",
+                ? "PDF compartido en memoria. WhatsApp abierto con el paciente."
+                : "Elige WhatsApp en el selector (PDF en memoria, sin guardar en disco).",
               "success",
               { durationMs: 7000 }
             );
@@ -545,7 +558,6 @@ export class DocumentSender {
             };
           }
           if (shared.aborted) {
-            // Usuario canceló el selector: aún podemos usar Desktop/Web abajo
             this.track("web_share", false);
             lastCode = "WebShareAborted";
             lastError = "Compartir cancelado";
@@ -557,7 +569,7 @@ export class DocumentSender {
         }
       }
 
-      // --- 4. WhatsApp Desktop / WhatsApp Web (sin Cloud API) ---
+      // --- 4. WhatsApp Desktop/Web: chat del paciente + PDF en portapapeles (RAM) ---
       if (!phone) {
         const durationMs = Math.round(performance.now() - started);
         dismissDocumentNotification(progressId);
@@ -599,8 +611,8 @@ export class DocumentSender {
           dismissDocumentNotification(progressId);
           this.showUserNotification(
             appSend.clipboardOk
-              ? "WhatsApp abierto con el paciente. El PDF se descargó; puede pegarlo con Ctrl+V o adjuntarlo 📎."
-              : "WhatsApp abierto con el paciente. El comprobante se descargó: adjúntelo con el clip 📎 en el chat.",
+              ? "WhatsApp abierto con el paciente. El PDF está en memoria: pegue con Ctrl+V en el chat."
+              : "WhatsApp abierto con el paciente. Use Ctrl+V o el clip 📎; el PDF no se guardó en disco (use Descargar solo si lo necesita).",
             "success",
             { durationMs: 9000 }
           );

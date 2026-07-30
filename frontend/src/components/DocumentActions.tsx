@@ -285,7 +285,7 @@ export function DocumentActions({
           );
         } else if (result.strategy === "whatsapp_app") {
           setSendHint(
-            "WhatsApp abierto con el paciente. Adjunte el PDF descargado (📎 o Ctrl+V)."
+            "WhatsApp abierto con el paciente. PDF en memoria: pegue con Ctrl+V en el chat."
           );
         } else {
           setSendHint(null);

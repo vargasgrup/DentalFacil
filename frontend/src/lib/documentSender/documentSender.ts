@@ -13,7 +13,6 @@
 
 import { getToken } from "@/lib/api";
 import {
-  isValidPhone,
   normalizePeruPhone,
   openWhatsAppChat,
   sanitizeWhatsAppText,

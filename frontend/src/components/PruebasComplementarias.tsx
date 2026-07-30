@@ -46,11 +46,12 @@ const CATEGORIES: {
     accent: "text-brand-700",
     iconBg: "bg-brand-50 text-brand-600 ring-brand-100",
     subtypes: [
-      { id: "ortopantomografia", label: "Ortopantomografía" },
+      { id: "ortopantomografia", label: "Ortopantomografía (panorámica)" },
       { id: "periapical", label: "Periapical" },
       { id: "oclusal", label: "Oclusal" },
       { id: "aleta_mordida", label: "Aleta de mordida" },
       { id: "telerradiografia", label: "Telerradiografía" },
+      { id: "otro", label: "Otros" },
     ],
   },
   {
@@ -63,6 +64,7 @@ const CATEGORIES: {
     subtypes: [
       { id: "intraoral", label: "Intraoral" },
       { id: "extraoral", label: "Extraoral" },
+      { id: "otro", label: "Otros" },
     ],
   },
   {

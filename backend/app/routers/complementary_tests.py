@@ -36,8 +36,9 @@ CATEGORIAS = {
         "oclusal",
         "aleta_mordida",
         "telerradiografia",
+        "otro",
     },
-    "fotografia_clinica": {"intraoral", "extraoral"},
+    "fotografia_clinica": {"intraoral", "extraoral", "otro"},
     "laboratorio": {"laboratorio", "biopsia", "otro"},
 }
 

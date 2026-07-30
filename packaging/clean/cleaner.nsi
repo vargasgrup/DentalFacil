@@ -1,79 +1,55 @@
-; Standalone cleaner for prior N&K DentalSoft installs (Server + Client).
-; Does NOT modify LAN connection logic — only removes leftovers.
+; Full wipe cleaner for prior N&K DentalSoft installs (Server + Client).
 ; Build: packaging\scripts\build_cleaner.ps1
 
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
-!include "nsDialogs.nsh"
-!include "WinMessages.nsh"
 
-Name "N&K DentalSoft — Limpiar instalaciones"
+Name "N&K DentalSoft - Desinstalacion total"
 OutFile "..\..\dist\NKDentalSoft-Clean-All-x64.exe"
 RequestExecutionLevel admin
 Unicode true
 ShowInstDetails show
+InstallDir "$TEMP\NKDentalSoft-Clean"
 
 !define MUI_ICON "..\server\assets\icons\icon.ico"
 !define MUI_UNICON "..\server\assets\icons\icon.ico"
-!define MUI_WELCOMEPAGE_TITLE "Limpiar instalaciones anteriores"
-!define MUI_WELCOMEPAGE_TEXT "Este asistente detiene Server/Client, elimina carpetas de programa, atajos, URL guardada del Client, reglas de firewall y tareas programadas.$\r$\n$\r$\nPor defecto CONSERVA la base de datos de la clinica en ProgramData.$\r$\n$\r$\nDespues podra instalar de nuevo Server y Client desde cero."
-
-Var WipeData
-Var RadioKeep
-Var RadioWipe
-Var Dialog
+!define MUI_WELCOMEPAGE_TITLE "Desinstalacion / limpieza total"
+!define MUI_WELCOMEPAGE_TEXT "Este asistente ELIMINA por completo instalaciones anteriores de N&K DentalSoft:$\r$\n$\r$\n- Program Files\NKDentalSoft (Server y Client)$\r$\n- %ProgramData%\NKDentalSoft (incluye base de datos)$\r$\n- %LocalAppData%\NKDentalSoft (URL del Client)$\r$\n- Atajos, firewall, servicio y tarea programada$\r$\n$\r$\nDespues instale de nuevo Server y Client."
 
 !insertmacro MUI_PAGE_WELCOME
-Page custom WipePageCreate WipePageLeave
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_LANGUAGE "Spanish"
 
-Function WipePageCreate
-  nsDialogs::Create 1018
-  Pop $Dialog
-  ${If} $Dialog == error
-    Abort
-  ${EndIf}
-
-  ${NSD_CreateLabel} 0 0 100% 40u "Seleccione el modo de limpieza:"
-  Pop $0
-
-  ${NSD_CreateRadioButton} 0 50u 100% 28u "Limpieza estandar (recomendado) — conserva datos de pacientes en ProgramData"
-  Pop $RadioKeep
-  ${NSD_Check} $RadioKeep
-
-  ${NSD_CreateRadioButton} 0 90u 100% 40u "Limpieza TOTAL — tambien borra %ProgramData%\NKDentalSoft (base de datos y secretos)"
-  Pop $RadioWipe
-
-  nsDialogs::Show
-FunctionEnd
-
-Function WipePageLeave
-  ${NSD_GetState} $RadioWipe $0
-  ${If} $0 == ${BST_CHECKED}
-    StrCpy $WipeData "1"
-  ${Else}
-    StrCpy $WipeData "0"
-  ${EndIf}
-FunctionEnd
-
 Section "Clean"
+  MessageBox MB_ICONEXCLAMATION|MB_YESNO \
+    "Se eliminara POR COMPLETO N&K DentalSoft de este PC, incluyendo datos en ProgramData.$\r$\n$\r$\nContinuar?" \
+    IDYES do_clean
+  DetailPrint "Cancelado por el usuario."
+  Abort
+  do_clean:
+
   InitPluginsDir
   SetOutPath "$PLUGINSDIR"
-  File "..\scripts\clean_all_installs.ps1"
+  File "/oname=clean_all_installs.ps1" "..\scripts\clean_all_installs.ps1"
 
-  DetailPrint "Ejecutando limpieza..."
-  ${If} $WipeData == "1"
-    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\clean_all_installs.ps1" -WipeClinicData'
-  ${Else}
-    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\clean_all_installs.ps1"'
-  ${EndIf}
+  DetailPrint "Ejecutando limpieza total (PowerShell)..."
+  ; Use cmd.exe so path expansion is reliable; log stays on Desktop
+  nsExec::ExecToLog 'cmd /c powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\clean_all_installs.ps1" -NoElevate'
   Pop $0
-  DetailPrint "Codigo de salida: $0"
-  ${If} $0 != 0
-    MessageBox MB_ICONEXCLAMATION|MB_OK "La limpieza termino con avisos (codigo $0).$\r$\nSi quedan carpetas en Program Files, reinicie el PC y vuelva a ejecutar este limpiador."
+  DetailPrint "Codigo de salida PowerShell: $0"
+
+  ; Also try direct ExecWait as fallback if nsExec returned weird
+  ${If} $0 == "error"
+    ExecWait 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\clean_all_installs.ps1" -NoElevate' $0
+    DetailPrint "ExecWait codigo: $0"
+  ${EndIf}
+
+  ${If} $0 == 0
+    MessageBox MB_ICONINFORMATION|MB_OK \
+      "Limpieza TOTAL completada.$\r$\n$\r$\nRevise el log en el Escritorio:$\r$\nNKDentalSoft-limpia.log$\r$\n$\r$\nLuego instale:$\r$\n1) NKDentalSoft-Server-Setup-x64.exe$\r$\n2) NKDentalSoft-Client-Setup-x64.exe"
   ${Else}
-    MessageBox MB_ICONINFORMATION|MB_OK "Limpieza completada.$\r$\n$\r$\nAhora instale:$\r$\n1) NKDentalSoft-Server-Setup-x64.exe$\r$\n2) NKDentalSoft-Client-Setup-x64.exe"
+    MessageBox MB_ICONEXCLAMATION|MB_OK \
+      "La limpieza termino con avisos (codigo $0).$\r$\n$\r$\n1) Abra NKDentalSoft-limpia.log en el Escritorio$\r$\n2) REINICIE el PC$\r$\n3) Vuelva a ejecutar este limpiador$\r$\n4) Instale Server y Client de nuevo"
   ${EndIf}
 SectionEnd

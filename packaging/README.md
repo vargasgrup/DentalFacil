@@ -171,28 +171,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_clie
 
 ---
 
-## Limpiar instalaciones anteriores (antes de reinstalar)
+## Limpiar / desinstalar por completo (antes de reinstalar)
 
-Si Client no conecta tras un upgrade, o conviven restos de varias instalaciones, use el **limpiador** (no altera el código LAN congelado; solo borra leftovers).
+Si Client no conecta tras un upgrade o conviven restos de varias instalaciones, use el **limpiador total**.
 
 | Artefacto | Ruta |
 |-----------|------|
 | EXE (recomendado) | `dist\NKDentalSoft-Clean-All-x64.exe` |
-| BAT + PS1 | `dist\Limpiar-Instalaciones-NKDentalSoft.bat` / `packaging\Limpiar-Instalaciones-NKDentalSoft.bat` |
+| BAT | `dist\Limpiar-Instalaciones-NKDentalSoft.bat` o `packaging\Limpiar-Instalaciones-NKDentalSoft.bat` |
+| Log | Escritorio `\NKDentalSoft-limpia.log` |
 
 ```powershell
-# Generar el limpiador
 powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_cleaner.ps1
 ```
 
-**Uso en la PC (como Administrador):**
+**Uso (como Administrador):**
 
-1. Ejecutar `NKDentalSoft-Clean-All-x64.exe` (o el BAT).
-2. Elegir limpieza **estándar** (conserva `%ProgramData%\NKDentalSoft\data` y `config\.env`) salvo que quiera borrar también la base.
-3. Instalar de nuevo `NKDentalSoft-Server-Setup-x64.exe`, arrancar Server, copiar la URL/IP desde Configuración.
-4. En cada Client: instalar `NKDentalSoft-Client-Setup-x64.exe` y pegar esa URL (el limpiador borra `client-url.txt` con IPs viejas).
+1. Ejecutar `NKDentalSoft-Clean-All-x64.exe` y confirmar.
+2. Revisar `NKDentalSoft-limpia.log` en el Escritorio (debe decir `SUCCESS`).
+3. Si quedan restos: reiniciar el PC y volver a ejecutar el limpiador.
+4. Instalar `NKDentalSoft-Server-Setup-x64.exe`, arrancar Server, copiar URL/IP.
+5. Instalar `NKDentalSoft-Client-Setup-x64.exe` y pegar esa URL.
 
-Qué elimina (estándar): procesos Server/Client, `Program Files\NKDentalSoft`, atajos, tarea/servicio, reglas firewall NKDentalSoft, `%LOCALAPPDATA%\NKDentalSoft\client-url.txt`, tarjetas `connect.url` / `IP-DEL-SERVIDOR.txt`.
+**Borra por completo:** `Program Files\NKDentalSoft`, `%ProgramData%\NKDentalSoft` (incluye SQLite), `%LocalAppData%\NKDentalSoft`, atajos, firewall, servicio/tarea y claves Uninstall.
 
 ---
 

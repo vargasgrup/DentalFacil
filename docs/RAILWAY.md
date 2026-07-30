@@ -1,107 +1,132 @@
-# Railway — DentalSimple / production
+# Railway — variables de producción (DentalSimple)
 
 Guía operativa del despliegue en [Railway](https://railway.app) para **N&K DentalSoft** (repo `DentalFacil`).
 
-Actualizado **2026-07-27** (healthcheck Backend + variables seguras).
+Actualizado **2026-07-30** (variables production + consentimientos COP).
 
 ---
 
-## Si el healthcheck falla (`1/1 replicas never became healthy`)
+## URLs del proyecto (production)
 
-El **build Docker OK** + healthcheck `service unavailable` significa: el contenedor **arranca y se cae** (o no llega a abrir el puerto) antes de responder `GET /api/health`.
-
-Causas más frecuentes en este proyecto:
-
-1. **`APP_ENV=production` sin secretos** → el proceso sale al importar settings:
-   - falta `JWT_SECRET` (≥32) o
-   - falta `MAINTENANCE_ACCESS_KEY` (≥16, ≠ `Solo,yo1532`)
-2. **`DATABASE_URL=${{Postgres.DATABASE_URL}}`** con Postgres legacy (`users.id` INTEGER) → `schema_guard` hace `exit` (esta imagen espera UUID).
-3. Migraciones / DB inalcanzable (timeout).
-
-Mientras el deploy nuevo falle, Railway **deja el deploy anterior** (por eso el dominio público puede seguir en `app_env=development` + `sqlite`).
-
-### Recuperación rápida (recomendado ahora)
-
-En Backend → **Variables**:
-
-| Acción | Detalle |
-|--------|---------|
-| **No** use aún `${{Postgres.DATABASE_URL}}` | El Postgres del canvas es legacy INT; rompe el boot |
-| Opción A (simple) | **Elimine** `DATABASE_URL` o déjela vacía → vuelve al SQLite por defecto (como el deploy que sí responde) |
-| Opción B (durable) | `DATABASE_URL=sqlite:////data/clinica.db` + **Volume** montado en `/data` en el Backend |
-| Si puso `APP_ENV=production` | Defina **juntos** `JWT_SECRET` y `MAINTENANCE_ACCESS_KEY`, o quite `APP_ENV` hasta tenerlos |
-| CORS / URL | `CORS_ORIGINS=https://mdodontologia.up.railway.app` y `PUBLIC_APP_URL=https://mdodontologia.up.railway.app` |
-
-Luego **Redeploy**. En logs debe verse `starting uvicorn on 0.0.0.0:…` y el healthcheck en verde.
-
-Mirar logs del deploy fallido: busque `FATAL CONFIG`, `FATAL SCHEMA MISMATCH`, `DB/schema boot FAILED`.
+| Servicio | URL pública |
+|----------|-------------|
+| Frontend | `https://nkdentalsoft.up.railway.app` |
+| Backend | `https://backend-production-38b8.up.railway.app` |
+| Postgres (interno) | `postgres-production-4981.up.railway.app` — **no enlazar aún** |
 
 ---
 
-## Diagnóstico verificado (producción)
+## Por qué falla el catálogo / el Backend “Online” con avisos
 
-| Comprobación | Resultado típico si el deploy nuevo falló |
-|--------------|--------------------------------------------|
-| `GET /api/health` (público) | Sigue el **deploy viejo**: `app_env=development`, `engine=sqlite` |
-| OpenAPI `/api/system/health` | Ausente hasta que un deploy nuevo pase healthcheck |
-| Postgres en canvas | Online, pero **no** enlazarlo hasta cutover UUID |
+Si `GET /api/health` responde `app_env=development` + `engine=sqlite` y faltan rutas como `/api/documents/consentimiento-tipos` o `/api/system/health`, Railway está sirviendo un **deploy viejo**: el deploy nuevo crashea al arrancar (casi siempre por Variables) y Railway **no reemplaza** el contenedor sano anterior.
+
+El Frontend nuevo pide APIs que el Backend viejo no tiene → error de catálogo (mitigado en UI con catálogo local; los PDF COP reales requieren Backend nuevo en verde).
 
 ---
 
-## Variables Backend (cuando el boot ya sea estable)
+## Checklist rápido (pegar en Railway → Variables)
 
-### Paso 1 — Redeploy verde (mínimo)
+### Backend — obligatorias para boot en `APP_ENV=production`
 
-- Sin `DATABASE_URL` de Postgres (o SQLite `/data` + volumen).
-- `CORS_ORIGINS` + `PUBLIC_APP_URL` al Frontend.
-- `APP_ENV=production` **solo si** también define:
+Copiar **tal cual** (sin comillas, sin slash final en URLs). Los secretos de prueba están en `docs/RAILWAY_VARS.local.md` (archivo local, **no** va a GitHub). Si no existe, generar:
 
-```
-JWT_SECRET=<openssl rand -hex 32>
-MAINTENANCE_ACCESS_KEY=<openssl rand -hex 24>
+```powershell
+python -c "import secrets; print(secrets.token_hex(32)); print(secrets.token_hex(24))"
 ```
 
-### Paso 2 — Postgres (solo tras cutover UUID)
+| Variable | Valor de prueba (production) | ¿Cambiar después? |
+|----------|------------------------------|-------------------|
+| `APP_ENV` | `production` | No (dejar `production`) |
+| `JWT_SECRET` | *(64 hex en `RAILWAY_VARS.local.md`)* | **Sí — rotar** antes de clínica real |
+| `MAINTENANCE_ACCESS_KEY` | *(48 hex en `RAILWAY_VARS.local.md`)* | **Sí — rotar** |
+| `PUBLIC_APP_URL` | `https://nkdentalsoft.up.railway.app` | Solo si cambia el dominio frontend |
+| `CORS_ORIGINS` | `https://nkdentalsoft.up.railway.app` | Idem (varios orígenes: separados por coma) |
+| `DATABASE_URL` | `sqlite:////data/clinica.db` | **Sí** → Postgres UUID cuando corresponda |
+| `PASSWORD_RESET_INLINE_CODE` | `false` | No dejar en `true` en público |
 
+**Volume Backend:** montar en `/data` (Settings → Volumes) si usa SQLite durable.
+
+**No definir aún:** `DATABASE_URL=${{Postgres.DATABASE_URL}}` mientras `users.id` sea INTEGER (rompe boot con `FATAL SCHEMA MISMATCH`).
+
+### Backend — opcionales (producción clínica)
+
+| Variable | Cuándo | ¿Cambiar? |
+|----------|--------|-----------|
+| `WHATSAPP_PHONE_NUMBER_ID` | Envío Cloud API | Sí (Meta) |
+| `WHATSAPP_ACCESS_TOKEN` | Envío Cloud API | Sí (Meta) |
+| `WHATSAPP_API_VERSION` | Default `v17.0` | Solo si Meta lo exige |
+| `SMTP_*` / `RESEND_API_KEY` | Recuperación de contraseña | Sí |
+| `CLINIC_NAME`, `CLINIC_PHONE`, `CLINIC_ADDRESS`, `CLINIC_RUC`, `CLINIC_EMAIL` | Fallback si Configuración vacía | Preferible editar en **Configuración** UI |
+| `CLINIC_TICKET_SERIE` | Serie tique (default `T001`) | Sí si aplica |
+
+### Frontend — obligatorias
+
+| Variable | Valor | ¿Cambiar? |
+|----------|-------|-----------|
+| `BACKEND_URL` | `https://backend-production-38b8.up.railway.app` | Solo si Railway cambia el dominio del Backend |
+| `NEXT_PUBLIC_API_URL` | *(vacío / sin definir)* | No rellenar en Railway (rompe same-origin proxy) |
+
+Tras guardar Variables: **Redeploy** Backend y luego Frontend (o “Restart”).
+
+---
+
+## Valores generados para prueba (referencia)
+
+Los secretos concretos viven solo en:
+
+```text
+docs/RAILWAY_VARS.local.md
 ```
-DATABASE_URL=${{Postgres.DATABASE_URL}}
+
+Plantilla versionada (sin secretos): `docs/RAILWAY_VARS.example.md`.
+
+Aplicar con CLI (tras `railway login` + `railway link`):
+
+```powershell
+powershell -File scripts/railway_apply_vars.ps1
 ```
 
-Si `users.id` sigue INTEGER, el boot fallará a propósito. Emergencia: `ALLOW_LEGACY_POSTGRES_INT=1` (no soportado).
+O pegar manualmente en Railway UI → servicio Backend / Frontend → **Variables**.
 
-### Frontend
+---
 
-| Variable | Valor |
-|----------|--------|
-| `BACKEND_URL` | `https://backend-production-38b8.up.railway.app` (sin slash) |
-| `NEXT_PUBLIC_API_URL` | **vacío** |
+## Verificación post-deploy
+
+```powershell
+curl -s https://backend-production-38b8.up.railway.app/api/health
+curl -s https://backend-production-38b8.up.railway.app/api/system/health
+curl -s -o NUL -w "%{http_code}" https://backend-production-38b8.up.railway.app/api/documents/consentimiento-tipos
+```
+
+Éxito esperado:
+
+- `app_env":"production"`
+- `/api/system/health` → 200 (ya no 404)
+- `/api/documents/consentimiento-tipos` → **401** sin token (ruta existe) o **200** con JWT
+- Frontend: selector de consentimientos sin error; PDF con distrito de Configuración
+
+Si sigue `development` + 404 en rutas nuevas → el deploy nuevo **sigue fallando**; mirar logs: `FATAL CONFIG`, `FATAL SCHEMA MISMATCH`.
+
+---
+
+## Si el healthcheck falla
+
+| Causa | Acción |
+|-------|--------|
+| `APP_ENV=production` sin JWT/MAINT | Pegar secretos de `RAILWAY_VARS.local.md` |
+| Postgres legacy INT | Quitar `DATABASE_URL` Postgres; usar SQLite `/data` |
+| DB inalcanzable | Revisar Volume `/data` o quitar `DATABASE_URL` temporalmente |
 
 ---
 
 ## Layout de servicios (monorepo)
 
-| Servicio | Config file | Root Directory (Railway UI) | Dockerfile |
-|----------|-------------|------------------------------|------------|
+| Servicio | Config | Root Directory (Railway UI) | Dockerfile |
+|----------|--------|-----------------------------|------------|
 | Backend | `/backend/railway.toml` | **vacío** (raíz del repo) | `Dockerfile.backend` |
 | Frontend | `/frontend/railway.toml` | **`frontend`** | `frontend/Dockerfile` |
 
-> **No** use `Dockerfile.frontend` si Root Directory = `frontend` → error `"/frontend": not found`.
-
-Start Backend: `python boot.py`.  
-Healthcheck: `GET /api/health` (timeout **300s**).
-
----
-
-## Verificar éxito
-
-```bash
-curl -s https://backend-production-38b8.up.railway.app/api/health
-```
-
-Tras un deploy nuevo sano espere también:
-
-- rutas OpenAPI `/api/system/health`, `/api/system/version`
-- opcionalmente `"railway_warnings":[]` si Variables están correctas
+Start Backend: `python boot.py`. Healthcheck: `GET /api/health` (timeout **300s**).
 
 ---
 

@@ -117,7 +117,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_serv
 2. Primera vez: `--init-clinic` genera secretos en `%ProgramData%\NKDentalSoft\config\.env` (en upgrades **no** se regeneran).
 3. Arrancar Server; abrir UI (`Open-UI.bat` / acceso local `http://127.0.0.1:8001/`).
 4. En **Configuración**: copiar la **URL actual** para Clients (IP Ethernet preferida).
-5. Atajos: **Reparar red LAN**, **Activar Hotspot clinica** (si el router aísla Wi‑Fi).
+5. Atajos: **Reparar red LAN**, **Activar Hotspot clinica** (enciende Mobile Hotspot por API WinRT, deja SSID/clave/URL en pantalla y en `%ProgramData%\NKDentalSoft\HOTSPOT.txt`; la ventana ya no se cierra sola).
 
 Upgrade: el NSIS detiene/mata `nkdentalsoft-server.exe` antes de sobrescribir. Si falla el archivo en uso:
 

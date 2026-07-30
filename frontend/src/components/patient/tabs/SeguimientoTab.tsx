@@ -617,7 +617,7 @@ export function SeguimientoTab({
               downloadUrl={`/api/documents/consentimiento/${patientId}`}
               telefono={patient.telefono}
               mensaje={`Hola ${patient.nombres}, adjuntamos el consentimiento informado. Gracias.`}
-              markSentUrl={`/api/documents/whatsapp-sent/${record.id}`}
+              markSentUrl={`/api/documents/whatsapp-sent?patient_id=${patientId}&tipo=consentimiento`}
             />
           </div>
         </div>

@@ -447,7 +447,7 @@ export function EvaluacionTab({
             downloadUrl={`/api/documents/consentimiento/${patientId}`}
             telefono={patient.telefono}
             mensaje={`Hola ${patient.nombres}, adjuntamos el consentimiento informado para tu tratamiento. Gracias.`}
-            markSentUrl={`/api/documents/whatsapp-sent/${record.id}`}
+            markSentUrl={`/api/documents/whatsapp-sent?patient_id=${patientId}&tipo=consentimiento`}
           />
         </div>
       </Section>

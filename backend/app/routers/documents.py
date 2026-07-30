@@ -45,6 +45,16 @@ def _calc_age(birthdate) -> str | None:
     return f"{age} años"
 
 
+def _pdf_response(pdf_bytes: bytes, filename: str, document_id: str | None = None) -> Response:
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    }
+    if document_id:
+        headers["X-Document-Id"] = str(document_id)
+        headers["Access-Control-Expose-Headers"] = "X-Document-Id"
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
+
 @router.get("/comprobante/{transaction_id}")
 def download_comprobante(
     transaction_id: str,
@@ -153,13 +163,8 @@ def download_comprobante(
             detail="El PDF del comprobante quedó vacío o corrupto. Reintente la operación.",
         )
 
-    _register_document(db, patient.id if patient else None, "comprobante", fmt, filename)
-
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    doc_id = _register_document(db, patient.id if patient else None, "comprobante", fmt, filename)
+    return _pdf_response(pdf_bytes, filename, doc_id)
 
 
 @router.get("/cierre-caja/{session_id}")
@@ -200,13 +205,8 @@ def download_cierre_caja(
     }
     pdf_bytes, filename = generate_pdf("cierre_caja", fmt, data)
 
-    _register_document(db, None, "cierre_caja", fmt, filename)
-
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    doc_id = _register_document(db, None, "cierre_caja", fmt, filename)
+    return _pdf_response(pdf_bytes, filename, doc_id)
 
 
 @router.get("/ficha/{patient_id}")
@@ -290,14 +290,8 @@ def download_ficha(
         "odontogram": odontogram,
     }
     pdf_bytes, filename = generate_pdf("ficha", fmt, data)
-
-    _register_document(db, patient_id, "ficha", fmt, filename)
-
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    doc_id = _register_document(db, patient_id, "ficha", fmt, filename)
+    return _pdf_response(pdf_bytes, filename, doc_id)
 
 
 @router.get("/evolucion/{entry_id}")
@@ -325,14 +319,8 @@ def download_evolucion(
         },
     }
     pdf_bytes, filename = generate_pdf("evolucion", fmt, data)
-
-    _register_document(db, entry.patient_id, "evolucion", fmt, filename)
-
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    doc_id = _register_document(db, entry.patient_id, "evolucion", fmt, filename)
+    return _pdf_response(pdf_bytes, filename, doc_id)
 
 
 @router.get("/consentimiento/{patient_id}")
@@ -366,14 +354,8 @@ def download_consentimiento(
 
         data["plan_items"] = active_items(record.plan_tratamiento)
     pdf_bytes, filename = generate_pdf("consentimiento", fmt, data)
-
-    _register_document(db, patient_id, "consentimiento", fmt, filename)
-
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    doc_id = _register_document(db, patient_id, "consentimiento", fmt, filename)
+    return _pdf_response(pdf_bytes, filename, doc_id)
 
 
 @router.get("/presupuesto/{patient_id}")
@@ -418,15 +400,35 @@ def download_presupuesto(
         "total": estimate(alt.get("items") or []),
     }
     pdf_bytes, filename = generate_pdf("presupuesto", fmt, data)
-    _register_document(db, patient_id, "presupuesto", fmt, filename)
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    doc_id = _register_document(db, patient_id, "presupuesto", fmt, filename)
+    return _pdf_response(pdf_bytes, filename, doc_id)
 
 
 # --- WhatsApp send tracking ---
+
+@router.post("/whatsapp-sent")
+def mark_whatsapp_sent_by_meta(
+    patient_id: str = Query(..., description="Paciente dueño del PDF"),
+    tipo: str = Query(..., description="Tipo de documento generado"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mark the latest generated document for patient+tipo as sent via WhatsApp."""
+    doc = (
+        db.query(DocumentGenerated)
+        .filter(
+            DocumentGenerated.patient_id == patient_id,
+            DocumentGenerated.tipo == tipo,
+        )
+        .order_by(DocumentGenerated.created_at.desc())
+        .first()
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    doc.marcado_enviado_whatsapp_en = datetime.now(timezone.utc)
+    db.commit()
+    return {"status": "marked", "document_id": doc.id, "tipo": tipo}
+
 
 @router.post("/whatsapp-sent/{document_id}")
 def mark_whatsapp_sent(
@@ -434,7 +436,7 @@ def mark_whatsapp_sent(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Mark a document as 'sent via WhatsApp' (user clicked the send button)."""
+    """Mark a document as 'sent via WhatsApp' by DocumentGenerated.id."""
     doc = db.get(DocumentGenerated, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
@@ -449,7 +451,7 @@ def _register_document(
     doc_type: str,
     fmt: str,
     filename: str,
-) -> int:
+) -> str:
     """Register a generated document for traceability. Returns the document ID."""
     doc = DocumentGenerated(
         patient_id=patient_id,
@@ -469,10 +471,11 @@ def build_whatsapp_url(telefono: str | None, mensaje: str) -> str | None:
     """Build a wa.me URL for sending a WhatsApp message. Returns None if no valid phone."""
     if not telefono:
         return None
-    num = telefono.replace(r"\D", "")
-    if not num:
+    from urllib.parse import quote
+
+    digits = "".join(c for c in telefono if c.isdigit())
+    if len(digits) < 9:
         return None
-    # Ensure Peru country code (51) if not present
-    if not num.startswith("51"):
-        num = "51" + num
-    return f"https://wa.me/{num}?text={mensaje}"
+    if not digits.startswith("51") and len(digits) == 9:
+        digits = "51" + digits
+    return f"https://wa.me/{digits}?text={quote(mensaje)}"

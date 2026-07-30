@@ -54,6 +54,7 @@ export function CloseCashSummary({ summary, onDismiss }: CloseCashSummaryProps) 
         <p className="mb-2 text-sm font-medium text-slate-700">Imprimir / descargar cierre</p>
         <DocumentActions
           label="Cierre de caja"
+          documentType="cierre_caja"
           downloadUrl={`/api/documents/cierre-caja/${summary.session_id}`}
           telefono={null}
           mensaje=""

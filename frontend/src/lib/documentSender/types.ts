@@ -2,9 +2,10 @@
  * Sistema Universal de Envío de Documentos (WhatsApp) — flujo nativo.
  *
  * Orden fijo al hacer clic en Enviar:
- *  1. Cloud API — POST /api/integrations/whatsapp/share → cloud_api_sent: true
- *  2. Reintento — POST /api/integrations/whatsapp/send-document
- *  3. Web Share API — selector del SO con PDF adjunto (sin modal de arrastre)
+ *  1. Cloud API (si está configurada) — POST /api/integrations/whatsapp/share
+ *  2. Reintento Cloud — POST /api/integrations/whatsapp/send-document
+ *  3. Web Share API — selector del SO con PDF adjunto
+ *  4. WhatsApp Desktop / WhatsApp Web — chat del paciente + PDF desde Blob
  *
  * El frontend NUNCA llama a la Graph API de Meta directamente.
  * Nunca poner base64/PDF en el texto del mensaje.
@@ -22,8 +23,12 @@ export type DocumentType =
   | "cierre_caja"
   | "documento";
 
-/** Estrategias del flujo nativo (sin download_fallback / wa.me). */
-export type SendStrategy = "cloud_api" | "cloud_api_retry" | "web_share";
+/** Estrategias del flujo nativo. */
+export type SendStrategy =
+  | "cloud_api"
+  | "cloud_api_retry"
+  | "web_share"
+  | "whatsapp_app";
 
 export type NotificationType = "info" | "success" | "warning" | "error" | "progress";
 
@@ -36,7 +41,7 @@ export interface SendDocumentParams {
   phoneNumber?: string | null;
   metadata?: Record<string, unknown>;
   onMarkedSent?: () => Promise<void>;
-  /** Si false, salta Cloud API y va directo a Web Share */
+  /** Si false, salta Cloud API y va directo a Web Share / WhatsApp app */
   preferCloudApi?: boolean;
 }
 

@@ -1,21 +1,23 @@
 /**
  * Sistema Universal de Envío de Documentos (WhatsApp) — flujo nativo.
  *
- * Al hacer clic en Enviar (orden fijo, sin excepciones):
- *  1. Cloud API (servidor) — POST /api/integrations/whatsapp/share
- *     PDF en RAM → Meta → cloud_api_sent: true (un solo clic)
- *  2. Reintento Cloud API (cliente) — POST .../send-document
- *  3. Web Share API — PDF en RAM + mensaje → selector del SO → WhatsApp con archivo
+ * Al hacer clic en Enviar (orden fijo):
+ *  1. Cloud API (servidor) — solo si está configurada
+ *  2. Reintento Cloud API (cliente)
+ *  3. Web Share API — selector del SO con PDF adjunto
+ *  4. WhatsApp Desktop / WhatsApp Web — chat del paciente + PDF desde Blob
  *
- * Nunca: base64 en el chat, Graph API desde el frontend, ni modal de arrastre/clip.
+ * Nunca: base64 en el chat, Graph API desde el frontend, ni modal de arrastre.
  * El frontend NUNCA llama a Meta Graph directamente.
  */
 
 import { getToken } from "@/lib/api";
 import {
+  downloadPdfBlob,
   normalizePeruPhone,
   openWhatsAppChat,
   sanitizeWhatsAppText,
+  tryCopyPdfToClipboard,
 } from "@/lib/whatsapp";
 import { DocumentErrorHandler, DocumentSendError } from "./errorHandler";
 import { LruBlobCache } from "./lruCache";
@@ -36,6 +38,7 @@ function emptyMetrics(): StrategyMetrics {
     cloud_api: { success: 0, fail: 0 },
     cloud_api_retry: { success: 0, fail: 0 },
     web_share: { success: 0, fail: 0 },
+    whatsapp_app: { success: 0, fail: 0 },
   };
 }
 
@@ -306,7 +309,6 @@ export class DocumentSender {
     } catch (err) {
       const name = err instanceof Error ? err.name : "";
       if (name === "AbortError") {
-        // Si canceló el selector pero ya abrimos el chat del paciente, el número sí se usó.
         return {
           success: false,
           aborted: true,
@@ -316,6 +318,40 @@ export class DocumentSender {
       }
       throw err;
     }
+  }
+
+  /**
+   * Fallback permanente sin Cloud API: PDF desde Blob + WhatsApp Desktop/Web
+   * con el número del paciente ya seleccionado.
+   */
+  async sendViaWhatsAppApp(opts: {
+    pdfBlob: Blob;
+    fileName: string;
+    message: string;
+    phoneNumber: string;
+  }): Promise<{ success: boolean; clipboardOk: boolean; error?: string }> {
+    const phone = normalizePeruPhone(opts.phoneNumber);
+    if (!phone) {
+      throw new DocumentSendError("InvalidPhone");
+    }
+    const cleanMsg = this.cleanChatMessage(opts.message);
+
+    // 1) PDF listo en el cliente (desde RAM)
+    downloadPdfBlob(opts.pdfBlob, opts.fileName);
+
+    // 2) Portapapeles (si el SO lo permite) → Ctrl+V en Desktop
+    const clipboardOk = await tryCopyPdfToClipboard(opts.pdfBlob);
+
+    // 3) Abrir chat del paciente: app de escritorio + WhatsApp Web
+    const opened = openWhatsAppChat(phone, cleanMsg, { desktopAndWeb: true });
+    if (!opened.success) {
+      return {
+        success: false,
+        clipboardOk,
+        error: opened.error || "No se pudo abrir WhatsApp",
+      };
+    }
+    return { success: true, clipboardOk };
   }
 
   private async reportMetric(payload: {
@@ -352,8 +388,7 @@ export class DocumentSender {
   }
 
   /**
-   * Flujo nativo: Cloud share → reintentos send-document → Web Share.
-   * Sin modal de arrastre / wa.me con PDF.
+   * Flujo nativo: Cloud (opcional) → Web Share → WhatsApp Desktop/Web.
    */
   async sendDocument(params: SendDocumentParams): Promise<SendDocumentResult> {
     const started = performance.now();
@@ -377,13 +412,15 @@ export class DocumentSender {
       this.validateDocument(blob, fileName);
 
       const preferCloud = params.preferCloudApi !== false;
-      // Formato E.164 PE (51…) — mismo número que usa Cloud y deep link.
       const phone = normalizePeruPhone(params.phoneNumber);
       let lastError: string | undefined;
       let lastCode: string | undefined;
 
-      // --- 1–2. Cloud API: /share luego /send-document ---
-      if (preferCloud && phone) {
+      // --- 1–2. Cloud API solo si está configurada (evita round-trip inútil) ---
+      const cloudStatus = preferCloud && phone ? await this.getCloudStatus() : null;
+      const cloudConfigured = Boolean(cloudStatus?.configured || cloudStatus?.enabled);
+
+      if (preferCloud && phone && cloudConfigured) {
         this.showUserNotification("Enviando por WhatsApp Cloud…", "progress", {
           id: progressId,
           progress: 45,
@@ -422,7 +459,6 @@ export class DocumentSender {
         lastError = first.error;
         lastCode = first.errorCode;
 
-        // Reintentos solo si Cloud está configurada pero falló el envío
         if (first.errorCode !== "CLOUD_API_NOT_CONFIGURED") {
           for (let attempt = 2; attempt <= this.config.maxRetries; attempt += 1) {
             this.showUserNotification(
@@ -466,77 +502,127 @@ export class DocumentSender {
         }
       }
 
-      // --- 3. Web Share (PDF adjunto) + chat del paciente preabierto ---
-      this.showUserNotification(
-        phone
-          ? "Abriendo WhatsApp del paciente y compartiendo PDF…"
-          : "Abriendo compartir… elige WhatsApp",
-        "progress",
-        {
-          id: progressId,
-          progress: 75,
+      // --- 3. Web Share (si el navegador puede adjuntar archivos) ---
+      const shareFile = new File([blob], fileName, { type: "application/pdf" });
+      if (this.canUseWebShare(shareFile)) {
+        this.showUserNotification(
+          phone
+            ? "Abriendo WhatsApp del paciente y compartiendo PDF…"
+            : "Abriendo compartir… elige WhatsApp",
+          "progress",
+          { id: progressId, progress: 75 }
+        );
+        try {
+          const shared = await this.sendViaWebShare({
+            pdfBlob: blob,
+            fileName,
+            message,
+            phoneNumber: phone,
+          });
+          if (shared.success) {
+            this.track("web_share", true);
+            await params.onMarkedSent?.().catch(() => undefined);
+            const durationMs = Math.round(performance.now() - started);
+            await this.reportMetric({
+              strategy: "web_share",
+              success: true,
+              documentType,
+              durationMs,
+            });
+            dismissDocumentNotification(progressId);
+            this.showUserNotification(
+              shared.phoneTargeted
+                ? "WhatsApp abierto con el paciente. Confirma el PDF en el selector."
+                : "Elige WhatsApp en el selector para enviar con el PDF adjunto",
+              "success",
+              { durationMs: 7000 }
+            );
+            return {
+              success: true,
+              strategy: "web_share",
+              cloud_api_sent: false,
+              durationMs,
+            };
+          }
+          if (shared.aborted) {
+            // Usuario canceló el selector: aún podemos usar Desktop/Web abajo
+            this.track("web_share", false);
+            lastCode = "WebShareAborted";
+            lastError = "Compartir cancelado";
+          }
+        } catch (err) {
+          this.track("web_share", false);
+          DocumentErrorHandler.handleError(err, "web_share");
+          lastCode = "WebShareUnsupported";
         }
-      );
+      }
+
+      // --- 4. WhatsApp Desktop / WhatsApp Web (sin Cloud API) ---
+      if (!phone) {
+        const durationMs = Math.round(performance.now() - started);
+        dismissDocumentNotification(progressId);
+        const failMsg =
+          "El paciente no tiene un teléfono válido. Complételo en la ficha para enviar por WhatsApp.";
+        this.showUserNotification(failMsg, "error", { durationMs: 8000 });
+        return {
+          success: false,
+          strategy: null,
+          cloud_api_sent: false,
+          error: failMsg,
+          errorCode: "InvalidPhone",
+          durationMs,
+        };
+      }
+
+      this.showUserNotification("Abriendo WhatsApp con el paciente…", "progress", {
+        id: progressId,
+        progress: 88,
+      });
+
       try {
-        const shared = await this.sendViaWebShare({
+        const appSend = await this.sendViaWhatsAppApp({
           pdfBlob: blob,
           fileName,
           message,
           phoneNumber: phone,
         });
-        if (shared.success) {
-          this.track("web_share", true);
+        if (appSend.success) {
+          this.track("whatsapp_app", true);
           await params.onMarkedSent?.().catch(() => undefined);
           const durationMs = Math.round(performance.now() - started);
           await this.reportMetric({
-            strategy: "web_share",
+            strategy: "whatsapp_app",
             success: true,
             documentType,
             durationMs,
           });
           dismissDocumentNotification(progressId);
           this.showUserNotification(
-            shared.phoneTargeted
-              ? "WhatsApp abierto con el paciente. Confirma el PDF en el selector (suele aparecer arriba en recientes)."
-              : "Elige WhatsApp en el selector para enviar con el PDF adjunto",
+            appSend.clipboardOk
+              ? "WhatsApp abierto con el paciente. El PDF se descargó; puede pegarlo con Ctrl+V o adjuntarlo 📎."
+              : "WhatsApp abierto con el paciente. El comprobante se descargó: adjúntelo con el clip 📎 en el chat.",
             "success",
-            { durationMs: 7000 }
+            { durationMs: 9000 }
           );
           return {
             success: true,
-            strategy: "web_share",
+            strategy: "whatsapp_app",
             cloud_api_sent: false,
             durationMs,
           };
         }
-        if (shared.aborted) {
-          this.track("web_share", false);
-          dismissDocumentNotification(progressId);
-          this.showUserNotification(
-            shared.phoneTargeted
-              ? "Selector cancelado. WhatsApp ya está abierto con el paciente; puede reintentar WhatsApp."
-              : "Envío cancelado",
-            "warning",
-            { durationMs: 6000 }
-          );
-          return {
-            success: false,
-            strategy: "web_share",
-            cloud_api_sent: false,
-            error: "Compartir cancelado",
-            errorCode: "WebShareAborted",
-            durationMs: Math.round(performance.now() - started),
-          };
-        }
+        this.track("whatsapp_app", false);
+        lastError = appSend.error;
+        lastCode = "InvalidPhone";
       } catch (err) {
-        this.track("web_share", false);
-        DocumentErrorHandler.handleError(err, "web_share");
+        this.track("whatsapp_app", false);
+        DocumentErrorHandler.handleError(err, "whatsapp_app");
+        lastError = err instanceof Error ? err.message : "No se pudo abrir WhatsApp";
       }
 
-      // Sin Cloud ni Web Share: error claro (sin modal de arrastre / wa.me)
       const durationMs = Math.round(performance.now() - started);
       await this.reportMetric({
-        strategy: "web_share",
+        strategy: "whatsapp_app",
         success: false,
         documentType,
         durationMs,
@@ -544,10 +630,8 @@ export class DocumentSender {
       });
       dismissDocumentNotification(progressId);
       const failMsg =
-        lastCode === "CLOUD_API_NOT_CONFIGURED" || !phone
-          ? "No se pudo compartir el PDF. Configura WhatsApp Cloud API en el servidor o usa un navegador con compartir archivos (Chrome/Edge)."
-          : lastError ||
-            "No se pudo enviar. Revisa Cloud API o usa Chrome/Edge con Web Share.";
+        lastError ||
+        "No se pudo abrir WhatsApp. Verifique que la app o WhatsApp Web estén disponibles.";
       this.showUserNotification(failMsg, "error", { durationMs: 8000 });
       return {
         success: false,

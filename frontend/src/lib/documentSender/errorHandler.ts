@@ -32,20 +32,20 @@ const ERROR_MAP: Record<DocumentErrorCode, Omit<DocumentErrorInfo, "code">> = {
     action: "Se reintentará y, si falla, se abrirá compartir nativo.",
     retryable: true,
   },
-  CloudAPINotConfigured: {
-    message: "Cloud API no está configurada en esta instalación.",
-    action: "Se usará el selector nativo del sistema (Web Share) con el PDF.",
-    retryable: false,
-  },
   WebShareUnsupported: {
     message: "Este navegador no soporta compartir archivos nativo.",
-    action: "Configura WhatsApp Cloud API o usa Chrome/Edge.",
+    action: "Se abrirá WhatsApp Desktop o WhatsApp Web con el paciente.",
     retryable: false,
   },
   WebShareAborted: {
     message: "Compartir cancelado.",
-    action: "Puedes volver a intentarlo cuando quieras.",
+    action: "Se intentará abrir WhatsApp Desktop o Web con el paciente.",
     retryable: true,
+  },
+  CloudAPINotConfigured: {
+    message: "Cloud API no está configurada en esta instalación.",
+    action: "Se usará WhatsApp Desktop / WhatsApp Web con el número del paciente.",
+    retryable: false,
   },
   InvalidPhone: {
     message: "El teléfono del paciente no es válido.",

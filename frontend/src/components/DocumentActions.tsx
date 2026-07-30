@@ -283,6 +283,10 @@ export function DocumentActions({
               ? "WhatsApp abierto con el número del paciente. Confirme el PDF en el selector del sistema."
               : "Elige WhatsApp en el selector del sistema (PDF adjunto)."
           );
+        } else if (result.strategy === "whatsapp_app") {
+          setSendHint(
+            "WhatsApp abierto con el paciente. Adjunte el PDF descargado (📎 o Ctrl+V)."
+          );
         } else {
           setSendHint(null);
         }

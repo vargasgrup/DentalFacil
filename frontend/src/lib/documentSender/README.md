@@ -6,45 +6,36 @@ Flujo **nativo** (regla única del proyecto).
 
 ```
 PDF (RAM)
-  → POST /api/integrations/whatsapp/share     → cloud_api_sent: true
-  → POST /api/integrations/whatsapp/send-document  (reintentos)
-  → navigator.share({ files })               → selector SO → WhatsApp
+  → Cloud API /share + reintentos     (solo si está configurada)
+  → navigator.share({ files })        (Chrome/Edge con Web Share)
+  → WhatsApp Desktop + WhatsApp Web   (chat del paciente + PDF descargado)
 ```
 
-1. **Cloud API** — multipart PDF al backend; Meta Graph solo en servidor. Un clic.
-2. **Reintentos** — `/send-document` hasta 3 veces.
-3. **Web Share** — selector nativo con archivo adjunto (**sin** modal de arrastre / `wa.me`).
+1. **Cloud API** — opcional; Meta Graph solo en servidor.
+2. **Web Share** — selector nativo con archivo adjunto.
+3. **WhatsApp app** — sin Cloud API: descarga el PDF desde Blob, abre el chat del paciente
+   (`whatsapp://` + `web.whatsapp.com/send`) con su número. Adjuntar con 📎 o Ctrl+V.
 
-Sin `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID`, se salta a Web Share automáticamente.
+El teléfono se toma **siempre** de la ficha del paciente (no se digita a mano).
 
 ## Uso
 
 ```tsx
-import { ShareDocumentButton } from "@/components/ShareDocumentButton";
-import { DocumentActions } from "@/components/DocumentActions";
-
 <DocumentActions
   documentType="comprobante"
   downloadUrl={`/api/documents/comprobante/${id}`}
   telefono={paciente.telefono}
   mensaje={mensaje}
 />
-
-<ShareDocumentButton
-  documentType="presupuesto"
-  downloadUrl={url}
-  phoneNumber={paciente.telefono}
-  message={mensaje}
-/>
 ```
 
 ## Resultado
 
-| Campo | Cloud OK | Web Share |
-|-------|----------|-----------|
-| `success` | `true` | `true` |
-| `strategy` | `cloud_api` / `cloud_api_retry` | `web_share` |
-| `cloud_api_sent` | `true` | `false` |
+| Campo | Cloud OK | Web Share | Desktop/Web |
+|-------|----------|-----------|-------------|
+| `success` | `true` | `true` | `true` |
+| `strategy` | `cloud_api` / `cloud_api_retry` | `web_share` | `whatsapp_app` |
+| `cloud_api_sent` | `true` | `false` | `false` |
 
 ## Regla Cursor
 

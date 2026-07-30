@@ -1,5 +1,5 @@
 ---
-description: Flujo nativo único de envío de documentos PDF por WhatsApp (Cloud → retry → Web Share)
+description: Flujo nativo de envío de documentos PDF por WhatsApp (Cloud → Web Share → Desktop/Web app)
 alwaysApply: true
 ---
 
@@ -9,31 +9,36 @@ Para **cualquier** envío de PDF (comprobantes, tiques 80mm, reportes, presupues
 
 ## Flujo obligatorio al hacer clic en Enviar
 
-Orden fijo — **no inventar otros caminos**:
+Orden fijo:
 
 1. **WhatsApp Cloud API (servidor)** — `POST /api/integrations/whatsapp/share`  
-   PDF en RAM → Meta → respuesta con `cloud_api_sent: true`.  
-   **Un solo clic, sin pasos extra.**
+   Solo si está configurada. PDF en RAM → Meta → `cloud_api_sent: true` (un clic).
 
-2. **Reintento Cloud API (cliente)** — si el servidor no pudo:  
-   `POST /api/integrations/whatsapp/send-document` (hasta `maxRetries`).
+2. **Reintento Cloud API (cliente)** — `POST /api/integrations/whatsapp/send-document`  
+   Solo si Cloud está configurada y falló el envío (no si `CLOUD_API_NOT_CONFIGURED`).
 
-3. **Web Share API** — PDF en RAM + mensaje → selector del sistema → WhatsApp **con archivo adjunto**.  
-   **Sin modal de arrastre / clip / wa.me.**
+3. **Web Share API** — PDF en RAM + mensaje → selector del SO → WhatsApp con archivo.  
+   Si el navegador soporta `navigator.share({ files })`.
+
+4. **WhatsApp Desktop / WhatsApp Web (sin Cloud API)** — permanente cuando 1–3 no aplican:  
+   - PDF en **RAM** → descarga del Blob en el cliente (no disco del servidor).  
+   - Abrir chat del **paciente** con su teléfono (`whatsapp://` + `web.whatsapp.com/send`).  
+   - Mensaje limpio (sin base64/PDF en el texto).  
+   - **Sin** modal de arrastre. Toast breve si hace falta adjuntar el PDF descargado (📎 / Ctrl+V).
 
 ## Obligatorio
 
 1. Usar el **Sistema Universal** (`documentSender` / `DocumentActions` / `ShareDocumentButton`).
 2. **Nunca** llamar a Meta Graph desde el frontend.
-3. PDF **en RAM** (`Blob` / bytes). No persistir PDF temporal en disco.
+3. PDF **en RAM** (`Blob` / bytes) en el servidor; descarga cliente solo desde ese Blob.
 4. **Nunca** poner base64/PDF en el texto del chat.
-5. **Nunca** abrir `wa.me` + descarga manual como flujo de documentos PDF.
-6. Feedback solo vía `DocumentSendToast` (no otro stack de toasts para este flujo).
+5. Tomar el teléfono del paciente automáticamente (`normalizePeruPhone`); no pedir digitación del número.
+6. Feedback solo vía `DocumentSendToast`.
 
 ## Excepción (solo texto, sin PDF)
 
 Recordatorios de cita / mensajes de texto: `openWhatsAppText` está permitido.  
-**No** usarlo para comprobantes u otros PDFs.
+**No** usarlo solo (sin PDF) para comprobantes u otros PDFs.
 
 ## APIs a usar
 
@@ -42,44 +47,8 @@ Recordatorios de cita / mensajes de texto: `openWhatsAppText` está permitido.
 | UI completa (preview/print/WA) | `DocumentActions` + `documentType` |
 | Solo botón WhatsApp | `ShareDocumentButton` |
 | Lógica | `useDocumentSender` / `documentSender.sendDocument` |
-| Backend | `POST /api/integrations/whatsapp/share`, `/send-document`, `GET /status` |
+| Backend Cloud (opcional) | `POST /api/integrations/whatsapp/share`, `/send-document`, `GET /status` |
 | Meta | solo `app/services/whatsapp_cloud.py` |
 
-Resultado esperado en Cloud exitoso: `success: true`, `strategy: "cloud_api"|"cloud_api_retry"`, **`cloud_api_sent: true`**.
-
-## Ejemplos
-
-```tsx
-// ✅
-<DocumentActions
-  label="Comprobante"
-  documentType="comprobante"
-  downloadUrl={`/api/documents/comprobante/${id}`}
-  telefono={patient.telefono}
-  mensaje={mensaje}
-  forceFormat="80mm"
-/>
-
-// ✅
-<ShareDocumentButton
-  documentType="presupuesto"
-  downloadUrl={url}
-  phoneNumber={telefono}
-  message={mensaje}
-/>
-```
-
-```tsx
-// ❌ BAD — bypass del flujo nativo
-window.open(`https://wa.me/${phone}?text=...`);
-// + <a download> / modal de “adjunta con el clip”
-// + fetch a graph.facebook.com desde el browser
-```
-
-## Al agregar un módulo nuevo
-
-1. Endpoint backend que devuelva PDF en memoria.
-2. Integrar `DocumentActions` o `ShareDocumentButton` (nada de links sueltos).
-3. Pasar `documentType` para métricas.
-4. Credenciales Cloud solo en backend: `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`.
-5. No crear UI de “arrastra el PDF” ni fallback `wa.me` para documentos.
+Resultado Cloud exitoso: `success: true`, `strategy: "cloud_api"|"cloud_api_retry"`, **`cloud_api_sent: true`**.  
+Resultado Desktop/Web: `success: true`, `strategy: "whatsapp_app"`, `cloud_api_sent: false`.

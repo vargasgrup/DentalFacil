@@ -1,11 +1,10 @@
 /**
- * WhatsApp helpers (texto / links).
+ * WhatsApp helpers (texto / links / apertura Desktop + Web).
  *
- * El envío de PDFs usa `@/lib/documentSender`.
- * wa.me / whatsapp:// NO permiten adjuntar archivos automáticamente.
+ * El envío de PDFs orquesta `@/lib/documentSender`.
+ * Los esquemas whatsapp:// y web.whatsapp.com NO adjuntan archivos solos:
+ * el PDF se descarga desde Blob (RAM) o se comparte vía Web Share.
  */
-
-import { getToken } from "@/lib/api";
 
 /** Límite seguro para query ?text= (evitar mensajes gigantes / base64). */
 export const WA_TEXT_MAX = 700;
@@ -46,10 +45,12 @@ export function normalizePeruPhone(telefono: string | undefined | null): string 
   return num;
 }
 
+export type WhatsAppOpenTarget = "desktop" | "web" | "wa_me";
+
 export function buildWhatsAppUrl(
   telefono: string | undefined | null,
   mensaje: string,
-  opts?: { preferDeepLink?: boolean }
+  opts?: { preferDeepLink?: boolean; preferWebApp?: boolean }
 ): string | null {
   const num = normalizePeruPhone(telefono);
   if (!num) return null;
@@ -57,6 +58,10 @@ export function buildWhatsAppUrl(
   const encoded = encodeURIComponent(text);
   if (opts?.preferDeepLink) {
     return `whatsapp://send?phone=${num}&text=${encoded}`;
+  }
+  if (opts?.preferWebApp) {
+    // WhatsApp Web (Chrome / Edge / Firefox / etc.)
+    return `https://web.whatsapp.com/send?phone=${num}&text=${encoded}`;
   }
   return `https://wa.me/${num}?text=${encoded}`;
 }
@@ -68,25 +73,11 @@ export function isValidPhone(telefono: string | undefined | null): boolean {
   return num.length >= 9;
 }
 
-/**
- * Abre WhatsApp (deep link primero, luego wa.me).
- * Solo texto — el PDF debe adjuntarse aparte o vía Cloud/Web Share.
- */
-export function openWhatsAppChat(
-  telefono: string | undefined | null,
-  mensaje: string,
-  opts?: { deepLinkOnly?: boolean }
-): { success: boolean; error?: string } {
-  const deep = buildWhatsAppUrl(telefono, mensaje, { preferDeepLink: true });
-  const web = buildWhatsAppUrl(telefono, mensaje, { preferDeepLink: false });
-  if (!deep && !web) {
-    return { success: false, error: "El paciente no tiene teléfono válido" };
-  }
-  // Preferir deep link sin navegar fuera de la app (iframe oculto)
-  if (deep) {
+function fireProtocolLink(href: string): void {
+  try {
     const iframe = document.createElement("iframe");
     iframe.style.display = "none";
-    iframe.src = deep;
+    iframe.src = href;
     document.body.appendChild(iframe);
     window.setTimeout(() => {
       try {
@@ -95,29 +86,116 @@ export function openWhatsAppChat(
         /* ignore */
       }
     }, 1500);
-    // También intentar location-style deep link (WebView2 / algunos desktop)
-    try {
-      const a = document.createElement("a");
-      a.href = deep;
-      a.style.display = "none";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch {
-      /* ignore */
-    }
+  } catch {
+    /* ignore */
   }
-  if (!opts?.deepLinkOnly) {
-    window.setTimeout(() => {
-      if (web) window.open(web, "_blank", "noopener,noreferrer");
-    }, deep ? 700 : 0);
+  try {
+    const a = document.createElement("a");
+    a.href = href;
+    a.rel = "noopener noreferrer";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch {
+    /* ignore */
   }
-  return { success: true };
 }
 
 /**
- * @deprecated Removed — use `documentSender.sendDocument` for PDFs.
- * Opening wa.me for PDF documents is forbidden by product rules.
+ * Abre WhatsApp Desktop (protocolo) y/o WhatsApp Web con el chat del paciente.
+ * Solo texto — el PDF se adjunta vía Web Share o descarga desde Blob.
+ */
+export function openWhatsAppChat(
+  telefono: string | undefined | null,
+  mensaje: string,
+  opts?: {
+    deepLinkOnly?: boolean;
+    /** Abre Desktop + Web (recomendado para documentos sin Cloud API). */
+    desktopAndWeb?: boolean;
+  }
+): { success: boolean; error?: string; opened: WhatsAppOpenTarget[] } {
+  const deep = buildWhatsAppUrl(telefono, mensaje, { preferDeepLink: true });
+  const webApp = buildWhatsAppUrl(telefono, mensaje, { preferWebApp: true });
+  const waMe = buildWhatsAppUrl(telefono, mensaje, { preferDeepLink: false });
+  if (!deep && !webApp && !waMe) {
+    return { success: false, error: "El paciente no tiene teléfono válido", opened: [] };
+  }
+
+  const opened: WhatsAppOpenTarget[] = [];
+
+  // 1) App de escritorio instalada (whatsapp://)
+  if (deep) {
+    fireProtocolLink(deep);
+    opened.push("desktop");
+  }
+
+  if (opts?.deepLinkOnly) {
+    return { success: opened.length > 0, opened };
+  }
+
+  // 2) WhatsApp Web / wa.me — funciona en Chrome, Edge, Firefox, etc.
+  const openWeb = () => {
+    if (opts?.desktopAndWeb && webApp) {
+      window.open(webApp, "_blank", "noopener,noreferrer");
+      opened.push("web");
+      return;
+    }
+    if (webApp) {
+      window.open(webApp, "_blank", "noopener,noreferrer");
+      opened.push("web");
+      return;
+    }
+    if (waMe) {
+      window.open(waMe, "_blank", "noopener,noreferrer");
+      opened.push("wa_me");
+    }
+  };
+
+  // Si ya disparamos Desktop, dar un instante al OS; si no, abrir Web al tiro.
+  if (deep && (opts?.desktopAndWeb || !opts?.deepLinkOnly)) {
+    window.setTimeout(openWeb, opts?.desktopAndWeb ? 450 : 700);
+  } else {
+    openWeb();
+  }
+
+  return { success: true, opened };
+}
+
+/** Descarga un Blob PDF en el cliente (sin persistir en el servidor). */
+export function downloadPdfBlob(blob: Blob, fileName: string): void {
+  const pdf =
+    blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" });
+  const url = URL.createObjectURL(pdf);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** Intenta copiar el PDF al portapapeles (Ctrl+V en WhatsApp Desktop). */
+export async function tryCopyPdfToClipboard(blob: Blob): Promise<boolean> {
+  try {
+    if (!navigator.clipboard || typeof ClipboardItem === "undefined") return false;
+    const pdf =
+      blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" });
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        "application/pdf": pdf,
+      }),
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * @deprecated Use `documentSender.sendDocument` for PDFs.
  */
 export async function downloadAndOpenWhatsApp(
   _url: string,
@@ -128,8 +206,7 @@ export async function downloadAndOpenWhatsApp(
 ): Promise<{ success: boolean; error?: string }> {
   return {
     success: false,
-    error:
-      "Este método está deshabilitado. Usa el envío nativo de documentos (Cloud API / Web Share).",
+    error: "Este método está deshabilitado. Usa el envío nativo de documentos.",
   };
 }
 
@@ -138,8 +215,10 @@ export async function openWhatsAppText(
   mensaje: string,
   onSent?: () => Promise<void>
 ): Promise<{ success: boolean; error?: string }> {
-  const opened = openWhatsAppChat(telefono, sanitizeWhatsAppText(mensaje));
-  if (!opened.success) return opened;
+  const opened = openWhatsAppChat(telefono, sanitizeWhatsAppText(mensaje), {
+    desktopAndWeb: true,
+  });
+  if (!opened.success) return { success: false, error: opened.error };
   if (onSent) {
     try {
       await onSent();

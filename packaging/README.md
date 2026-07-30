@@ -131,9 +131,11 @@ powershell -ExecutionPolicy Bypass -File "C:\Program Files\NKDentalSoft\Server\s
 
 ### Camino oficial verificado (clínica)
 
-**NSIS + `ConnectClinic.exe`** (recomendado / forzado):
+**NSIS + `ConnectClinic.exe`** (único camino para clínicas; default del script):
 
 ```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_client.ps1
+# equivalente explícito:
 powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_client.ps1 -ForceNsis
 ```
 
@@ -144,13 +146,18 @@ Pipeline:
 3. `makensis packaging\client\installer.nsi` → `dist\NKDentalSoft-Client-Setup-x64.exe`.
 4. Firma el Setup.
 
-Sin `-ForceNsis`, el script intenta Tauri y, si falla (p. ej. WDAC), **cae al mismo NSIS**.
+**No use el Client Tauri en clínica** (UI mDNS/huella; discovery stub). Solo experimental:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_client.ps1 -UseTauri
+```
 
 ### Post-instalación Client
 
-1. Instalar Setup en cada terminal.
-2. Pegar la URL/`IP` del Server (copiada desde Configuración del Server).
-3. Atajos: Client (`--auto-connect`), Cambiar servidor (`--force-prompt`), Reparar red LAN.
+1. Instalar Setup en cada terminal (debe abrir **ConnectClinic**, con botones Buscar / Pegar URL / Reparar red — no la pantalla mDNS).
+2. En el Server: Configuración → Equipos conectados → **Copiar** la URL recomendada (`http://IP:8001/`).
+3. En el Client: **Pegar URL** o escribir esa IP y Conectar.
+4. Atajos: Client (`--auto-connect`), Cambiar servidor (`--force-prompt`), Reparar red LAN.
 
 ---
 
@@ -160,7 +167,7 @@ Sin `-ForceNsis`, el script intenta Tauri y, si falla (p. ej. WDAC), **cae al mi
 powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_all.ps1
 ```
 
-Equivale a Server completo + Client (`-SkipInstallCli` en el camino Tauri; el fallback NSIS sigue disponible).
+Equivale a Server completo + Client **NSIS ConnectClinic** (`-ForceNsis`).
 
 Para clínica hoy:
 

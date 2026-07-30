@@ -142,7 +142,7 @@
       <button type="button" id="discover">Buscar servidor en la LAN</button>
       <div class="list" id="found" hidden></div>
       <label for="host">Servidor (http://IP:8001)</label>
-      <input id="host" placeholder="http://192.168.1.10:8001" />
+      <input id="host" placeholder="http://IP-DEL-SERVIDOR:8001 (Copiar en Configuracion)" />
       <label>Huella SHA-256 (solo si el servidor usa HTTPS)</label>
       <div class="fp" id="fp">—</div>
       <p class="err" id="err" hidden></p>
@@ -197,7 +197,7 @@
           const list = await inv;
           if (!list || !list.length) {
             showOk(
-              "No se encontró ningún servidor mDNS. Ingrese la URL manualmente (http://IP:8001)."
+              "No se encontro servidor en LAN. En el Server: Configuracion > Equipos conectados > Copiar, luego pegue http://IP:8001 aqui."
             );
             return;
           }
@@ -227,11 +227,11 @@
         if (url && !/^https?:\/\//i.test(url)) {
           url = "http://" + url;
         }
-        if (!(url.starts_with("https://") || url.starts_with("http://"))) {
-          showErr("Use http:// o https:// con la IP del servidor (ej. http://192.168.1.10:8001)");
+        if (!(url.startsWith("https://") || url.startsWith("http://"))) {
+          showErr("Use http:// o https:// con la IP del servidor (ej. http://192.168.0.51:8001)");
           return;
         }
-        const isHttp = url.starts_with("http://");
+        const isHttp = url.startsWith("http://");
         let fp = fpEl.textContent.trim();
         try {
           if (!isHttp && fp && fp !== "—") {

@@ -1,13 +1,13 @@
 # Build N&K DentalSoft Client installer.
 # Docs: packaging/README.md
-# LAN connection stack is FROZEN (verified). Prefer: -ForceNsis (ConnectClinic + NSIS).
+# LAN connection stack is FROZEN (verified). Official path: -ForceNsis (ConnectClinic + NSIS).
 # See .cursor/rules/lan-client-server-freeze.mdc
-# Prefer Tauri (Rust) when Windows Application Control allows it;
-# otherwise build a LAN Client NSIS package (Edge --app) that works with the Server.
+# Default = NSIS ConnectClinic. Tauri only with -UseTauri (optional / not for clinic).
 
 param(
     [switch]$SkipInstallCli,
-    [switch]$ForceNsis
+    [switch]$ForceNsis,
+    [switch]$UseTauri
 )
 
 $ErrorActionPreference = "Stop"
@@ -114,17 +114,19 @@ function Build-TauriClient {
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-if ($ForceNsis) {
-    Build-NsisClient
-    Write-Host "Done."
-    exit 0
-}
-
-try {
-    Build-TauriClient
-} catch {
-    Write-Host "WARNING: Tauri build failed ($($_.Exception.Message))"
-    Write-Host "Falling back to NSIS LAN Client (recommended while WDAC blocks Rust build scripts)."
+# Official clinic path: ConnectClinic + NSIS (default). Tauri only with -UseTauri.
+if ($UseTauri -and -not $ForceNsis) {
+    try {
+        Build-TauriClient
+    } catch {
+        Write-Host "WARNING: Tauri build failed ($($_.Exception.Message))"
+        Write-Host "Falling back to NSIS LAN Client (clinic-verified)."
+        Build-NsisClient
+    }
+} else {
+    if ($UseTauri -and $ForceNsis) {
+        Write-Host "NOTE: -ForceNsis wins over -UseTauri; building ConnectClinic NSIS."
+    }
     Build-NsisClient
 }
 

@@ -171,6 +171,31 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_clie
 
 ---
 
+## Limpiar instalaciones anteriores (antes de reinstalar)
+
+Si Client no conecta tras un upgrade, o conviven restos de varias instalaciones, use el **limpiador** (no altera el código LAN congelado; solo borra leftovers).
+
+| Artefacto | Ruta |
+|-----------|------|
+| EXE (recomendado) | `dist\NKDentalSoft-Clean-All-x64.exe` |
+| BAT + PS1 | `dist\Limpiar-Instalaciones-NKDentalSoft.bat` / `packaging\Limpiar-Instalaciones-NKDentalSoft.bat` |
+
+```powershell
+# Generar el limpiador
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_cleaner.ps1
+```
+
+**Uso en la PC (como Administrador):**
+
+1. Ejecutar `NKDentalSoft-Clean-All-x64.exe` (o el BAT).
+2. Elegir limpieza **estándar** (conserva `%ProgramData%\NKDentalSoft\data` y `config\.env`) salvo que quiera borrar también la base.
+3. Instalar de nuevo `NKDentalSoft-Server-Setup-x64.exe`, arrancar Server, copiar la URL/IP desde Configuración.
+4. En cada Client: instalar `NKDentalSoft-Client-Setup-x64.exe` y pegar esa URL (el limpiador borra `client-url.txt` con IPs viejas).
+
+Qué elimina (estándar): procesos Server/Client, `Program Files\NKDentalSoft`, atajos, tarea/servicio, reglas firewall NKDentalSoft, `%LOCALAPPDATA%\NKDentalSoft\client-url.txt`, tarjetas `connect.url` / `IP-DEL-SERVIDOR.txt`.
+
+---
+
 ## Conexiones congeladas
 
 **Verificado 2026-07-27.** No modificar sin orden explícita del responsable del producto.

@@ -1,25 +1,41 @@
 @echo off
 setlocal EnableExtensions
 title N&K DentalSoft - Hotspot clinica
-REM Elevate + keep window open. Actual enable is in enable_clinic_hotspot.ps1
+REM Do NOT nest RunAs here: enable_clinic_hotspot.ps1 already self-elevates.
+REM Quoting via set "VAR=..." avoids breaks on spaces and ^& in paths.
 
-net session >nul 2>&1
-if errorlevel 1 (
-  echo Solicitando Administrador para Hotspot clinica...
-  powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File \"%~dp0scripts\enable_clinic_hotspot.ps1\" -NoElevate'"
+set "ROOT=%~dp0"
+set "PS1=%ROOT%scripts\enable_clinic_hotspot.ps1"
+if not exist "%PS1%" set "PS1=%ROOT%enable_clinic_hotspot.ps1"
+
+if not exist "%PS1%" (
   echo.
-  echo Si Windows pidio permisos, acepte y espere la ventana elevada.
-  echo Al terminar vera SSID, clave y URL http://192.168.137.1:8001/
+  echo ERROR: No se encontro enable_clinic_hotspot.ps1
+  echo Buscado en:
+  echo   %ROOT%scripts\enable_clinic_hotspot.ps1
+  echo   %ROOT%enable_clinic_hotspot.ps1
+  echo.
+  echo Si ejecuta desde un USB/carpeta de instaladores, copie tambien
+  echo la carpeta "scripts" con enable_clinic_hotspot.ps1
+  echo ^(o reinstale el Server Setup^).
+  echo.
   pause
-  exit /b 0
+  exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\enable_clinic_hotspot.ps1" -NoElevate
+echo Iniciando Hotspot clinica...
+echo Script: %PS1%
+echo.
+
+REM -File "%PS1%" keeps spaces/^& safe; script asks UAC itself
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PS1%"
 set "RC=%ERRORLEVEL%"
+
+echo.
 if not "%RC%"=="0" (
-  echo.
-  echo Hubo avisos. Revise %%ProgramData%%\NKDentalSoft\logs\hotspot.log
-  pause
+  echo Hubo avisos. Revise:
+  echo   %ProgramData%\NKDentalSoft\logs\hotspot.log
+  echo   %ProgramData%\NKDentalSoft\HOTSPOT.txt
 )
+pause
 exit /b %RC%

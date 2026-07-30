@@ -47,16 +47,28 @@ function Wait-Enter {
   }
 }
 
-# Self-elevate
+# Self-elevate (ArgumentList as array keeps spaces and & safe)
 if (-not $NoElevate -and -not (Test-IsAdmin)) {
   Write-Host "Solicitando permisos de Administrador para Hotspot clinica..."
-  $arg = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoElevate"
-  if ($Quiet) { $arg += " -Quiet" }
-  if ($Ssid) { $arg += " -Ssid `"$Ssid`"" }
-  if ($Passphrase) { $arg += " -Passphrase `"$Passphrase`"" }
+  $scriptPath = $MyInvocation.MyCommand.Path
+  if (-not $scriptPath) { $scriptPath = $PSCommandPath }
+  if (-not $scriptPath -or -not (Test-Path -LiteralPath $scriptPath)) {
+    Write-Host "ERROR: no se pudo resolver la ruta del script."
+    Wait-Enter
+    exit 2
+  }
+  $argList = @(
+    "-NoProfile",
+    "-ExecutionPolicy", "Bypass",
+    "-File", $scriptPath,
+    "-NoElevate"
+  )
+  if ($Quiet) { $argList += "-Quiet" }
+  if ($Ssid) { $argList += @("-Ssid", $Ssid) }
+  if ($Passphrase) { $argList += @("-Passphrase", $Passphrase) }
   try {
-    Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $arg -Wait
-    exit 0
+    $p = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argList -Wait -PassThru
+    exit $(if ($p) { $p.ExitCode } else { 0 })
   } catch {
     Write-Host ("ERROR: no se pudo elevar. " + $_.Exception.Message)
     Wait-Enter

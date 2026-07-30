@@ -81,7 +81,11 @@ Section "Install"
   File "scripts\stop_for_upgrade.ps1"
   File "scripts\rename_locked_exe.ps1"
   File "scripts\post_install_healthcheck.ps1"
+  File "scripts\enable_clinic_hotspot.ps1"
   File /nonfatal "scripts\*.*"
+  ; Also next to BAT for USB/manual copies that omit scripts\
+  SetOutPath "$INSTDIR"
+  File "/oname=enable_clinic_hotspot.ps1" "scripts\enable_clinic_hotspot.ps1"
 
   CreateDirectory "$COMMONPROGRAMDATA\NKDentalSoft\config"
   CreateDirectory "$COMMONPROGRAMDATA\NKDentalSoft\data"

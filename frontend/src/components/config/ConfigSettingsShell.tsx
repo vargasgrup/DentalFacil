@@ -144,17 +144,35 @@ type BadgeMap = Partial<Record<ConfigSectionId, { label: string; tone?: "info" |
 
 type Props = {
   isAdmin: boolean;
+  /** When true, Mi cuenta copy reflects shared-Admin DEMO lock. */
+  demoMode?: boolean;
   badges?: BadgeMap;
   children: (section: ConfigSectionId, meta: NavItem) => ReactNode;
 };
 
-export function ConfigSettingsShell({ isAdmin, badges = {}, children }: Props) {
+export function ConfigSettingsShell({
+  isAdmin,
+  demoMode = false,
+  badges = {},
+  children,
+}: Props) {
   const visibleGroups = useMemo(() => {
     return NAV_GROUPS.map((g) => ({
       ...g,
-      items: g.items.filter((it) => (it.adminOnly ? isAdmin : true)),
+      items: g.items
+        .filter((it) => (it.adminOnly ? isAdmin : true))
+        .map((it) => {
+          if (it.id === "cuenta" && demoMode) {
+            return {
+              ...it,
+              description:
+                "Versión DEMO: puede actualizar el nombre visible. Correo y contraseña del Administrador están protegidos (acceso compartido).",
+            };
+          }
+          return it;
+        }),
     })).filter((g) => g.items.length > 0);
-  }, [isAdmin]);
+  }, [isAdmin, demoMode]);
 
   const allItems = useMemo(
     () => visibleGroups.flatMap((g) => g.items),

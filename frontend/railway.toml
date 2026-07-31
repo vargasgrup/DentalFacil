@@ -4,6 +4,8 @@ builder = "DOCKERFILE"
 # (build context = contents of frontend/). Use this Dockerfile, NOT
 # Dockerfile.frontend (that one expects repo-root context + COPY frontend/).
 dockerfilePath = "frontend/Dockerfile"
+# Frontend Railway service (Root Directory = frontend).
+# Bump note: force rebuild when DEMO UI flags change (2026-07-31).
 watchPatterns = [
   "/frontend/**",
   "frontend/**",

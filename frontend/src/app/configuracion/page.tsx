@@ -639,6 +639,7 @@ export default function ConfiguracionPage() {
 
       <ConfigSettingsShell
         isAdmin={!!isAdmin}
+        demoMode={demoMode}
         badges={{
           ...(isAdmin
             ? {

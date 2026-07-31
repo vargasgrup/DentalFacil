@@ -76,6 +76,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const token = getToken();
 
+    // Always refresh DEMO flags (shared Admin credentials lock), even when logged in.
+    const flagsPromise = loadSetupStatus();
+
     // Pantalla de login: si hay sesión válida, restaurarla (escritorio);
     // no borrar tokens al abrir "/" — eso provocaba "Sesión expirada" al crear pacientes.
     if (isLoginPath()) {
@@ -84,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null);
           setLoading(false);
         }
-        await loadSetupStatus();
+        await flagsPromise;
         return;
       }
       writeAuthCookie(token!);
@@ -98,10 +101,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearToken();
         clearRefreshToken();
         if (mounted.current) setUser(null);
-        await loadSetupStatus();
       } finally {
         if (mounted.current) setLoading(false);
       }
+      await flagsPromise;
       return;
     }
 
@@ -112,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setLoading(false);
       }
-      await loadSetupStatus();
+      await flagsPromise;
       return;
     }
 
@@ -130,10 +133,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (mounted.current) {
         setUser(null);
       }
-      await loadSetupStatus();
     } finally {
       if (mounted.current) setLoading(false);
     }
+    await flagsPromise;
   }, []);
 
   useEffect(() => {
@@ -151,6 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(resp.access_token);
     setRefreshToken(resp.refresh_token);
     setUser(resp.user);
+    await loadSetupStatus();
   };
 
   const setup = async (nombre: string, email: string, password: string) => {
@@ -165,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRefreshToken(resp.refresh_token);
     setUser(resp.user);
     if (mounted.current) setNeedsSetup(false);
+    await loadSetupStatus();
   };
 
   const logout = () => {

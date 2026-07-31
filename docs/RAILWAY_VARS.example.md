@@ -16,6 +16,9 @@ PUBLIC_APP_URL=https://nkdentalsoft.up.railway.app
 CORS_ORIGINS=https://nkdentalsoft.up.railway.app
 DATABASE_URL=sqlite:////data/clinica.db
 PASSWORD_RESET_INLINE_CODE=false
+# Versión DEMO compartida: protege correo/clave del Admin (varios usuarios, mismas credenciales).
+# Para desbloquear: DEMO_MODE=false
+DEMO_MODE=true
 ```
 
 Opcional WhatsApp / SMTP: dejar vacío hasta tener credenciales reales.

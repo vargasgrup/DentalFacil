@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { KeyRound } from "lucide-react";
+import { KeyRound, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/Input";
 import { ConfigSection } from "@/components/config/ConfigSection";
@@ -20,6 +20,8 @@ interface AccountSettingsFormProps {
   busy?: boolean;
   msg: string;
   err: string;
+  /** DEMO: lock Admin login email + password (shared credentials). */
+  lockCredentials?: boolean;
   onSubmit: (values: AccountFormValues) => Promise<void> | void;
 }
 
@@ -29,6 +31,7 @@ export function AccountSettingsForm({
   busy = false,
   msg,
   err,
+  lockCredentials = false,
   onSubmit,
 }: AccountSettingsFormProps) {
   const [nombre, setNombre] = useState(initialNombre);
@@ -48,7 +51,9 @@ export function AccountSettingsForm({
     setLocalErr("");
 
     const nextNombre = nombre.trim();
-    const nextEmail = email.trim().toLowerCase();
+    const nextEmail = lockCredentials
+      ? initialEmail.trim().toLowerCase()
+      : email.trim().toLowerCase();
     if (nextNombre.length < 2) {
       setLocalErr("El nombre de usuario debe tener al menos 2 caracteres.");
       return;
@@ -63,11 +68,16 @@ export function AccountSettingsForm({
     }
 
     const nombreChanged = nextNombre !== initialNombre.trim();
-    const emailChanged = nextEmail !== initialEmail.trim().toLowerCase();
-    const pwdChanged = Boolean(newPassword || confirmPassword);
+    const emailChanged =
+      !lockCredentials && nextEmail !== initialEmail.trim().toLowerCase();
+    const pwdChanged = !lockCredentials && Boolean(newPassword || confirmPassword);
 
     if (!nombreChanged && !emailChanged && !pwdChanged) {
-      setLocalErr("No hay cambios que guardar.");
+      setLocalErr(
+        lockCredentials
+          ? "En DEMO solo puede actualizar el nombre visible (correo y clave están protegidos)."
+          : "No hay cambios que guardar."
+      );
       return;
     }
     if (pwdChanged) {
@@ -97,8 +107,27 @@ export function AccountSettingsForm({
     <ConfigSection
       title="Mi cuenta"
       icon={<KeyRound className="h-4 w-4" aria-hidden />}
-      description="Actualice su nombre, correo de acceso o contraseña. Siempre confirme con la contraseña actual."
+      description={
+        lockCredentials
+          ? "Versión DEMO: puede actualizar su nombre visible. Correo y contraseña del Administrador están protegidos."
+          : "Actualice su nombre, correo de acceso o contraseña. Siempre confirme con la contraseña actual."
+      }
     >
+      {lockCredentials && (
+        <div
+          role="status"
+          className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-950"
+        >
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden />
+          <p className="leading-relaxed">
+            <span className="font-semibold">Versión DEMO.</span> El correo y la
+            contraseña del Administrador no se pueden cambiar porque varios usuarios
+            ingresan con las mismas credenciales. El resto del sistema sí es
+            usable de extremo a extremo.
+          </p>
+        </div>
+      )}
+
       <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
@@ -116,7 +145,8 @@ export function AccountSettingsForm({
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="username"
             required
-            disabled={busy}
+            disabled={busy || lockCredentials}
+            hint={lockCredentials ? "Protegido en versión DEMO" : undefined}
           />
         </div>
 
@@ -133,6 +163,11 @@ export function AccountSettingsForm({
               autoComplete="current-password"
               required
               disabled={busy}
+              hint={
+                lockCredentials
+                  ? "Solo para confirmar cambios de nombre"
+                  : undefined
+              }
             />
             <Input
               label="Nueva contraseña"
@@ -140,8 +175,12 @@ export function AccountSettingsForm({
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               autoComplete="new-password"
-              disabled={busy}
-              hint="Opcional — déjela vacía para no cambiarla"
+              disabled={busy || lockCredentials}
+              hint={
+                lockCredentials
+                  ? "Deshabilitado en versión DEMO"
+                  : "Opcional — déjela vacía para no cambiarla"
+              }
             />
             <Input
               label="Confirmar nueva"
@@ -149,7 +188,7 @@ export function AccountSettingsForm({
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               autoComplete="new-password"
-              disabled={busy}
+              disabled={busy || lockCredentials}
             />
           </div>
         </div>

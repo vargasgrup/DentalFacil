@@ -120,6 +120,8 @@ class LogoutRequest(BaseModel):
 
 class SetupStatus(BaseModel):
     needs_setup: bool
+    demo_mode: bool = False
+    demo_admin_credentials_locked: bool = False
 
 
 class ForgotPasswordRequest(BaseModel):

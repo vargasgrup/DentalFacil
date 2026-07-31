@@ -47,6 +47,7 @@ from app.schemas.user import (
     ValidateResetResponse,
 )
 from app.services import password_reset as pwd_reset
+from app.services.demo_guard import assert_admin_credentials_mutable, is_demo_mode
 from app.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -92,7 +93,12 @@ def _safe_decode(token: str) -> dict | None:
 def setup_status(db: Session = Depends(get_db)):
     """Check if the system needs initial setup (no users exist)."""
     count = db.query(User).count()
-    return SetupStatus(needs_setup=count == 0)
+    demo = is_demo_mode()
+    return SetupStatus(
+        needs_setup=count == 0,
+        demo_mode=demo,
+        demo_admin_credentials_locked=demo,
+    )
 
 
 @router.post("/setup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -185,6 +191,7 @@ def change_password(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    assert_admin_credentials_mutable(user)
     if not verify_password(payload.old_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Contraseña actual incorrecta")
     user.password_hash = hash_password(payload.new_password)
@@ -367,6 +374,14 @@ def update_me(
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Contraseña actual incorrecta")
 
+    email_changing = False
+    if payload.email is not None:
+        email = str(payload.email).strip().lower()
+        email_changing = email != (user.email or "").lower()
+
+    if payload.new_password or email_changing:
+        assert_admin_credentials_mutable(user)
+
     changed = False
     if payload.nombre is not None:
         nombre = payload.nombre.strip()
@@ -417,6 +432,8 @@ def update_user(
         user.nombre = payload.nombre.strip()
     if payload.email is not None:
         email = payload.email.strip().lower()
+        if email != (user.email or "").lower():
+            assert_admin_credentials_mutable(user)
         existing = (
             db.query(User)
             .filter(func.lower(User.email) == email, User.id != user_id)
@@ -486,6 +503,7 @@ def reset_password(
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    assert_admin_credentials_mutable(user)
     user.password_hash = hash_password(payload.new_password)
     _bump_token_version(user)
     db.commit()

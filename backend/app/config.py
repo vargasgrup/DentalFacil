@@ -109,6 +109,11 @@ class Settings(BaseSettings):
     PDF_CACHE_MAX_SIZE: int = 50
     MAX_RETRY_ATTEMPTS: int = 3
 
+    # Shared DEMO (Railway / multi-user same Admin credentials).
+    # true | 1 | yes | on — locks Admin email/password changes until disabled.
+    # Desktop clinic installs should leave this false/unset.
+    DEMO_MODE: bool = False
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("DATABASE_URL", mode="before")
@@ -117,6 +122,23 @@ class Settings(BaseSettings):
         if isinstance(v, str) and v.strip():
             return normalize_database_url(v)
         return v
+
+    @field_validator("DEMO_MODE", mode="before")
+    @classmethod
+    def _parse_demo_mode(cls, v: object) -> object:
+        # Also honor NKDENTALSOFT_DEMO without duplicating settings fields
+        env_alias = (os.environ.get("NKDENTALSOFT_DEMO") or "").strip().lower()
+        if env_alias in {"1", "true", "yes", "on"}:
+            return True
+        if env_alias in {"0", "false", "no", "off"}:
+            return False
+        if isinstance(v, str):
+            return v.strip().lower() in {"1", "true", "yes", "on"}
+        return v
+
+    @property
+    def demo_mode(self) -> bool:
+        return bool(self.DEMO_MODE)
 
     @property
     def is_production(self) -> bool:

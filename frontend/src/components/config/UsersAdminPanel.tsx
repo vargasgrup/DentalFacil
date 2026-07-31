@@ -39,6 +39,8 @@ interface UsersAdminPanelProps {
   onResetPassword: (u: User) => void;
   onChangeRol: (u: User, rol: string) => void;
   onChangeModulos: (u: User, modulos: AppModule[]) => void;
+  /** DEMO: hide/disable Admin password reset (shared credentials). */
+  demoLockAdminCredentials?: boolean;
 }
 
 function ModuleCheckboxes({
@@ -123,6 +125,7 @@ export function UsersAdminPanel({
   onResetPassword,
   onChangeRol,
   onChangeModulos,
+  demoLockAdminCredentials = false,
 }: UsersAdminPanelProps) {
   const adminCount = users.filter((u) => u.rol === "ADMIN").length;
   const adminSlotsLeft = Math.max(0, MAX_ADMINS - adminCount);
@@ -279,6 +282,12 @@ export function UsersAdminPanel({
                     className="text-xs"
                     icon={<KeyRound className="h-3.5 w-3.5" />}
                     onClick={() => onResetPassword(u)}
+                    disabled={demoLockAdminCredentials && isAdminUser}
+                    title={
+                      demoLockAdminCredentials && isAdminUser
+                        ? "Versión DEMO: la clave del Administrador está protegida"
+                        : undefined
+                    }
                   >
                     Resetear clave
                   </Button>

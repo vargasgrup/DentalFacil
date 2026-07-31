@@ -193,6 +193,10 @@ def consume_reset(
     if not user or not user.activo:
         raise HTTPException(status_code=400, detail="Usuario no disponible")
 
+    from app.services.demo_guard import assert_admin_credentials_mutable
+
+    assert_admin_credentials_mutable(user)
+
     now = _utcnow()
     user.password_hash = hash_password(new_password)
     user.token_version = int(getattr(user, "token_version", 0) or 0) + 1

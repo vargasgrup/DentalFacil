@@ -9,9 +9,11 @@ import { BrandLogo } from "./BrandLogo";
 import { MaintenanceAlert } from "./MaintenanceAlert";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { SHELL_SIDEBAR_BRAND_CLASS, SHELL_SIDEBAR_WIDTH } from "./shell";
+import { useAuth } from "@/lib/auth";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { demoMode } = useAuth();
 
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -82,6 +84,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className={`flex min-w-0 flex-1 flex-col md:pl-64`}>
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
+        {demoMode && (
+          <div
+            role="status"
+            className="border-b border-amber-200/90 bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-950 sm:text-sm"
+          >
+            Versión DEMO — varios usuarios comparten el mismo acceso Admin; el correo y la
+            contraseña del Administrador son inmodificables.
+          </div>
+        )}
         <main className="min-w-0 flex-1 p-4 pb-24 sm:p-6 md:pb-6">{children}</main>
         <MobileBottomNav />
       </div>

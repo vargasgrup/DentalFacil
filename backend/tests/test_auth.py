@@ -10,13 +10,17 @@ from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD
 def test_setup_status_needs_setup(client: TestClient):
     resp = client.get("/api/auth/setup-status")
     assert resp.status_code == 200
-    assert resp.json() == {"needs_setup": True}
+    body = resp.json()
+    assert body["needs_setup"] is True
+    assert "demo_mode" in body
 
 
 def test_setup_status_after_admin(client: TestClient, admin_user):
     resp = client.get("/api/auth/setup-status")
     assert resp.status_code == 200
-    assert resp.json() == {"needs_setup": False}
+    body = resp.json()
+    assert body["needs_setup"] is False
+    assert "demo_mode" in body
 
 
 def test_login_valid(client: TestClient, admin_user):

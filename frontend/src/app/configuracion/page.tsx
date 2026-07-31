@@ -31,7 +31,7 @@ import {
 import { notifyClinicProfileUpdated } from "@/lib/clinicBrand";
 
 export default function ConfiguracionPage() {
-  const { user: currentUser, refreshUser } = useAuth();
+  const { user: currentUser, refreshUser, demoMode } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -513,6 +513,7 @@ export default function ConfiguracionPage() {
   }
 
   const isAdmin = currentUser?.rol === "ADMIN";
+  const lockAdminCredentials = Boolean(demoMode && isAdmin);
 
   const renderSection = (section: ConfigSectionId) => {
     switch (section) {
@@ -538,6 +539,7 @@ export default function ConfiguracionPage() {
             busy={accountBusy}
             msg={accountMsg}
             err={accountErr}
+            lockCredentials={lockAdminCredentials}
             onSubmit={handleAccountUpdate}
           />
         );
@@ -607,6 +609,7 @@ export default function ConfiguracionPage() {
             onResetPassword={handleResetPassword}
             onChangeRol={changeRol}
             onChangeModulos={changeModulos}
+            demoLockAdminCredentials={demoMode}
           />
         ) : null;
       case "recuperacion":

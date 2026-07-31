@@ -25,6 +25,7 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   needsSetup: boolean;
+  demoMode: boolean;
   refreshUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   setup: (nombre: string, email: string, password: string) => Promise<void>;
@@ -42,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [demoMode, setDemoMode] = useState(false);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -53,8 +55,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadSetupStatus = async () => {
     try {
-      const status = await apiFetch<{ needs_setup: boolean }>("/api/auth/setup-status");
-      if (mounted.current) setNeedsSetup(status.needs_setup);
+      const status = await apiFetch<{
+        needs_setup: boolean;
+        demo_mode?: boolean;
+        demo_admin_credentials_locked?: boolean;
+      }>("/api/auth/setup-status");
+      if (mounted.current) {
+        setNeedsSetup(status.needs_setup);
+        setDemoMode(
+          Boolean(status.demo_mode || status.demo_admin_credentials_locked)
+        );
+      }
     } catch {
       /* ignore */
     }
@@ -170,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, needsSetup, refreshUser, login, setup, logout }}
+      value={{ user, loading, needsSetup, demoMode, refreshUser, login, setup, logout }}
     >
       {children}
     </AuthContext.Provider>

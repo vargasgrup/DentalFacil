@@ -62,7 +62,7 @@ function FormTitle({ title, hint }: { title: string; hint?: string }) {
 }
 
 export default function LoginPage() {
-  const { needsSetup, loading, login, setup, user } = useAuth();
+  const { needsSetup, loading, login, setup, user, demoMode } = useAuth();
   const { displayName, refresh: refreshBrand } = useClinicBrand();
 
   const [view, setView] = useState<AuthView>("login");
@@ -315,6 +315,18 @@ export default function LoginPage() {
           </div>
 
           <FormTitle title={formTitle} hint={formHint} />
+
+          {demoMode && view === "login" && !needsSetup && (
+            <div
+              role="status"
+              className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-left text-xs leading-relaxed text-amber-950 sm:text-sm"
+            >
+              <span className="font-semibold">Versión DEMO.</span> Varios usuarios
+              pueden ingresar con las mismas credenciales de Administrador. El
+              cambio de correo y contraseña del Admin está deshabilitado para no
+              bloquear el acceso compartido.
+            </div>
+          )}
 
           {needsSetup && (
             <div className="mb-5 grid grid-cols-2 gap-2">

@@ -446,10 +446,29 @@ def _unlink_patient_files(paths: list[str]) -> None:
     from pathlib import Path
 
     for raw in paths:
+        if not raw:
+            continue
         try:
             path = Path(raw)
             if path.is_file():
                 path.unlink(missing_ok=True)
+                continue
+            # Fallback: file renamed/moved under media roots but same basename
+            name = path.name
+            if not name:
+                continue
+            from app.paths import resolve_media_root
+
+            for env_key, folder in (
+                ("COMPLEMENTARY_TESTS_ROOT", "complementary_tests"),
+                ("TOOTH_MEDIA_ROOT", "tooth_media"),
+                ("HISTORICAL_DOCUMENTS_ROOT", "historical_documents"),
+            ):
+                root = resolve_media_root(env_key, folder)
+                matches = list(root.rglob(name)) if root.is_dir() else []
+                if len(matches) == 1 and matches[0].is_file():
+                    matches[0].unlink(missing_ok=True)
+                    break
         except OSError:
             pass
 

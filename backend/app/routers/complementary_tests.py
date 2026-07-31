@@ -316,17 +316,12 @@ async def upload_file(
         dest.unlink(missing_ok=True)
         raise HTTPException(400, "El archivo está vacío")
 
-    # Store relative-ish absolute path; widen column is Text-safe via String(1024)
-    stored = str(dest)
-    if len(stored) > 1000:
-        stored = stored[:1000]
-
     row = ComplementaryTestFile(
         patient_id=patient_id,
         categoria=categoria,
         subtipo=subtipo,
         filename=file.filename or stored_name,
-        stored_path=stored,
+        stored_path=str(dest),
         content_type=file.content_type or "application/octet-stream",
         size_bytes=size,
         notas=(notas or "").strip() or None,
@@ -371,16 +366,23 @@ def delete_file(
     row = db.get(ComplementaryTestFile, file_id)
     if not row:
         raise HTTPException(404, "Archivo no encontrado")
+    # Same write gate as upload: no mutations on discharged patients
+    get_active_patient_or_404(db, row.patient_id)
     path = _resolve_stored_path(row.stored_path) or Path(row.stored_path)
     if path.is_file():
         path.unlink(missing_ok=True)
-    log_audit(
-        db,
-        patient_id=row.patient_id,
-        entity_type="complementary_test",
-        entity_id=str(file_id),
-        action="delete",
-        user_id=user.id,
-    )
-    db.delete(row)
-    db.commit()
+    try:
+        log_audit(
+            db,
+            patient_id=row.patient_id,
+            entity_type="complementary_test",
+            entity_id=str(file_id),
+            action="delete",
+            user_id=user.id,
+        )
+        db.delete(row)
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("complementary_tests delete commit failed")
+        raise HTTPException(500, "No se pudo eliminar el registro de la prueba.") from exc

@@ -65,7 +65,7 @@ def default_data_dir() -> Path:
     for key in ("NKDENTALSOFT_DATA_DIR", "DENTALSIMPLE_DATA_DIR"):
         env = (os.environ.get(key) or "").strip()
         if env:
-            return Path(env).expanduser().resolve()
+            return Path(os.path.expandvars(env)).expanduser().resolve()
     local = os.environ.get("LOCALAPPDATA")
     if local:
         legacy = (Path(local) / "DentalSimple").resolve()
@@ -74,3 +74,20 @@ def default_data_dir() -> Path:
             return legacy
         return modern
     return (BACKEND_ROOT / "data").resolve()
+
+
+def resolve_media_root(env_key: str, folder_name: str) -> Path:
+    """
+    Writable folder for clinical media (Rx, photos, lab, tooth media, historical docs).
+
+    Desktop Server sets COMPLEMENTARY_TESTS_ROOT / TOOTH_MEDIA_ROOT / … under
+    %ProgramData%\\NKDentalSoft so uploads never land in Program Files / _MEIPASS
+    (read-only → Internal Server Error on save).
+    """
+    raw = (os.environ.get(env_key) or "").strip()
+    if raw:
+        path = Path(os.path.expandvars(raw)).expanduser()
+        if path.is_absolute():
+            return path.resolve()
+        return (BACKEND_ROOT / path).resolve()
+    return (default_data_dir() / folder_name).resolve()

@@ -714,17 +714,16 @@ def resolve_sqlite_path() -> Path:
 
 
 def _upload_roots() -> dict[str, Path]:
-    tooth = os.environ.get("TOOTH_MEDIA_ROOT") or str(_BACKEND_ROOT / "data" / "tooth_media")
-    comp = os.environ.get("COMPLEMENTARY_TESTS_ROOT") or str(
-        _BACKEND_ROOT / "data" / "complementary_tests"
-    )
-    hist = os.environ.get("HISTORICAL_DOCUMENTS_ROOT") or str(
-        _BACKEND_ROOT / "data" / "historical_documents"
-    )
+    from app.paths import resolve_media_root
+
     return {
-        "tooth_media": resolve_under_backend(tooth),
-        "complementary_tests": resolve_under_backend(comp),
-        "historical_documents": resolve_under_backend(hist),
+        "tooth_media": resolve_media_root("TOOTH_MEDIA_ROOT", "tooth_media"),
+        "complementary_tests": resolve_media_root(
+            "COMPLEMENTARY_TESTS_ROOT", "complementary_tests"
+        ),
+        "historical_documents": resolve_media_root(
+            "HISTORICAL_DOCUMENTS_ROOT", "historical_documents"
+        ),
         "clinic_uploads": _CLINIC_UPLOADS.resolve(),
     }
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -18,14 +17,13 @@ from app.models import Patient, User
 from app.models.periodontogram import ToothMedia
 from app.services.audit import log_audit
 from app.services.patient_access import get_active_patient_or_404
-from app.paths import resolve_under_backend
+from app.paths import resolve_media_root
 
 router = APIRouter(prefix="/api/tooth-media", tags=["tooth-media"])
 
-_BACKEND_ROOT = Path(__file__).resolve().parents[2]
-UPLOAD_ROOT = resolve_under_backend(
-    os.environ.get("TOOTH_MEDIA_ROOT") or str(_BACKEND_ROOT / "data" / "tooth_media")
-)
+
+def _upload_root():
+    return resolve_media_root("TOOTH_MEDIA_ROOT", "tooth_media")
 
 
 class MediaOut(BaseModel):
@@ -87,7 +85,7 @@ async def upload_media(
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(400, "Solo se permiten imágenes")
 
-    dest_dir = UPLOAD_ROOT / str(patient_id)
+    dest_dir = _upload_root() / str(patient_id)
     dest_dir.mkdir(parents=True, exist_ok=True)
     ext = Path(file.filename or "img.jpg").suffix or ".jpg"
     stored_name = f"{uuid.uuid4().hex}{ext}"

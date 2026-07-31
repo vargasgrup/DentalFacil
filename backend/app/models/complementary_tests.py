@@ -17,7 +17,7 @@ class ComplementaryTestFile(Base):
     categoria: Mapped[str] = mapped_column(String(40), index=True)
     subtipo: Mapped[str] = mapped_column(String(60), default="general")
     filename: Mapped[str] = mapped_column(String(255))
-    stored_path: Mapped[str] = mapped_column(String(500))
+    stored_path: Mapped[str] = mapped_column(String(1024))
     content_type: Mapped[str] = mapped_column(String(120), default="application/octet-stream")
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
     notas: Mapped[str | None] = mapped_column(Text)

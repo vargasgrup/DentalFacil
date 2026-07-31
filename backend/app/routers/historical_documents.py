@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import uuid
 from datetime import date, datetime
 from pathlib import Path
@@ -16,18 +15,15 @@ from app.core.deps import get_current_user
 from app.database import get_db
 from app.models import Patient, User
 from app.models.historical_documents import HistoricalDocument
+from app.paths import resolve_media_root
 from app.services.audit import log_audit
 from app.services.patient_access import get_active_patient_or_404
 
 router = APIRouter(prefix="/api/historical-documents", tags=["historical-documents"])
 
-_BACKEND_ROOT = Path(__file__).resolve().parents[2]
-UPLOAD_ROOT = Path(
-    os.environ.get(
-        "HISTORICAL_DOCUMENTS_ROOT",
-        str(_BACKEND_ROOT / "data" / "historical_documents"),
-    )
-)
+
+def _upload_root() -> Path:
+    return resolve_media_root("HISTORICAL_DOCUMENTS_ROOT", "historical_documents")
 
 TIPOS = {
     "ficha_clinica": "Ficha clínica física",
@@ -142,7 +138,7 @@ def _resolve_stored_path(stored_path: str) -> Path | None:
         return path
     name = path.name
     if name:
-        matches = list(UPLOAD_ROOT.rglob(name))
+        matches = list(_upload_root().rglob(name))
         if len(matches) == 1 and matches[0].is_file():
             return matches[0]
     return None
@@ -245,7 +241,7 @@ async def upload_document(
     title = (titulo or "").strip()[:200]
     note = (notas or "").strip() or None
 
-    dest_dir = UPLOAD_ROOT / str(patient_id) / tipo
+    dest_dir = _upload_root() / str(patient_id) / tipo
     dest_dir.mkdir(parents=True, exist_ok=True)
     ext = Path(file.filename or "documento.bin").suffix.lower()
     if not ext:

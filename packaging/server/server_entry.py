@@ -194,7 +194,17 @@ def _generate_selfsigned_cert(
 def init_clinic(host: str | None = None) -> None:
     """Generate unique .env + self-signed cert under ProgramData."""
     root = _programdata()
-    for sub in ("config", "data", "logs", "certs", "uploads", "updates"):
+    for sub in (
+        "config",
+        "data",
+        "logs",
+        "certs",
+        "uploads",
+        "updates",
+        "complementary_tests",
+        "tooth_media",
+        "historical_documents",
+    ):
         (root / sub).mkdir(parents=True, exist_ok=True)
 
     gps, _gsc = _import_init_helpers()
@@ -216,7 +226,17 @@ def init_clinic(host: str | None = None) -> None:
 
 def prepare_environment() -> Path:
     root = _programdata()
-    for sub in ("config", "data", "logs", "certs", "uploads", "updates"):
+    for sub in (
+        "config",
+        "data",
+        "logs",
+        "certs",
+        "uploads",
+        "updates",
+        "complementary_tests",
+        "tooth_media",
+        "historical_documents",
+    ):
         (root / sub).mkdir(parents=True, exist_ok=True)
 
     # Run from install dir so relative paths / DLLs resolve
@@ -257,6 +277,10 @@ def prepare_environment() -> Path:
     db_path = root / "data" / "clinica.db"
     os.environ.setdefault("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
     os.environ.setdefault("UPLOAD_DIR", str(root / "uploads"))
+    # Clinical media must be writable (never under Program Files / PyInstaller _MEIPASS)
+    os.environ.setdefault("COMPLEMENTARY_TESTS_ROOT", str(root / "complementary_tests"))
+    os.environ.setdefault("TOOTH_MEDIA_ROOT", str(root / "tooth_media"))
+    os.environ.setdefault("HISTORICAL_DOCUMENTS_ROOT", str(root / "historical_documents"))
     os.environ.setdefault("NKDENTALSOFT_INSTALL_DIR", str(_install_dir()))
     # Prefer a real web/ tree for the SPA mount
     for candidate in (

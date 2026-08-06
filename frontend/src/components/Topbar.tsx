@@ -32,6 +32,8 @@ import { useRealtimeSync, type RealtimeStatus } from "@/hooks/useRealtimeSync";
 import { isLanDesktopRuntime } from "@/lib/runtimeMode";
 import { useUiPreferences } from "@/lib/uiPreferences";
 import type { SidebarMode } from "./SidebarContext";
+import { useConnection } from "@/lib/connectionStatus";
+import { useOfflineSync } from "@/lib/offlineSync";
 
 function realtimeLabel(status: RealtimeStatus): {
   text: string;
@@ -93,6 +95,8 @@ export function Topbar({
   sidebarMode?: SidebarMode;
 }) {
   const { density, setDensity } = useUiPreferences();
+  const { status: connStatus } = useConnection();
+  const { pending: offlinePending, syncing: offlineSyncing } = useOfflineSync();
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout } = useAuth();
@@ -265,6 +269,44 @@ export function Topbar({
           <Rows3 className="h-4 w-4" aria-hidden />
         )}
       </button>
+
+      {/* Conectividad servidor + cola offline (sin caja) */}
+      {user && (
+        <span
+          className={`hidden items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium sm:inline-flex ${
+            connStatus === "online"
+              ? "border-success-200 bg-success-50 text-success-800"
+              : connStatus === "checking"
+                ? "border-slate-200 bg-slate-50 text-slate-600"
+                : "border-danger-200 bg-danger-50 text-danger-800"
+          }`}
+          title={
+            offlinePending > 0
+              ? `${offlinePending} operacion(es) en cola offline`
+              : "Estado del servidor API"
+          }
+          role="status"
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              connStatus === "online"
+                ? "bg-success-500"
+                : connStatus === "checking"
+                  ? "bg-slate-400 animate-pulse"
+                  : "bg-danger-500"
+            }`}
+          />
+          {connStatus === "online"
+            ? offlineSyncing
+              ? "Sincronizando"
+              : offlinePending > 0
+                ? `En cola (${offlinePending})`
+                : "Servidor OK"
+            : connStatus === "checking"
+              ? "…"
+              : "Sin servidor"}
+        </span>
+      )}
 
       {/* Command search */}
       <div ref={searchRef} className="relative min-w-0 max-w-xl flex-1">

@@ -13,6 +13,7 @@ import {
   KeyRound,
   Monitor,
   Search,
+  Shield,
   Tag,
   User,
   Users,
@@ -31,7 +32,8 @@ export type ConfigSectionId =
   | "recordatorios"
   | "equipos"
   | "respaldo"
-  | "interfaz";
+  | "interfaz"
+  | "privacidad";
 
 type NavItem = {
   id: ConfigSectionId;
@@ -135,7 +137,14 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Interfaz y densidad",
         icon: Monitor,
         description:
-          "Densidad de tablas, modo de barra lateral y preferencias locales de este equipo.",
+          "Densidad de tablas, tipografía, contraste, atajos y barra lateral.",
+      },
+      {
+        id: "privacidad",
+        label: "Privacidad y sesión",
+        icon: Shield,
+        description:
+          "Sesión, datos locales de este equipo y cierre en todos los dispositivos.",
       },
       {
         id: "respaldo",

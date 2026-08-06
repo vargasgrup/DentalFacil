@@ -71,6 +71,8 @@ def test_consentimiento_whatsapp_mark_by_patient_tipo(
     assert plan_pdf.status_code == 200, plan_pdf.text
     assert plan_pdf.content[:4] == b"%PDF"
     assert len(plan_pdf.content) > 2500
+    plan_doc_id = plan_pdf.headers.get("x-document-id")
+    assert plan_doc_id
     plan_cd = (plan_pdf.headers.get("content-disposition") or "").lower()
     assert "consentimiento" in plan_cd and "plan" in plan_cd
 
@@ -87,8 +89,10 @@ def test_consentimiento_whatsapp_mark_by_patient_tipo(
     assert ok.status_code == 200, ok.text
     body = ok.json()
     assert body["status"] == "marked"
-    assert body["document_id"] == doc_id
+    # mark by meta always targets the *latest* DocumentGenerated for patient+tipo
+    assert body["document_id"] == plan_doc_id
     assert body["tipo"] == "consentimiento"
+    assert body["document_id"] != doc_id
 
     by_id = client.post(
         f"/api/documents/whatsapp-sent/{doc_id}",

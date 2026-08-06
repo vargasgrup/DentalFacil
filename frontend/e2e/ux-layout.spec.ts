@@ -34,4 +34,20 @@ test.describe("UX adaptativo — layout base", () => {
     });
     await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
   });
+
+  test("preferencias a11y font-scale/contrast/motion en html", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/login");
+    await page.evaluate(() => {
+      document.documentElement.setAttribute("data-font-scale", "115");
+      document.documentElement.setAttribute("data-contrast", "high");
+      document.documentElement.setAttribute("data-reduced-motion", "on");
+      localStorage.setItem("nk-ds:ui:font-scale", "115");
+      localStorage.setItem("nk-ds:ui:contrast", "high");
+      localStorage.setItem("nk-ds:ui:reduced-motion", "1");
+    });
+    await expect(page.locator("html")).toHaveAttribute("data-font-scale", "115");
+    await expect(page.locator("html")).toHaveAttribute("data-contrast", "high");
+    await expect(page.locator("html")).toHaveAttribute("data-reduced-motion", "on");
+  });
 });

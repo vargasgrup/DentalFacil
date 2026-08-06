@@ -250,6 +250,17 @@ def logout(
     return None
 
 
+@router.post("/logout-all", status_code=204)
+def logout_all_devices(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Invalida todas las sesiones del usuario (bump token_version)."""
+    _bump_token_version(user)
+    db.commit()
+    return None
+
+
 @router.post("/change-password", status_code=204)
 def change_password(
     payload: PasswordChange,

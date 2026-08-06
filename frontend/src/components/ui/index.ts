@@ -4,5 +4,6 @@ export { Card, StatCard } from "./Card";
 export { EmptyState } from "./EmptyState";
 export { ModuleHeader } from "./ModuleHeader";
 export { PageContainer } from "./PageContainer";
+export { Skeleton, SkeletonCard, SkeletonTableRows } from "./Skeleton";
 export { Toolbar } from "./Toolbar";
 

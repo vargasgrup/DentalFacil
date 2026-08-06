@@ -174,7 +174,81 @@ html {
   }
 }
 
-/* Shared focus ring for native controls outside Input/Button */
+/* Alto contraste — paleta alternativa (ratiosos altos) */
+html[data-contrast="high"] {
+  --bg: #ffffff;
+  --surface1: #ffffff;
+  --surface2: #f0f0f0;
+  --border: #0a0a0a;
+  --text1: #000000;
+  --text2: #1a1a1a;
+  --text3: #333333;
+  --accent: #0033a0;
+  --accent-subtle: #e6eeff;
+  --danger: #8b0000;
+  --attention: #7a4f00;
+  --secondary: #0b5c2e;
+}
+
+html[data-contrast="high"] body {
+  @apply bg-white text-black;
+}
+
+html[data-contrast="high"] .bg-surface-muted {
+  background-color: #f5f5f5 !important;
+}
+
+html[data-contrast="high"] .bg-white,
+html[data-contrast="high"] .bg-surface-subtle {
+  background-color: #fff !important;
+}
+
+html[data-contrast="high"] .text-slate-500,
+html[data-contrast="high"] .text-slate-400,
+html[data-contrast="high"] .text-slate-600 {
+  color: #1a1a1a !important;
+}
+
+html[data-contrast="high"] .border-slate-200,
+html[data-contrast="high"] .border-slate-100 {
+  border-color: #000 !important;
+}
+
+html[data-contrast="high"] .bg-brand-600 {
+  background-color: #0033a0 !important;
+}
+
+html[data-contrast="high"] .text-brand-600 {
+  color: #0033a0 !important;
+}
+
+/* Estados clínicos: refuerzo no solo por color */
+html[data-contrast="high"] .badge-success,
+html[data-contrast="high"] [data-variant="success"] {
+  outline: 2px solid #0b5c2e;
+}
+html[data-contrast="high"] .badge-danger,
+html[data-contrast="high"] [data-variant="danger"] {
+  outline: 2px solid #8b0000;
+  outline-offset: 1px;
+}
+
+html[data-contrast="high"] a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* focus-visible consistente */
+:focus-visible {
+  outline: 2px solid var(--accent, #1c66e8);
+  outline-offset: 2px;
+}
+
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible) {
+  outline: none;
+}
+
 @layer utilities {
   .focus-brand {
     @apply focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600;

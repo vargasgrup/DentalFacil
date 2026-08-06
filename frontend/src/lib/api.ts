@@ -212,6 +212,32 @@ export async function apiFetch<T>(
     if (err instanceof DOMException && err.name === "AbortError") {
       throw new ApiError("La solicitud fue cancelada o agotó el tiempo de espera.", 0);
     }
+    // Cola offline (no Caja): encolar mutaciones clínicas seguras
+    const method = (fetchOptions.method || "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD" && fetchOptions.body) {
+      try {
+        const { tryOfflineEnqueue } = await import("./apiOffline");
+        let body: unknown = null;
+        if (typeof fetchOptions.body === "string") {
+          try {
+            body = JSON.parse(fetchOptions.body);
+          } catch {
+            body = null;
+          }
+        }
+        if (body != null) {
+          const queued = await tryOfflineEnqueue(path, method, body, err);
+          if (queued) {
+            throw new ApiError(
+              "Sin conexión. La operación se guardó en este equipo y se sincronizará al recuperar la red.",
+              0
+            );
+          }
+        }
+      } catch (inner) {
+        if (inner instanceof ApiError) throw inner;
+      }
+    }
     const hint =
       typeof window !== "undefined" &&
       (window.location.port === "8001" ||

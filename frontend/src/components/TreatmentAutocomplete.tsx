@@ -16,6 +16,10 @@ import {
   searchTratamientos,
   type TratamientoOdontologico,
 } from "@/lib/tratamientos";
+import {
+  recordTreatmentUse,
+  topLocalTreatments,
+} from "@/lib/treatmentFreq";
 
 export interface TreatmentAutocompleteProps {
   value: string;
@@ -73,8 +77,25 @@ export function TreatmentAutocomplete({
   } | null>(null);
   const [mounted, setMounted] = useState(false);
 
-  const matches = searchTratamientos(value, compact ? 8 : 10);
-  const showList = open && !disabled && matches.length > 0 && mounted;
+  const catalogMatches = searchTratamientos(value, compact ? 8 : 10);
+  const freq = topLocalTreatments(6);
+  const freqFiltered = freq.filter(
+    (f) =>
+      !value.trim() ||
+      f.toLowerCase().includes(value.trim().toLowerCase())
+  );
+  const catalogNames = new Set(
+    catalogMatches.map((m) => m.tratamiento.nombre.toLowerCase())
+  );
+  const extraFreq = freqFiltered.filter(
+    (f) => !catalogNames.has(f.toLowerCase())
+  );
+  const matches = catalogMatches;
+  const showList =
+    open &&
+    !disabled &&
+    (matches.length > 0 || extraFreq.length > 0) &&
+    mounted;
 
   useEffect(() => setMounted(true), []);
 
@@ -122,11 +143,22 @@ export function TreatmentAutocomplete({
   const pick = useCallback(
     (t: TratamientoOdontologico) => {
       onChange(t.nombre);
+      recordTreatmentUse(t.nombre);
       onSelect?.(t);
       setOpen(false);
       inputRef.current?.blur();
     },
     [onChange, onSelect]
+  );
+
+  const pickLabel = useCallback(
+    (label: string) => {
+      onChange(label);
+      recordTreatmentUse(label);
+      setOpen(false);
+      inputRef.current?.blur();
+    },
+    [onChange]
   );
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -169,6 +201,25 @@ export function TreatmentAutocomplete({
               compact ? "text-xs" : "text-sm"
             }`}
           >
+            {extraFreq.length > 0 && (
+              <li className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                Frecuentes en este equipo
+              </li>
+            )}
+            {extraFreq.map((label) => (
+              <li
+                key={`freq-${label}`}
+                role="option"
+                aria-selected={false}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pickLabel(label);
+                }}
+                className="cursor-pointer px-3 py-2 text-slate-800 hover:bg-slate-50"
+              >
+                <div className="font-medium leading-snug">{label}</div>
+              </li>
+            ))}
             {matches.map((m, i) => {
               const t = m.tratamiento;
               const active = i === highlight;

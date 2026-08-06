@@ -1,8 +1,9 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { ArrowRight, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Odontograma } from "@/components/Odontograma";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { DocumentActions } from "@/components/DocumentActions";
 import { PruebasComplementarias } from "@/components/PruebasComplementarias";
 import { TreatmentAutocomplete } from "@/components/TreatmentAutocomplete";
@@ -20,6 +21,21 @@ import { patientWhatsAppPhone } from "@/lib/patientContact";
 import { ConsentimientoInformadoPanel } from "../ConsentimientoInformadoPanel";
 import { FIELD_CLASS } from "../constants";
 import type { ClinicalRecord, Patient, SaveState } from "../types";
+
+const Odontograma = dynamic(
+  () =>
+    import("@/components/Odontograma").then((m) => ({ default: m.Odontograma })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+        <Skeleton className="h-6 w-40" />
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-8 w-2/3" />
+      </div>
+    ),
+  }
+);
 
 export interface EvaluacionTabProps {
   patient: Patient;

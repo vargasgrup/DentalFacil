@@ -184,3 +184,24 @@ def test_update_me_password_and_relogin(client: TestClient, admin_tokens: dict):
         },
     )
     assert reset.status_code == 200, reset.text
+
+
+def test_logout_all_invalidates_previous_token(client: TestClient, admin_headers, admin_user):
+    """POST /api/auth/logout-all bump token_version y revoca el JWT actual."""
+    me = client.get("/api/users/me", headers=admin_headers)
+    assert me.status_code == 200
+
+    out = client.post("/api/auth/logout-all", headers=admin_headers)
+    assert out.status_code == 204, out.text
+
+    after = client.get("/api/users/me", headers=admin_headers)
+    assert after.status_code == 401
+
+    login = client.post(
+        "/api/auth/login",
+        json={"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
+    )
+    assert login.status_code == 200
+    fresh = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    me2 = client.get("/api/users/me", headers=fresh)
+    assert me2.status_code == 200

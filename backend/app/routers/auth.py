@@ -10,6 +10,7 @@ from app.core.rate_limit import (
     enforce_setup_rate_limit,
 )
 from app.core.roles import MAX_ADMINS, VALID_ROLES, Rol
+from app.core.usernames import validate_username
 from app.core.modules import (
     modules_from_storage,
     modules_to_json,
@@ -57,6 +58,7 @@ def _user_out(user: User) -> UserOut:
     return UserOut(
         id=user.id,
         nombre=user.nombre,
+        username=getattr(user, "username", None) or "",
         email=user.email,
         rol=user.rol,
         activo=user.activo,
@@ -65,6 +67,62 @@ def _user_out(user: User) -> UserOut:
         ),
         created_at=user.created_at,
     )
+
+
+def _find_user_by_login(db: Session, login_id: str) -> User | None:
+    """Resolve login by username (preferred) or legacy recovery email."""
+    raw = (login_id or "").strip()
+    if not raw:
+        return None
+    user = (
+        db.query(User)
+        .filter(func.lower(User.username) == raw.lower())
+        .first()
+    )
+    if user:
+        return user
+    if "@" in raw:
+        return (
+            db.query(User)
+            .filter(User.email.isnot(None), func.lower(User.email) == raw.lower())
+            .first()
+        )
+    return None
+
+
+def _assert_username_available(
+    db: Session, username: str, *, exclude_id: str | None = None
+) -> None:
+    q = db.query(User).filter(func.lower(User.username) == username.lower())
+    if exclude_id is not None:
+        q = q.filter(User.id != exclude_id)
+    if q.first():
+        raise HTTPException(status_code=400, detail="Ese nombre de usuario ya está en uso")
+
+
+def _assert_email_available(
+    db: Session, email: str | None, *, exclude_id: str | None = None
+) -> None:
+    if not email:
+        return
+    q = db.query(User).filter(
+        User.email.isnot(None),
+        func.lower(User.email) == email.lower(),
+    )
+    if exclude_id is not None:
+        q = q.filter(User.id != exclude_id)
+    if q.first():
+        raise HTTPException(
+            status_code=400,
+            detail="Ese correo de recuperación ya está registrado en otra cuenta",
+        )
+
+
+def _optional_email_value(raw: object | None) -> str | None:
+    if raw is None:
+        return None
+    s = str(raw).strip().lower()
+    return s or None
 
 
 def _user_tokens(user: User) -> TokenResponse:
@@ -107,9 +165,12 @@ def setup(request: Request, payload: SetupRequest, db: Session = Depends(get_db)
     enforce_setup_rate_limit(request)
     if db.query(User).count() > 0:
         raise HTTPException(status_code=400, detail="El sistema ya está configurado")
+    username = validate_username(payload.username)
+    email = _optional_email_value(payload.email)
     user = User(
-        nombre=payload.nombre,
-        email=payload.email,
+        nombre=payload.nombre.strip(),
+        username=username,
+        email=email,
         password_hash=hash_password(payload.password),
         rol=Rol.ADMIN.value,
         activo=True,
@@ -124,9 +185,13 @@ def setup(request: Request, payload: SetupRequest, db: Session = Depends(get_db)
 @router.post("/login", response_model=TokenResponse)
 def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)):
     enforce_login_rate_limit(request)
-    user = db.query(User).filter(User.email == payload.email).first()
+    login_id = (payload.username or "").strip()
+    user = _find_user_by_login(db, login_id)
     if not user or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
+        raise HTTPException(
+            status_code=401,
+            detail="Usuario o contraseña incorrectos",
+        )
     if not user.activo:
         raise HTTPException(status_code=403, detail="Usuario inactivo")
     return _user_tokens(user)
@@ -337,10 +402,11 @@ def create_user(
     admin: User = Depends(require_roles(Rol.ADMIN)),
     db: Session = Depends(get_db),
 ):
-    email = payload.email.strip().lower()
     nombre = payload.nombre.strip()
-    if db.query(User).filter(func.lower(User.email) == email).first():
-        raise HTTPException(status_code=400, detail="Email ya registrado")
+    username = validate_username(payload.username)
+    email = _optional_email_value(payload.email)
+    _assert_username_available(db, username)
+    _assert_email_available(db, email)
     if payload.rol not in VALID_ROLES:
         raise HTTPException(
             status_code=400,
@@ -352,6 +418,7 @@ def create_user(
     mods = normalize_modules(payload.modulos_acceso, rol=payload.rol)
     user = User(
         nombre=nombre,
+        username=username,
         email=email,
         password_hash=hash_password(payload.password),
         rol=payload.rol,
@@ -370,16 +437,16 @@ def update_me(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Self-service: change display name, login email and/or password."""
+    """Self-service: display name, login username, recovery email and/or password."""
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Contraseña actual incorrecta")
 
-    email_changing = False
-    if payload.email is not None:
-        email = str(payload.email).strip().lower()
-        email_changing = email != (user.email or "").lower()
+    username_changing = False
+    if payload.username is not None:
+        next_username = validate_username(payload.username)
+        username_changing = next_username.lower() != (user.username or "").lower()
 
-    if payload.new_password or email_changing:
+    if payload.new_password or username_changing:
         assert_admin_credentials_mutable(user)
 
     changed = False
@@ -389,17 +456,26 @@ def update_me(
             user.nombre = nombre
             changed = True
 
-    if payload.email is not None:
-        email = str(payload.email).strip().lower()
-        if email != (user.email or "").lower():
-            existing = (
-                db.query(User)
-                .filter(func.lower(User.email) == email, User.id != user.id)
-                .first()
-            )
-            if existing:
-                raise HTTPException(status_code=400, detail="Email ya registrado")
-            user.email = email
+    if payload.username is not None:
+        next_username = validate_username(payload.username)
+        if next_username.lower() != (user.username or "").lower():
+            _assert_username_available(db, next_username, exclude_id=user.id)
+            user.username = next_username
+            # Username change invalidates sessions (credentials identity change)
+            _bump_token_version(user)
+            changed = True
+        elif next_username != user.username:
+            # Preserve preferred casing without full invalidation
+            user.username = next_username
+            changed = True
+
+    if "email" in payload.model_fields_set:
+        email = _optional_email_value(payload.email)
+        current = (user.email or "").lower() or None
+        next_e = email
+        if next_e != current:
+            _assert_email_available(db, next_e, exclude_id=user.id)
+            user.email = next_e
             changed = True
 
     if payload.new_password:
@@ -430,18 +506,20 @@ def update_user(
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     if payload.nombre is not None:
         user.nombre = payload.nombre.strip()
-    if payload.email is not None:
-        email = payload.email.strip().lower()
-        if email != (user.email or "").lower():
+    if payload.username is not None:
+        next_username = validate_username(payload.username)
+        if next_username.lower() != (user.username or "").lower():
             assert_admin_credentials_mutable(user)
-        existing = (
-            db.query(User)
-            .filter(func.lower(User.email) == email, User.id != user_id)
-            .first()
-        )
-        if existing:
-            raise HTTPException(status_code=400, detail="Email ya registrado")
-        user.email = email
+            _assert_username_available(db, next_username, exclude_id=user_id)
+            user.username = next_username
+            _bump_token_version(user)
+        elif next_username != user.username:
+            user.username = next_username
+    if "email" in payload.model_fields_set:
+        email = _optional_email_value(payload.email)
+        if email != ((user.email or "").lower() or None):
+            _assert_email_available(db, email, exclude_id=user_id)
+            user.email = email
     if payload.rol is not None:
         if payload.rol not in VALID_ROLES:
             raise HTTPException(

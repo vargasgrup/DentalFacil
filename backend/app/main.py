@@ -90,6 +90,13 @@ async def lifespan(app: FastAPI):
         logger.error("ensure_auth_schema FAILED: %s", exc, exc_info=True)
         raise
     try:
+        from app.ensure_user_username_schema import ensure_user_username_schema
+
+        ensure_user_username_schema()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("ensure_user_username_schema FAILED: %s", exc, exc_info=True)
+        raise
+    try:
         from app.ensure_clinical_schema import ensure_clinical_evolution_schema
 
         ensure_clinical_evolution_schema()

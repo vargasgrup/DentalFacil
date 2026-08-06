@@ -11,8 +11,12 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    # Display name shown in UI
     nombre: Mapped[str] = mapped_column(String(120))
-    email: Mapped[str] = mapped_column(String(180), unique=True, index=True)
+    # Login identifier (case-insensitive unique). Not email.
+    username: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    # Optional recovery contact only (not used for login).
+    email: Mapped[str | None] = mapped_column(String(180), unique=True, index=True, nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     rol: Mapped[str] = mapped_column(String(20), default="DOCTOR")
     activo: Mapped[bool] = mapped_column(Boolean, default=True)

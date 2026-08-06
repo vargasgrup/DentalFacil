@@ -3,15 +3,15 @@ import { E2E_ADMIN } from "./fixtures";
 
 async function loginUi(page: import("@playwright/test").Page) {
   await page.goto("/");
-  await page.getByPlaceholder(/correo/i).fill(E2E_ADMIN.email);
+  await page.getByPlaceholder(/^Usuario$/i).fill(E2E_ADMIN.username);
   await page.getByPlaceholder(/contraseña/i).fill(E2E_ADMIN.password);
-  await page.getByRole("button", { name: /iniciar sesión|crear cuenta/i }).click();
+  await page.getByRole("button", { name: /continuar|iniciar sesión|crear cuenta/i }).click();
   await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
 }
 
 async function ensureAdmin(request: import("@playwright/test").APIRequestContext) {
   const login = await request.post("/api/auth/login", {
-    data: { email: E2E_ADMIN.email, password: E2E_ADMIN.password },
+    data: { username: E2E_ADMIN.username, password: E2E_ADMIN.password },
   });
   if (!login.ok()) {
     test.skip(true, "Admin E2E no disponible; corre auth.spec primero.");

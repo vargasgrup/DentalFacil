@@ -110,7 +110,8 @@ class Settings(BaseSettings):
     MAX_RETRY_ATTEMPTS: int = 3
 
     # Shared DEMO (Railway / multi-user same Admin credentials).
-    # true | 1 | yes | on — locks Admin email/password changes until disabled.
+    # true | 1 | yes | on — locks Admin username/password changes until disabled.
+    # Note: product currently forces DEMO off in validators below.
     # Desktop clinic installs should leave this false/unset.
     DEMO_MODE: bool = False
 

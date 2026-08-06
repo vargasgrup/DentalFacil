@@ -89,7 +89,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             role="status"
             className="border-b border-amber-200/90 bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-950 sm:text-sm"
           >
-            Versión DEMO — varios usuarios comparten el mismo acceso Admin; el correo y la
+            Versión DEMO — varios usuarios comparten el mismo acceso Admin; el usuario y la
             contraseña del Administrador son inmodificables.
           </div>
         )}

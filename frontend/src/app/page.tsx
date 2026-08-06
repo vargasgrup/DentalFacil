@@ -66,6 +66,7 @@ export default function LoginPage() {
   const { displayName, refresh: refreshBrand } = useClinicBrand();
 
   const [view, setView] = useState<AuthView>("login");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nombre, setNombre] = useState("");
@@ -137,9 +138,9 @@ export default function LoginPage() {
     setBusy(true);
     try {
       if (needsSetup) {
-        await setup(nombre, email, password);
+        await setup(nombre, username, password, email);
       } else {
-        await login(email, password);
+        await login(username, password);
       }
       window.location.assign("/dashboard");
     } catch (err: unknown) {
@@ -276,7 +277,7 @@ export default function LoginPage() {
           ? "Ingrese su correo para recibir un código de recuperación."
           : view === "reset"
             ? "Ingrese el código recibido y su nueva contraseña."
-            : `Accede con tu correo al panel de ${displayName}.`;
+            : `Accede con tu usuario al panel de ${displayName}.`;
 
   const panelEyebrow = "Bienvenido a la clínica";
   const panelTitle =
@@ -323,7 +324,7 @@ export default function LoginPage() {
             >
               <span className="font-semibold">Versión DEMO.</span> Varios usuarios
               pueden ingresar con las mismas credenciales de Administrador. El
-              cambio de correo y contraseña del Admin está deshabilitado para no
+              cambio de usuario y contraseña del Admin está deshabilitado para no
               bloquear el acceso compartido.
             </div>
           )}
@@ -489,7 +490,7 @@ export default function LoginPage() {
                   type="text"
                   value={nombre}
                   onChange={(e) => setNombre(e.target.value)}
-                  placeholder="Nombre completo"
+                  placeholder="Nombre visible"
                   required
                   autoComplete="off"
                   icon={<UserRound className="h-4 w-4" strokeWidth={1.75} />}
@@ -497,17 +498,29 @@ export default function LoginPage() {
               )}
 
               <LoginField
-                id="login-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Correo electrónico"
+                id="login-username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Usuario"
                 required
-                autoComplete="off"
+                autoComplete="username"
                 autoFocus
                 error={Boolean(error)}
-                icon={<Mail className="h-4 w-4" strokeWidth={1.75} />}
+                icon={<UserRound className="h-4 w-4" strokeWidth={1.75} />}
               />
+
+              {needsSetup && (
+                <LoginField
+                  id="login-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Correo de recuperación (opcional)"
+                  autoComplete="email"
+                  icon={<Mail className="h-4 w-4" strokeWidth={1.75} />}
+                />
+              )}
 
               <LoginField
                 id="login-password"
@@ -516,7 +529,7 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Contraseña"
                 required
-                autoComplete="new-password"
+                autoComplete={needsSetup ? "new-password" : "current-password"}
                 error={Boolean(error)}
                 icon={<Lock className="h-4 w-4" strokeWidth={1.75} />}
               />

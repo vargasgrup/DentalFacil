@@ -15,7 +15,8 @@ import { looksLikeJwt, writeAuthCookie } from "./authCookie";
 interface User {
   id: string;
   nombre: string;
-  email: string;
+  username: string;
+  email?: string | null;
   rol: string;
   activo: boolean;
   modulos_acceso?: string[];
@@ -27,8 +28,13 @@ interface AuthContextValue {
   needsSetup: boolean;
   demoMode: boolean;
   refreshUser: () => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
-  setup: (nombre: string, email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
+  setup: (
+    nombre: string,
+    username: string,
+    password: string,
+    email?: string
+  ) => Promise<void>;
   logout: () => void;
 }
 
@@ -143,12 +149,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refreshUser();
   }, [refreshUser]);
 
-  const login = async (email: string, password: string) => {
+  const login = async (username: string, password: string) => {
     const resp = await apiFetch<{ access_token: string; refresh_token: string; user: User }>(
       "/api/auth/login",
       {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username: username.trim(), password }),
       }
     );
     setToken(resp.access_token);
@@ -157,12 +163,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await loadSetupStatus();
   };
 
-  const setup = async (nombre: string, email: string, password: string) => {
+  const setup = async (
+    nombre: string,
+    username: string,
+    password: string,
+    email?: string
+  ) => {
+    const body: Record<string, string> = {
+      nombre: nombre.trim(),
+      username: username.trim(),
+      password,
+    };
+    const recovery = (email || "").trim();
+    if (recovery) body.email = recovery.toLowerCase();
     const resp = await apiFetch<{ access_token: string; refresh_token: string; user: User }>(
       "/api/auth/setup",
       {
         method: "POST",
-        body: JSON.stringify({ nombre, email, password }),
+        body: JSON.stringify(body),
       }
     );
     setToken(resp.access_token);

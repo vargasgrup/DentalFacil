@@ -14,6 +14,7 @@ def test_create_cajero_with_custom_modules(
         headers=admin_headers,
         json={
             "nombre": "Hilda Caja",
+            "username": "hilda.caja",
             "email": "hilda.caja@clinica.pe",
             "password": "clave123",
             "rol": "CAJERO",
@@ -23,6 +24,7 @@ def test_create_cajero_with_custom_modules(
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["rol"] == "CAJERO"
+    assert body["username"] == "hilda.caja"
     assert "caja" in body["modulos_acceso"]
     assert "reportes" not in body["modulos_acceso"]
     assert "configuracion" not in body["modulos_acceso"]
@@ -38,7 +40,7 @@ def test_create_cajero_with_custom_modules(
 
     me = client.post(
         "/api/auth/login",
-        json={"email": "hilda.caja@clinica.pe", "password": "clave123"},
+        json={"username": "hilda.caja", "password": "clave123"},
     )
     assert me.status_code == 200
     assert "caja" in me.json()["user"]["modulos_acceso"]

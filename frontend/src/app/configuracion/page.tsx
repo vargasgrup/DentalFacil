@@ -38,6 +38,7 @@ export default function ConfiguracionPage() {
   const [error, setError] = useState("");
 
   const [nombre, setNombre] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rol, setRolState] = useState("DOCTOR");
@@ -377,11 +378,13 @@ export default function ConfiguracionPage() {
     }
     setCreatingUser(true);
     try {
+      const recovery = email.trim().toLowerCase();
       await apiFetch("/api/users", {
         method: "POST",
         body: JSON.stringify({
           nombre: nombre.trim(),
-          email: email.trim().toLowerCase(),
+          username: username.trim(),
+          email: recovery || null,
           password,
           rol,
           modulos_acceso: rol === "ADMIN" ? APP_MODULES : modulos,
@@ -389,6 +392,7 @@ export default function ConfiguracionPage() {
       });
       setShowCreate(false);
       setNombre("");
+      setUsername("");
       setEmail("");
       setPassword("");
       setRol("DOCTOR");
@@ -459,10 +463,11 @@ export default function ConfiguracionPage() {
     setAccountErr("");
     setAccountBusy(true);
     try {
-      const body: Record<string, string> = {
+      const body: Record<string, string | null> = {
         current_password: values.currentPassword,
         nombre: values.nombre,
-        email: values.email,
+        username: values.username,
+        email: values.email.trim() ? values.email.trim().toLowerCase() : null,
       };
       if (values.newPassword) {
         body.new_password = values.newPassword;
@@ -481,8 +486,26 @@ export default function ConfiguracionPage() {
           method: "POST",
           skipAuth: true,
           body: JSON.stringify({
-            email: values.email,
+            username: values.username,
             password: values.newPassword,
+          }),
+        });
+        setToken(login.access_token);
+        setRefreshToken(login.refresh_token);
+      } else if (
+        values.username.trim().toLowerCase() !==
+        (currentUser?.username || "").trim().toLowerCase()
+      ) {
+        // Username change invalidates tokens server-side — re-auth with same password.
+        const login = await apiFetch<{
+          access_token: string;
+          refresh_token: string;
+        }>("/api/auth/login", {
+          method: "POST",
+          skipAuth: true,
+          body: JSON.stringify({
+            username: values.username,
+            password: values.currentPassword,
           }),
         });
         setToken(login.access_token);
@@ -535,6 +558,7 @@ export default function ConfiguracionPage() {
         return (
           <AccountSettingsForm
             initialNombre={currentUser?.nombre || ""}
+            initialUsername={currentUser?.username || ""}
             initialEmail={currentUser?.email || ""}
             busy={accountBusy}
             msg={accountMsg}
@@ -594,6 +618,8 @@ export default function ConfiguracionPage() {
             setShowCreate={setShowCreate}
             nombre={nombre}
             setNombre={setNombre}
+            username={username}
+            setUsername={setUsername}
             email={email}
             setEmail={setEmail}
             password={password}

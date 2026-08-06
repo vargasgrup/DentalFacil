@@ -6,12 +6,27 @@ from pydantic import BaseModel, EmailStr, Field, field_validator, model_validato
 from app.core.modules import ALL_MODULES, normalize_modules
 
 
+def _optional_email(v: object) -> Optional[str]:
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s:
+        return None
+    return s.lower()
+
+
 class UserCreate(BaseModel):
     nombre: str = Field(..., min_length=2, max_length=120)
-    email: EmailStr
+    username: str = Field(..., min_length=3, max_length=40)
+    email: Optional[EmailStr] = None  # recovery only
     password: str = Field(..., min_length=6)
     rol: str = Field(default="DOCTOR")
     modulos_acceso: Optional[list[str]] = None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _email_empty(cls, v: object) -> object:
+        return _optional_email(v)
 
     @field_validator("modulos_acceso")
     @classmethod
@@ -24,7 +39,8 @@ class UserCreate(BaseModel):
 class UserOut(BaseModel):
     id: str
     nombre: str
-    email: str
+    username: str
+    email: Optional[str] = None
     rol: str
     activo: bool
     modulos_acceso: list[str] = Field(default_factory=list)
@@ -35,10 +51,16 @@ class UserOut(BaseModel):
 
 class UserUpdate(BaseModel):
     nombre: Optional[str] = None
+    username: Optional[str] = Field(None, min_length=3, max_length=40)
     email: Optional[EmailStr] = None
     rol: Optional[str] = None
     activo: Optional[bool] = None
     modulos_acceso: Optional[list[str]] = None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _email_empty(cls, v: object) -> object:
+        return _optional_email(v)
 
     @field_validator("modulos_acceso")
     @classmethod
@@ -58,26 +80,37 @@ class PasswordChange(BaseModel):
 
 
 class AccountUpdate(BaseModel):
-    """Self-service update: nombre (usuario), email (login) y/o contraseña."""
+    """Self-service: display name, login username, recovery email and/or password."""
 
     current_password: str = Field(..., min_length=1)
     nombre: Optional[str] = Field(None, min_length=2, max_length=120)
+    username: Optional[str] = Field(None, min_length=3, max_length=40)
     email: Optional[EmailStr] = None
     new_password: Optional[str] = Field(None, min_length=6)
     confirm_new_password: Optional[str] = None
 
+    @field_validator("email", mode="before")
+    @classmethod
+    def _email_empty(cls, v: object) -> object:
+        return _optional_email(v)
+
     @model_validator(mode="after")
     def _validate_account_update(self) -> "AccountUpdate":
         nombre = (self.nombre or "").strip() if self.nombre is not None else None
+        username = (self.username or "").strip() if self.username is not None else None
         email = self.email
         new_pwd = (self.new_password or "").strip() if self.new_password else ""
         confirm = (self.confirm_new_password or "").strip() if self.confirm_new_password else ""
 
         if self.nombre is not None:
             object.__setattr__(self, "nombre", nombre)
+        if self.username is not None:
+            object.__setattr__(self, "username", username)
 
-        if not nombre and email is None and not new_pwd:
-            raise ValueError("Indique un cambio: nombre, correo o nueva contraseña")
+        if not nombre and username is None and email is None and not new_pwd:
+            raise ValueError(
+                "Indique un cambio: nombre, usuario de acceso, correo de recuperación o contraseña"
+            )
 
         if new_pwd or confirm:
             if len(new_pwd) < 6:
@@ -94,13 +127,32 @@ class AccountUpdate(BaseModel):
 
 class SetupRequest(BaseModel):
     nombre: str = Field(..., min_length=2, max_length=120)
-    email: EmailStr
+    username: str = Field(..., min_length=3, max_length=40)
+    email: Optional[EmailStr] = None  # recovery only
     password: str = Field(..., min_length=6)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _email_empty(cls, v: object) -> object:
+        return _optional_email(v)
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    """Login with username (+ password). `email` accepted as legacy alias for username or recovery lookup."""
+
+    username: Optional[str] = Field(None, max_length=80)
+    email: Optional[str] = Field(None, max_length=180)  # legacy clients may still send this
     password: str
+
+    @model_validator(mode="after")
+    def _resolve_login_id(self) -> "LoginRequest":
+        u = (self.username or "").strip()
+        e = (self.email or "").strip()
+        login_id = u or e
+        if not login_id:
+            raise ValueError("Indique el usuario de acceso")
+        object.__setattr__(self, "username", login_id)
+        return self
 
 
 class TokenResponse(BaseModel):

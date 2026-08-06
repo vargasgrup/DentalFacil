@@ -24,6 +24,8 @@ interface UsersAdminPanelProps {
   setShowCreate: (v: boolean) => void;
   nombre: string;
   setNombre: (v: string) => void;
+  username: string;
+  setUsername: (v: string) => void;
   email: string;
   setEmail: (v: string) => void;
   password: string;
@@ -110,6 +112,8 @@ export function UsersAdminPanel({
   setShowCreate,
   nombre,
   setNombre,
+  username,
+  setUsername,
   email,
   setEmail,
   password,
@@ -156,7 +160,7 @@ export function UsersAdminPanel({
       {showCreate && (
         <form onSubmit={onCreate} className="mb-1 space-y-3 rounded-xl border border-slate-200/80 bg-slate-50/60 p-4">
           <Input
-            label="Nombre"
+            label="Nombre visible"
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
             required
@@ -164,12 +168,22 @@ export function UsersAdminPanel({
             autoComplete="name"
           />
           <Input
-            label="Email"
+            label="Usuario de acceso"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            minLength={3}
+            maxLength={40}
+            autoComplete="off"
+            hint="Para iniciar sesión (letras, números, . _ -)"
+          />
+          <Input
+            label="Correo de recuperación"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            required
             autoComplete="off"
+            hint="Opcional — solo para recuperar la cuenta"
           />
           <Input
             label="Contraseña"
@@ -241,7 +255,14 @@ export function UsersAdminPanel({
                       {u.activo ? "Activo" : "Inactivo"}
                     </Badge>
                   </div>
-                  <p className="mt-0.5 text-sm text-slate-500">{u.email}</p>
+                  <p className="mt-0.5 text-sm text-slate-500">
+                    <span className="font-medium text-slate-600">@{u.username}</span>
+                    {u.email ? (
+                      <span className="text-slate-400"> · {u.email}</span>
+                    ) : (
+                      <span className="text-slate-400"> · sin correo de recuperación</span>
+                    )}
+                  </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="text-xs text-slate-500">

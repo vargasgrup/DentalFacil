@@ -46,6 +46,7 @@ def test_backup_rbac_non_admin_forbidden(
         "/api/users",
         headers=admin_headers,
         json={
+            "username": "asist.backup",
             "email": "asist.backup@example.com",
             "password": "AsistBackup123!",
             "nombre": "Asist Backup",
@@ -55,7 +56,7 @@ def test_backup_rbac_non_admin_forbidden(
     assert created.status_code == 201, created.text
     login = client.post(
         "/api/auth/login",
-        json={"email": "asist.backup@example.com", "password": "AsistBackup123!"},
+        json={"username": "asist.backup", "password": "AsistBackup123!"},
     )
     assert login.status_code == 200
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}

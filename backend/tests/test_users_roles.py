@@ -15,6 +15,7 @@ def test_create_users_with_roles(
             headers=admin_headers,
             json={
                 "nombre": f"Usuario {rol}",
+                "username": f"{rol.lower()}{i}",
                 "email": f"{rol.lower()}{i}@clinica.pe",
                 "password": "clave123",
                 "rol": rol,
@@ -34,6 +35,7 @@ def test_max_two_admins(
         headers=admin_headers,
         json={
             "nombre": "Admin Dos",
+            "username": "admin2",
             "email": "admin2@clinica.pe",
             "password": "clave123",
             "rol": "ADMIN",
@@ -46,6 +48,7 @@ def test_max_two_admins(
         headers=admin_headers,
         json={
             "nombre": "Admin Tres",
+            "username": "admin3",
             "email": "admin3@clinica.pe",
             "password": "clave123",
             "rol": "ADMIN",
@@ -64,6 +67,7 @@ def test_invalid_role_rejected(
         headers=admin_headers,
         json={
             "nombre": "Sin Rol",
+            "username": "norol",
             "email": "norol@clinica.pe",
             "password": "clave123",
             "rol": "SUPERUSER",

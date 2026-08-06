@@ -8,6 +8,7 @@ async function ensureAdmin(request: import("@playwright/test").APIRequestContext
     const setup = await request.post("/api/auth/setup", {
       data: {
         nombre: E2E_ADMIN.nombre,
+        username: E2E_ADMIN.username,
         email: E2E_ADMIN.email,
         password: E2E_ADMIN.password,
       },
@@ -15,14 +16,13 @@ async function ensureAdmin(request: import("@playwright/test").APIRequestContext
     expect(setup.ok()).toBeTruthy();
     return;
   }
-  // Already configured: login must succeed with seed credentials or env override.
   const login = await request.post("/api/auth/login", {
-    data: { email: E2E_ADMIN.email, password: E2E_ADMIN.password },
+    data: { username: E2E_ADMIN.username, password: E2E_ADMIN.password },
   });
   if (!login.ok()) {
     test.skip(
       true,
-      `No se pudo autenticar E2E admin (${E2E_ADMIN.email}). Configure E2E_ADMIN_* o reinicie DB de test.`
+      `No se pudo autenticar E2E admin (${E2E_ADMIN.username}). Configure E2E_ADMIN_* o reinicie DB de test.`
     );
   }
 }
@@ -30,9 +30,9 @@ async function ensureAdmin(request: import("@playwright/test").APIRequestContext
 test.describe("Auth", () => {
   test("login fallido muestra error y no navega al dashboard", async ({ page }) => {
     await page.goto("/");
-    await page.getByPlaceholder(/correo/i).fill("wrong@test.local");
+    await page.getByPlaceholder(/^Usuario$/i).fill("wrong.user");
     await page.getByPlaceholder(/contraseña/i).fill("bad-password");
-    await page.getByRole("button", { name: /iniciar sesión/i }).click();
+    await page.getByRole("button", { name: /continuar|iniciar sesión/i }).click();
     await expect(page.getByText(/incorrectos|sesión|credenciales|error/i)).toBeVisible();
     await expect(page).toHaveURL(/\/$/);
   });
@@ -40,9 +40,9 @@ test.describe("Auth", () => {
   test("login exitoso llega al dashboard", async ({ page, request }) => {
     await ensureAdmin(request);
     await page.goto("/");
-    await page.getByPlaceholder(/correo/i).fill(E2E_ADMIN.email);
+    await page.getByPlaceholder(/^Usuario$/i).fill(E2E_ADMIN.username);
     await page.getByPlaceholder(/contraseña/i).fill(E2E_ADMIN.password);
-    await page.getByRole("button", { name: /iniciar sesión|crear cuenta/i }).click();
+    await page.getByRole("button", { name: /continuar|iniciar sesión|crear cuenta/i }).click();
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
   });
 });

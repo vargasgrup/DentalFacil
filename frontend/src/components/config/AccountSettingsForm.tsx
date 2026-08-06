@@ -8,6 +8,7 @@ import { ConfigSection } from "@/components/config/ConfigSection";
 
 export interface AccountFormValues {
   nombre: string;
+  username: string;
   email: string;
   currentPassword: string;
   newPassword: string;
@@ -16,17 +17,21 @@ export interface AccountFormValues {
 
 interface AccountSettingsFormProps {
   initialNombre: string;
+  initialUsername: string;
   initialEmail: string;
   busy?: boolean;
   msg: string;
   err: string;
-  /** DEMO: lock Admin login email + password (shared credentials). */
+  /** DEMO: lock Admin login username + password (shared credentials). */
   lockCredentials?: boolean;
   onSubmit: (values: AccountFormValues) => Promise<void> | void;
 }
 
+const USERNAME_RE = /^[A-Za-z0-9._-]{3,40}$/;
+
 export function AccountSettingsForm({
   initialNombre,
+  initialUsername,
   initialEmail,
   busy = false,
   msg,
@@ -35,6 +40,7 @@ export function AccountSettingsForm({
   onSubmit,
 }: AccountSettingsFormProps) {
   const [nombre, setNombre] = useState(initialNombre);
+  const [username, setUsername] = useState(initialUsername);
   const [email, setEmail] = useState(initialEmail);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -43,23 +49,32 @@ export function AccountSettingsForm({
 
   useEffect(() => {
     setNombre(initialNombre);
+    setUsername(initialUsername);
     setEmail(initialEmail);
-  }, [initialNombre, initialEmail]);
+  }, [initialNombre, initialUsername, initialEmail]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLocalErr("");
 
     const nextNombre = nombre.trim();
-    const nextEmail = lockCredentials
-      ? initialEmail.trim().toLowerCase()
-      : email.trim().toLowerCase();
+    const nextUsername = lockCredentials
+      ? initialUsername.trim()
+      : username.trim();
+    const nextEmail = email.trim().toLowerCase();
+
     if (nextNombre.length < 2) {
-      setLocalErr("El nombre de usuario debe tener al menos 2 caracteres.");
+      setLocalErr("El nombre visible debe tener al menos 2 caracteres.");
       return;
     }
-    if (!nextEmail || !nextEmail.includes("@")) {
-      setLocalErr("Indique un correo válido (es su usuario de acceso).");
+    if (!USERNAME_RE.test(nextUsername)) {
+      setLocalErr(
+        "Usuario de acceso: 3–40 caracteres (letras, números, punto, guion o _)."
+      );
+      return;
+    }
+    if (nextEmail && !nextEmail.includes("@")) {
+      setLocalErr("Indique un correo de recuperación válido o déjelo vacío.");
       return;
     }
     if (!currentPassword) {
@@ -68,14 +83,16 @@ export function AccountSettingsForm({
     }
 
     const nombreChanged = nextNombre !== initialNombre.trim();
-    const emailChanged =
-      !lockCredentials && nextEmail !== initialEmail.trim().toLowerCase();
+    const usernameChanged =
+      !lockCredentials &&
+      nextUsername.toLowerCase() !== initialUsername.trim().toLowerCase();
+    const emailChanged = nextEmail !== (initialEmail || "").trim().toLowerCase();
     const pwdChanged = !lockCredentials && Boolean(newPassword || confirmPassword);
 
-    if (!nombreChanged && !emailChanged && !pwdChanged) {
+    if (!nombreChanged && !usernameChanged && !emailChanged && !pwdChanged) {
       setLocalErr(
         lockCredentials
-          ? "En DEMO solo puede actualizar el nombre visible (correo y clave están protegidos)."
+          ? "En DEMO solo puede actualizar el nombre visible (usuario y clave están protegidos)."
           : "No hay cambios que guardar."
       );
       return;
@@ -93,6 +110,7 @@ export function AccountSettingsForm({
 
     await onSubmit({
       nombre: nextNombre,
+      username: nextUsername,
       email: nextEmail,
       currentPassword,
       newPassword: pwdChanged ? newPassword : "",
@@ -109,8 +127,8 @@ export function AccountSettingsForm({
       icon={<KeyRound className="h-4 w-4" aria-hidden />}
       description={
         lockCredentials
-          ? "Versión DEMO: puede actualizar su nombre visible. Correo y contraseña del Administrador están protegidos."
-          : "Actualice su nombre, correo de acceso o contraseña. Siempre confirme con la contraseña actual."
+          ? "Versión DEMO: puede actualizar su nombre visible. Usuario y contraseña del Administrador están protegidos."
+          : "Actualice su nombre visible, usuario de acceso o contraseña. El correo solo se usa para recuperar la cuenta."
       }
     >
       {lockCredentials && (
@@ -120,10 +138,9 @@ export function AccountSettingsForm({
         >
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden />
           <p className="leading-relaxed">
-            <span className="font-semibold">Versión DEMO.</span> El correo y la
+            <span className="font-semibold">Versión DEMO.</span> El usuario de acceso y la
             contraseña del Administrador no se pueden cambiar porque varios usuarios
-            ingresan con las mismas credenciales. El resto del sistema sí es
-            usable de extremo a extremo.
+            ingresan con las mismas credenciales. El resto del sistema sí es usable.
           </p>
         </div>
       )}
@@ -131,24 +148,38 @@ export function AccountSettingsForm({
       <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
-            label="Nombre de usuario"
+            label="Nombre visible"
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
             autoComplete="name"
             required
             disabled={busy}
+            hint="Se muestra en la interfaz"
           />
           <Input
-            label="Correo (usuario de acceso)"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            label="Usuario de acceso"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
             required
             disabled={busy || lockCredentials}
-            hint={lockCredentials ? "Protegido en versión DEMO" : undefined}
+            hint={
+              lockCredentials
+                ? "Protegido en versión DEMO"
+                : "Con este nombre inicia sesión (no es un correo)"
+            }
           />
         </div>
+
+        <Input
+          label="Correo de recuperación"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          autoComplete="email"
+          disabled={busy}
+          hint="Opcional. Solo para recuperar la contraseña si la olvida"
+        />
 
         <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 sm:p-4">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">

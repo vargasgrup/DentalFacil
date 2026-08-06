@@ -43,6 +43,7 @@ def test_vendor_rescue_admin_password(client: TestClient, admin_user):
         },
         json={
             "nombre": "Asistente Rescue",
+            "username": "asist.rescue",
             "email": "asist.rescue@example.com",
             "password": "Asist123!",
             "rol": "ASISTENTE",

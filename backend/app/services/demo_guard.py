@@ -15,8 +15,8 @@ from app.core.roles import Rol
 from app.models import User
 
 DEMO_ADMIN_CREDENTIALS_DETAIL = (
-    "Versión DEMO: el correo y la contraseña de la cuenta Administrador están "
-    "protegidos porque varios usuarios comparten las mismas credenciales de acceso. "
+    "Versión DEMO: el usuario de acceso y la contraseña de la cuenta Administrador "
+    "están protegidos porque varios usuarios comparten las mismas credenciales. "
     "Puede probar el resto del sistema con normalidad."
 )
 
@@ -31,7 +31,7 @@ def is_admin_user(user: User | None) -> bool:
 
 
 def assert_admin_credentials_mutable(user: User | None) -> None:
-    """Block Admin login-email / password changes while DEMO_MODE is on."""
+    """Block Admin login username / password changes while DEMO_MODE is on."""
     if is_demo_mode() and is_admin_user(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

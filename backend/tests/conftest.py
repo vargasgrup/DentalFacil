@@ -33,6 +33,7 @@ os.environ["RATE_LIMIT_LOGIN_PER_MINUTE"] = "1000"
 os.environ["RATE_LIMIT_SETUP_PER_MINUTE"] = "1000"
 
 ADMIN_EMAIL = "admin@example.com"
+ADMIN_USERNAME = "Admin"
 ADMIN_PASSWORD = "testpass123"
 ADMIN_NOMBRE = "Admin Test"
 
@@ -137,6 +138,7 @@ def admin_user(client: TestClient, db: Session) -> User:
     user = User(
         id=new_uuid(),
         nombre=ADMIN_NOMBRE,
+        username=ADMIN_USERNAME,
         email=ADMIN_EMAIL,
         password_hash=hash_password(ADMIN_PASSWORD),
         rol="ADMIN",
@@ -153,7 +155,7 @@ def admin_user(client: TestClient, db: Session) -> User:
 def admin_headers(client: TestClient, admin_user: User) -> dict[str, str]:
     resp = client.post(
         "/api/auth/login",
-        json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+        json={"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
     )
     assert resp.status_code == 200, resp.text
     token = resp.json()["access_token"]
@@ -164,7 +166,7 @@ def admin_headers(client: TestClient, admin_user: User) -> dict[str, str]:
 def admin_tokens(client: TestClient, admin_user: User) -> dict:
     resp = client.post(
         "/api/auth/login",
-        json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+        json={"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
     )
     assert resp.status_code == 200, resp.text
     return resp.json()

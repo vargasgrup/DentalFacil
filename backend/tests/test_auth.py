@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD
+from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_USERNAME
 
 
 def test_setup_status_needs_setup(client: TestClient):
@@ -26,19 +26,28 @@ def test_setup_status_after_admin(client: TestClient, admin_user):
 def test_login_valid(client: TestClient, admin_user):
     resp = client.post(
         "/api/auth/login",
-        json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+        json={"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
     )
     assert resp.status_code == 200
     data = resp.json()
     assert "access_token" in data
     assert "refresh_token" in data
+    assert data["user"]["username"].lower() == ADMIN_USERNAME.lower()
     assert data["user"]["email"] == ADMIN_EMAIL
+
+
+def test_login_legacy_email_still_works(client: TestClient, admin_user):
+    resp = client.post(
+        "/api/auth/login",
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+    )
+    assert resp.status_code == 200
 
 
 def test_login_invalid(client: TestClient, admin_user):
     resp = client.post(
         "/api/auth/login",
-        json={"email": ADMIN_EMAIL, "password": "wrong-password"},
+        json={"username": ADMIN_USERNAME, "password": "wrong-password"},
     )
     assert resp.status_code == 401
 
@@ -99,7 +108,7 @@ def test_change_password_bumps_token_version(client: TestClient, admin_tokens: d
 
     login = client.post(
         "/api/auth/login",
-        json={"email": ADMIN_EMAIL, "password": "newpass123"},
+        json={"username": ADMIN_USERNAME, "password": "newpass123"},
     )
     assert login.status_code == 200
     me_new = client.get(
@@ -109,7 +118,7 @@ def test_change_password_bumps_token_version(client: TestClient, admin_tokens: d
     assert me_new.status_code == 200
 
 
-def test_update_me_nombre_and_email(client: TestClient, admin_tokens: dict):
+def test_update_me_nombre_and_username(client: TestClient, admin_tokens: dict):
     headers = {"Authorization": f"Bearer {admin_tokens['access_token']}"}
     resp = client.patch(
         "/api/users/me",
@@ -117,12 +126,14 @@ def test_update_me_nombre_and_email(client: TestClient, admin_tokens: dict):
         json={
             "current_password": ADMIN_PASSWORD,
             "nombre": "Admin Clínica",
+            "username": ADMIN_USERNAME,
             "email": ADMIN_EMAIL,
         },
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["nombre"] == "Admin Clínica"
+    assert body["username"].lower() == ADMIN_USERNAME.lower()
     assert body["email"].lower() == ADMIN_EMAIL.lower()
 
 
@@ -147,6 +158,7 @@ def test_update_me_password_and_relogin(client: TestClient, admin_tokens: dict):
         json={
             "current_password": ADMIN_PASSWORD,
             "nombre": "Admin",
+            "username": ADMIN_USERNAME,
             "email": ADMIN_EMAIL,
             "new_password": "newerpass99",
             "confirm_new_password": "newerpass99",
@@ -154,15 +166,13 @@ def test_update_me_password_and_relogin(client: TestClient, admin_tokens: dict):
     )
     assert resp.status_code == 200, resp.text
 
-    # Old token invalidated
     assert client.get("/api/users/me", headers=headers).status_code == 401
 
     login = client.post(
         "/api/auth/login",
-        json={"email": ADMIN_EMAIL, "password": "newerpass99"},
+        json={"username": ADMIN_USERNAME, "password": "newerpass99"},
     )
     assert login.status_code == 200
-    # restore for other tests that reuse admin password fixtures if any
     new_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     reset = client.patch(
         "/api/users/me",

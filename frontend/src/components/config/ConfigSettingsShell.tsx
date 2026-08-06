@@ -66,7 +66,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Mi cuenta",
         icon: User,
         description:
-          "Actualice su nombre, correo de acceso o contraseña. Confirme siempre con la contraseña actual.",
+          "Actualice su nombre visible, usuario de acceso o contraseña. El correo solo se usa para recuperar la cuenta.",
       },
       {
         id: "usuarios",

@@ -1,7 +1,8 @@
 export interface User {
   id: string;
   nombre: string;
-  email: string;
+  username: string;
+  email?: string | null;
   rol: string;
   activo: boolean;
   modulos_acceso?: string[];

@@ -103,7 +103,6 @@ export default function NuevoPacientePage() {
   const tipoDocRef = useRef<HTMLSelectElement>(null);
   const docRef = useRef<HTMLInputElement>(null);
   const fechaNacRef = useRef<HTMLInputElement>(null);
-  const sexoRef = useRef<HTMLSelectElement>(null);
   const telRef = useRef<HTMLInputElement>(null);
   const tutorTelRef = useRef<HTMLInputElement>(null);
   const alergiasRef = useRef<HTMLTextAreaElement>(null);
@@ -118,8 +117,6 @@ export default function NuevoPacientePage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [ageBand, setAgeBand] = useState<AgeBandId>("adulto");
   const [bandTouched, setBandTouched] = useState(false);
-  /** When true, user overrode sexo — stop auto-guess from name. */
-  const [sexoManual, setSexoManual] = useState(false);
 
   const [form, setForm] = useState({
     nombres: "",
@@ -298,7 +295,7 @@ export default function NuevoPacientePage() {
     const next = sanitizeDocumento(form.tipo_documento, raw);
     set("numero_documento", next);
     setError("");
-    // Cadena: documento completo → fecha de nacimiento → sexo → celular
+    // Documento completo → fecha de nacimiento (sin saltarse día/mes/año).
     const complete =
       form.tipo_documento === "DNI"
         ? next.length === DNI_LENGTH && prevLen < DNI_LENGTH
@@ -337,6 +334,10 @@ export default function NuevoPacientePage() {
     set("telefono_responsable", normalizePeruvianMobile(raw));
   };
 
+  /** Solo fechas ISO completas dd/mm/yyyy en el control (YYYY-MM-DD). */
+  const isFechaCompleta = (value: string) =>
+    /^\d{4}-\d{2}-\d{2}$/.test((value || "").trim());
+
   /** Enter avanza al siguiente campo del flujo principal. */
   const onEnterAdvance = (
     e: KeyboardEvent,
@@ -347,22 +348,12 @@ export default function NuevoPacientePage() {
     focusNext(next);
   };
 
-  const applySexoFromName = useCallback(
-    (nombres: string, force = false) => {
-      if (sexoManual && !force) return;
-      const guessed = inferSexoFromNombres(nombres);
-      if (!guessed) return;
-      setForm((prev) => {
-        if (prev.sexo === guessed) return prev;
-        if (sexoManual && !force) return prev;
-        // Keep user's manual X / other; only fill empty or auto M/F
-        if (prev.sexo === "X") return prev;
-        if (prev.sexo && sexoManual) return prev;
-        return { ...prev, sexo: guessed };
-      });
-    },
-    [sexoManual]
-  );
+  /** Sexo solo por predicción del nombre (no se pide en el formulario). */
+  const applySexoFromName = useCallback((nombres: string) => {
+    const guessed = inferSexoFromNombres(nombres);
+    if (!guessed) return;
+    setForm((prev) => (prev.sexo === guessed ? prev : { ...prev, sexo: guessed }));
+  }, []);
 
   const onNombresChange = (raw: string) => {
     set("nombres", raw);
@@ -378,10 +369,18 @@ export default function NuevoPacientePage() {
     if (field === "nombres") applySexoFromName(titled);
   };
 
-  const onSexoChange = (value: string) => {
-    setSexoManual(true);
-    set("sexo", value);
-    focusNext(telRef.current);
+  const onFechaNacimientoChange = (value: string) => {
+    // Nunca saltar de foco aquí: el control día-mes-año debe usarse completo.
+    set("fecha_nacimiento", value);
+  };
+
+  const onFechaNacimientoKeyDown = (e: KeyboardEvent) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    // Solo al terminar la fecha → celular WhatsApp.
+    if (isFechaCompleta(form.fecha_nacimiento) || isFechaCompleta((e.target as HTMLInputElement).value)) {
+      focusNext(telRef.current);
+    }
   };
 
   const documentFormatOk = (): boolean => {
@@ -599,8 +598,8 @@ export default function NuevoPacientePage() {
       <div>
         <h1 className="text-page-title text-balance text-slate-800">Nuevo paciente</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Complete en orden: nombres → apellidos → documento → nacimiento → sexo →
-          celular WhatsApp. Enter o al completar un campo avanza al siguiente.
+          Orden: nombres → apellidos → documento → fecha (día, mes, año) → celular
+          WhatsApp. El sexo se asigna solo al reconocer el nombre.
         </p>
       </div>
 
@@ -696,10 +695,10 @@ export default function NuevoPacientePage() {
                 placeholder={minor ? "Nombre del niño/a" : "María Elena"}
                 hint={
                   form.sexo === "F"
-                    ? "Sexo sugerido: Femenino (puede cambiarlo)"
+                    ? "Sexo automático: Femenino (por el nombre)"
                     : form.sexo === "M"
-                      ? "Sexo sugerido: Masculino (puede cambiarlo)"
-                      : "Al escribir el nombre se sugiere el sexo · Enter avanza"
+                      ? "Sexo automático: Masculino (por el nombre)"
+                      : "Enter avanza al apellido · el sexo se infiere del nombre"
                 }
               />
               <Input
@@ -803,56 +802,23 @@ export default function NuevoPacientePage() {
               )}
             </div>
 
-            {/* 3. Fecha de nacimiento + sexo */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input
-                ref={fechaNacRef}
-                label={minor ? "Fecha de nacimiento *" : "Fecha de nacimiento"}
-                type="date"
-                value={form.fecha_nacimiento}
-                onChange={(e) => {
-                  set("fecha_nacimiento", e.target.value);
-                  if (e.target.value) {
-                    focusNext(sexoRef.current);
-                  }
-                }}
-                onKeyDown={(e) => onEnterAdvance(e, sexoRef.current)}
-                autoComplete="bday"
-                max={new Date().toISOString().slice(0, 10)}
-                error={fieldErrors.fecha_nacimiento}
-                hint={
-                  age !== null ? formatAgeLabel(age, ageBand) : "Calcula la edad al instante"
-                }
-              />
-              <label className="block">
-                <span className="mb-1 block text-label text-slate-700">Sexo</span>
-                <select
-                  ref={sexoRef}
-                  value={form.sexo}
-                  onChange={(e) => onSexoChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      focusNext(telRef.current);
-                    }
-                  }}
-                  className={selectClass}
-                  aria-describedby="sexo-hint"
-                >
-                  <option value="">— Opcional —</option>
-                  <option value="F">Femenino</option>
-                  <option value="M">Masculino</option>
-                  <option value="X">Otro / no especifica</option>
-                </select>
-                <p id="sexo-hint" className="mt-1 text-help text-slate-500">
-                  {sexoManual
-                    ? "Definido manualmente"
-                    : form.sexo
-                      ? "Detectado por el nombre (editable)"
-                      : "Se completa solo al reconocer el nombre"}
-                </p>
-              </label>
-            </div>
+            {/* 3. Fecha (día → mes → año, sin saltos de foco) → luego WhatsApp */}
+            <Input
+              ref={fechaNacRef}
+              label={minor ? "Fecha de nacimiento *" : "Fecha de nacimiento"}
+              type="date"
+              value={form.fecha_nacimiento}
+              onChange={(e) => onFechaNacimientoChange(e.target.value)}
+              onKeyDown={onFechaNacimientoKeyDown}
+              autoComplete="bday"
+              max={new Date().toISOString().slice(0, 10)}
+              error={fieldErrors.fecha_nacimiento}
+              hint={
+                age !== null
+                  ? `${formatAgeLabel(age, ageBand)} · Enter al terminar para ir al celular`
+                  : "Complete día, mes y año. Enter al finalizar avanza al WhatsApp"
+              }
+            />
 
             {/* 4. Celular — canal WhatsApp de documentos */}
             <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 sm:p-4">

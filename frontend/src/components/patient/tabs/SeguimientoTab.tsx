@@ -365,44 +365,34 @@ export function SeguimientoTab({
             <MoneyCard label="Pagado (Caja)" value={financial?.pagado_total} tone="success" />
             <MoneyCard label="Saldo" value={financial?.saldo} tone="warning" />
           </div>
-          <p className="mt-2 text-help text-slate-500">
-            Los cobros se registran únicamente en el módulo <strong>Caja</strong>.
-            Aquí se muestra el saldo clínico y el historial de pagos aplicados al
-            paciente. Costo oficial = evolución · Pagado oficial = caja.
-            {typeof financial?.a_cuenta_clinico === "number" && (
-              <>
-                {" "}
-                A cuenta clínico: S/ {Number(financial.a_cuenta_clinico).toFixed(2)}
-                {typeof financial.plan_estimado === "number" &&
-                  financial.plan_estimado > 0 && (
-                    <>
-                      {" · "}
-                      Plan activo: S/ {Number(financial.plan_estimado).toFixed(2)} (saldo
-                      plan S/ {Number(financial.plan_saldo || 0).toFixed(2)})
-                    </>
-                  )}
-              </>
-            )}
-          </p>
-          <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
-            {canAccessModule(user, "caja") ? (
-              <Button
-                variant="secondary"
-                onClick={() => onNavigate("/caja")}
-                disabled={inactive}
-                title={
-                  inactive
-                    ? "Paciente inactivo — solo lectura"
-                    : "Ir a Caja para registrar un cobro"
-                }
-              >
-                Ir a Caja (cobrar)
-              </Button>
-            ) : (
-              <p className="text-help text-slate-400">
-                Cobros solo en módulo Caja (sin permiso de cobro).
-              </p>
-            )}
+          <div
+            className="mt-3 rounded-lg border border-slate-200 bg-surface-subtle px-3 py-2.5 text-sm text-slate-600"
+            role="note"
+          >
+            <p className="font-medium text-slate-800">
+              Los cobros y pagos solo se registran en el módulo Caja
+            </p>
+            <p className="mt-1 text-help text-slate-500">
+              Esta ficha es solo consulta: muestra el saldo clínico y el historial
+              de lo ya cobrado. No se inicia ni modifica ningún pago aquí. Use el
+              menú <strong className="font-medium text-slate-700">Caja</strong> (barra
+              lateral) para abrir sesión y cobrar. Costo oficial = evolución · Pagado
+              oficial = Caja.
+              {typeof financial?.a_cuenta_clinico === "number" && (
+                <>
+                  {" "}
+                  A cuenta clínico: S/ {Number(financial.a_cuenta_clinico).toFixed(2)}
+                  {typeof financial.plan_estimado === "number" &&
+                    financial.plan_estimado > 0 && (
+                      <>
+                        {" · "}
+                        Plan activo: S/ {Number(financial.plan_estimado).toFixed(2)}{" "}
+                        (saldo plan S/ {Number(financial.plan_saldo || 0).toFixed(2)})
+                      </>
+                    )}
+                </>
+              )}
+            </p>
           </div>
 
           {payments.length > 0 && (

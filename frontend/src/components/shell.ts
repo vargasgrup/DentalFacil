@@ -7,7 +7,7 @@ export const SHELL_HEADER_CLASS =
 /**
  * Premium topbar — soft clinical blue-slate wash (pairs with dashboard KPIs,
  * distinct from pure-white content cards).
- * Shrink-0 (not sticky): scroll lives in `.app-main`, topbar is a sibling above it.
+ * Shrink-0: topbar is a sibling of `main`; vertical scroll is never on the shell.
  */
 export const SHELL_TOPBAR_CLASS = [
   SHELL_HEADER_CLASS,
@@ -17,9 +17,8 @@ export const SHELL_TOPBAR_CLASS = [
 ].join(" ");
 
 /**
- * Pin secondary chrome (tabs, filters) to the TOP of `.app-main` scrollport.
- * Do NOT use top-16/top-20 here — those assume the topbar shares the scroll,
- * which it does not (AppShell). Utility class `.app-main-sticky` in globals.css.
+ * Sticky chrome inside PageContainer layout=scroll (`.app-page-scroll`).
+ * For true pin-outside-scroll (ficha tabs), use PageContainer layout="split".
  */
 export const APP_MAIN_STICKY_CLASS = "app-main-sticky";
 

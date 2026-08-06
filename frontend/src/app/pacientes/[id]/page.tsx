@@ -19,7 +19,7 @@ export default function FichaClinicaPage() {
 
   if (f.loading) {
     return (
-      <div className="space-y-4">
+      <div className="app-page-scroll min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain">
         <div className="skeleton h-10 w-64 rounded-lg" />
         <div className="skeleton h-48 rounded-card" />
         <div className="skeleton h-48 rounded-card" />
@@ -27,16 +27,24 @@ export default function FichaClinicaPage() {
     );
   }
   if (f.error && !f.patient) {
-    return <p className="text-danger-600">{f.error}</p>;
+    return (
+      <p className="app-page-scroll min-h-0 flex-1 overflow-y-auto text-danger-600">
+        {f.error}
+      </p>
+    );
   }
   if (!f.patient || !f.record) {
-    return <p className="text-slate-400">No se encontró el paciente</p>;
+    return (
+      <p className="app-page-scroll min-h-0 flex-1 overflow-y-auto text-slate-400">
+        No se encontró el paciente
+      </p>
+    );
   }
 
   return (
-    <PageContainer width="wide" className="!space-y-0">
-      {/* Header de paciente: puede salir de vista al hacer scroll */}
-      <div className="space-y-4 pb-4">
+    <PageContainer width="wide" layout="split" className="!space-y-0">
+      {/* Nombre / breadcrumb: fijo bajo el topbar (mismo contrato que chrome) */}
+      <div className="shrink-0 space-y-3 pb-3">
         <FichaHeader
           patient={f.patient}
           onBack={() => router.push("/pacientes")}
@@ -50,10 +58,11 @@ export default function FichaClinicaPage() {
         )}
       </div>
 
-      {/* Tabs: sticky en el scrollport de main (ver FichaTabNav / .app-main-sticky) */}
+      {/* Tabs: FUERA del scroll — no se mueven con la rueda del mouse */}
       <FichaTabNav activeTab={f.fichaTab} onTabChange={f.setFichaTab} />
 
-      <div className="space-y-5 pt-5">
+      {/* Único scrollport de la ficha: solo el panel activo */}
+      <div className="app-page-scroll min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain pt-4">
         {f.fichaTab === "historia" && (
           <HistoriaTab
             patient={f.patient}

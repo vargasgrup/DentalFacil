@@ -1,6 +1,5 @@
 "use client";
 
-import { APP_MAIN_STICKY_CLASS } from "@/components/shell";
 import { FICHA_TABS } from "./constants";
 import type { FichaTab } from "./types";
 
@@ -10,14 +9,15 @@ interface FichaTabNavProps {
 }
 
 /**
- * Tabs de ficha clínica — anclados al scroll de `.app-main` (no al viewport).
- * No usan top-16: el topbar del shell no forma parte del scrollport.
+ * Tabs de ficha — chrome Fijo (no sticky).
+ * Deben vivir FUERA del overflow-y-auto de la página (PageContainer layout=split).
+ * Así no se desplazan con el scroll, igual que el topbar del shell.
  */
 export function FichaTabNav({ activeTab, onTabChange }: FichaTabNavProps) {
   return (
     <div
-      className={`${APP_MAIN_STICKY_CLASS} border-b border-slate-200 py-3`}
-      data-sticky-chrome="ficha-tabs"
+      className="shrink-0 border-b border-slate-200 bg-white py-3"
+      data-pinned-chrome="ficha-tabs"
     >
       <div
         className="flex flex-wrap gap-2"

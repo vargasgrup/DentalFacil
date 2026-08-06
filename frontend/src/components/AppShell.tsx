@@ -218,7 +218,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             usuario y la contraseña del Administrador son inmodificables.
           </div>
         )}
-        <main className="app-main min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pb-24 md:pb-6">
+        <main className="app-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {children}
         </main>
         <MobileBottomNav />

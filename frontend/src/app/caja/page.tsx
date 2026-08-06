@@ -10,6 +10,7 @@ import { CloseCashConfirm } from "@/components/caja/CloseCashConfirm";
 import { CloseCashSummary } from "@/components/caja/CloseCashSummary";
 import { CashSessionDashboard } from "@/components/caja/CashSessionDashboard";
 import { CashDebtsModal } from "@/components/caja/CashDebtsModal";
+import { CashPatientFinancePanel } from "@/components/caja/CashPatientFinancePanel";
 import { IncomeForm } from "@/components/caja/IncomeForm";
 import { ExpenseForm } from "@/components/caja/ExpenseForm";
 import { TransactionsTable } from "@/components/caja/TransactionsTable";
@@ -78,6 +79,7 @@ export default function CajaPage() {
   const [debts, setDebts] = useState<DebtsOverview | null>(null);
   const [debtsLoading, setDebtsLoading] = useState(false);
   const [filterPatient, setFilterPatient] = useState<PickedPatient | null>(null);
+  const [financeRefreshKey, setFinanceRefreshKey] = useState(0);
 
   const [montoInicial, setMontoInicial] = useState("50");
   const [incomeConcepto, setIncomeConcepto] = useState("");
@@ -258,6 +260,33 @@ export default function CajaPage() {
     await loadData();
     await loadMovements(period);
     await loadDebts();
+    setFinanceRefreshKey((k) => k + 1);
+  };
+
+  const startCobrarFromFinance = (opts?: {
+    evolutionId?: string;
+    planItemId?: string;
+    monto?: number;
+    concepto?: string;
+  }) => {
+    if (!session) {
+      setError("Abra la caja para registrar un cobro.");
+      return;
+    }
+    if (!filterPatient) return;
+    setIncomePatient(filterPatient);
+    if (opts?.concepto) setIncomeConcepto(opts.concepto);
+    else setIncomeConcepto("Abono a tratamiento");
+    if (opts?.monto != null && opts.monto > 0.009) {
+      setIncomeMonto(String(round2(opts.monto)));
+    }
+    if (opts?.evolutionId) setPayTarget(`evolution:${opts.evolutionId}`);
+    else if (opts?.planItemId) setPayTarget(`plan:${opts.planItemId}`);
+    else setPayTarget("auto");
+    setShowIncome(true);
+    setShowExpense(false);
+    setLastReceipt(null);
+    setError("");
   };
 
   const openCash = async (e: React.FormEvent) => {
@@ -701,6 +730,16 @@ export default function CajaPage() {
             }}
           />
         )}
+
+        {filterPatient ? (
+          <CashPatientFinancePanel
+            patient={filterPatient}
+            sessionOpen={Boolean(session)}
+            refreshKey={financeRefreshKey}
+            onClose={() => setFilterPatient(null)}
+            onCobrar={startCobrarFromFinance}
+          />
+        ) : null}
 
         {session && showIncome && (
           <IncomeForm

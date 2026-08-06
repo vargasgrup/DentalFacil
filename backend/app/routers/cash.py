@@ -462,22 +462,20 @@ def cash_movements(
 @router.get("/transactions/patient/{patient_id}", response_model=list[CashTransactionOut])
 def list_patient_payments(
     patient_id: str,
+    include_voided: bool = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Historial de cobros del paciente (solo lectura en ficha; el cobro es en Caja)."""
     if not db.get(Patient, patient_id):
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
-    txs = (
-        db.query(CashTransaction)
-        .filter(
-            CashTransaction.patient_id == patient_id,
-            CashTransaction.tipo == "ingreso",
-            CashTransaction.anulado.is_(False),
-        )
-        .order_by(CashTransaction.created_at.desc())
-        .all()
+    q = db.query(CashTransaction).filter(
+        CashTransaction.patient_id == patient_id,
+        CashTransaction.tipo == "ingreso",
     )
+    if not include_voided:
+        q = q.filter(CashTransaction.anulado.is_(False))
+    txs = q.order_by(CashTransaction.created_at.desc()).all()
     return _txs_to_out(db, txs)
 
 

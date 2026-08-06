@@ -29,9 +29,7 @@ interface PageContainerProps extends HTMLAttributes<HTMLDivElement> {
 /**
  * Centers module content horizontally and caps width so wide screens
  * don't leave a left-stuck column with empty space on the right.
- *
- * Scroll lives here (not on AppShell `main`) so pages can pin secondary
- * chrome outside the scrollport — same contract as the topbar.
+ * Default layout owns the single vertical scroll under the topbar.
  */
 export function PageContainer({
   children,
@@ -41,6 +39,7 @@ export function PageContainer({
   ...props
 }: PageContainerProps) {
   if (layout === "split") {
+    /* Reserved: full-height split without nested page scroll ownership */
     return (
       <div
         className={`mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden ${widths[width]} ${className}`}

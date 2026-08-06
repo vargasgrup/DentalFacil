@@ -73,7 +73,8 @@ html.nk-app-shell body {
 }
 
 /* Layout de contenido principal (AppShell)
- * Main no scrollea: altura fija. Scroll en `.app-page-scroll` o `.ficha-scroll-body`.
+ * Main no scrollea: altura fija. Un solo scroll vertical en `.app-page-scroll`
+ * (PageContainer), igual en ficha, listas y configuracion.
  */
 .app-main {
   padding-left: var(--main-pad-x);
@@ -82,10 +83,12 @@ html.nk-app-shell body {
   padding-bottom: 0;
 }
 
-/* Default page scrollbar under topbar (PageContainer layout=scroll). */
+/* Unico scrollport de paginas bajo el topbar. */
 .app-page-scroll {
   padding-bottom: calc(var(--main-pad-y) + 4rem);
   -webkit-overflow-scrolling: touch;
+  /* Solo muestra barra cuando el contenido desborda (no “siempre visible”). */
+  scrollbar-gutter: auto;
 }
 
 @media (min-width: 768px) {
@@ -95,60 +98,8 @@ html.nk-app-shell body {
 }
 
 /*
- * Ficha clínica: chrome (header + tabs) FUERA del scroll.
- * Grid avoids flex-1 collapse bugs that let the whole page grow and
- * push scroll onto the document.
- */
-.ficha-page {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  flex: 1 1 0%;
-  min-height: 0;
-  width: 100%;
-  max-width: 72rem; /* matches PageContainer wide */
-  margin-left: auto;
-  margin-right: auto;
-  overflow: hidden;
-}
-
-@media (min-width: 1921px) {
-  .ficha-page {
-    max-width: 80rem;
-  }
-}
-
-.ficha-page__chrome {
-  min-width: 0;
-  background: #fff;
-  z-index: 20;
-}
-
-.ficha-page__tabs {
-  min-width: 0;
-  background: #fff;
-  border-bottom: 1px solid rgb(226 232 240);
-  z-index: 20;
-}
-
-.ficha-scroll-body {
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  padding-top: 1rem;
-  padding-bottom: calc(var(--main-pad-y) + 4rem);
-}
-
-@media (min-width: 768px) {
-  .ficha-scroll-body {
-    padding-bottom: var(--main-pad-y);
-  }
-}
-
-/*
- * Sticky secondary chrome INSIDE an `.app-page-scroll` scrollport (listas).
- * Not used for ficha tabs (those use .ficha-page).
+ * Sticky opcional para filtros de listas (pacientes/agenda).
+ * No usar en ficha: la ficha es flujo de documento (un scroll, sin pin).
  */
 .app-main-sticky {
   position: sticky;
@@ -156,6 +107,34 @@ html.nk-app-shell body {
   z-index: 30;
   background-color: #ffffff;
   box-shadow: 0 1px 0 0 rgb(226 232 240);
+}
+
+/* Ficha: segmentos de seccion un poco mas anchos que agenda (label + hint). */
+.ficha-seg.module-seg {
+  width: 100%;
+  gap: 0.25rem;
+  padding: 0.25rem;
+}
+
+.ficha-seg__btn.module-seg__btn {
+  flex: 1 1 auto;
+  min-width: min(100%, 9.5rem);
+  justify-content: flex-start;
+  text-align: left;
+  padding: 0.55rem 0.85rem;
+  line-height: 1.25;
+  white-space: normal;
+  height: auto;
+}
+
+.ficha-seg__btn.module-seg__btn.is-active {
+  background: #1c66e8;
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(28, 102, 232, 0.28);
+}
+
+.ficha-seg__btn.module-seg__btn.is-active:hover {
+  color: #fff;
 }
 
 @media (min-width: 640px) {

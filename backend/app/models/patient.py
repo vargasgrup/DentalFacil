@@ -34,7 +34,13 @@ class Patient(Base):
     lugar_nacimiento: Mapped[str | None] = mapped_column(String(120))
     ocupacion: Mapped[str | None] = mapped_column(String(120))
     estado_civil: Mapped[str | None] = mapped_column(String(40))
+    # Sexo registral / clínico (M, F, X / Otro) — opcional
+    sexo: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Apoderado / tutor (menores, dependientes, adultos mayores con cuidador)
     nombre_responsable: Mapped[str | None] = mapped_column(String(120))
+    parentesco_responsable: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    telefono_responsable: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    documento_responsable: Mapped[str | None] = mapped_column(String(30), nullable=True)
     # Especialidad en la que se atenderá / se atiende al paciente
     especialidad: Mapped[str | None] = mapped_column(String(80), index=True)
     # Alta retroactiva (pacientes históricos previos al sistema)

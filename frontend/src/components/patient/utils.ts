@@ -1,8 +1,7 @@
+import { calcAgeYears } from "@/lib/patientAge";
+
 export function calcEdad(fecha?: string | null): number | null {
-  if (!fecha) return null;
-  const born = new Date(fecha);
-  if (isNaN(born.getTime())) return null;
-  return Math.floor((Date.now() - born.getTime()) / (365.25 * 24 * 3600 * 1000));
+  return calcAgeYears(fecha);
 }
 
 export function parseHabitos(text: string): { selected: string[]; notes: string } {

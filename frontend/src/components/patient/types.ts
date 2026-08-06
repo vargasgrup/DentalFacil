@@ -16,7 +16,11 @@ export interface Patient {
   lugar_nacimiento?: string;
   ocupacion?: string;
   estado_civil?: string;
+  sexo?: string | null;
   nombre_responsable?: string;
+  parentesco_responsable?: string | null;
+  telefono_responsable?: string | null;
+  documento_responsable?: string | null;
   /** Especialidad odontológica en la que se atiende al paciente */
   especialidad?: string;
   es_migrado?: boolean;

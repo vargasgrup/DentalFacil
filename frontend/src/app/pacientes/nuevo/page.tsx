@@ -1,9 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Baby,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  HeartPulse,
+  Shield,
+  UserRound,
+  Users,
+} from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { navigateToPacienteFicha } from "@/lib/pacienteRoutes";
 import { PacienteFichaLink } from "@/components/PacienteFichaLink";
@@ -22,6 +30,19 @@ import {
 } from "@/lib/validators";
 import { formatFichaLabel } from "@/lib/ficha";
 import { SpecialtySelect } from "@/components/SpecialtySelect";
+import {
+  AGE_BANDS,
+  PARENTESCO_OPTIONS,
+  type AgeBandId,
+  type DocTipo,
+  bandFromAge,
+  calcAgeYears,
+  docTipoLabel,
+  formatAgeLabel,
+  getAgeBand,
+  isMinor,
+  needsDocumentNumber,
+} from "@/lib/patientAge";
 
 interface Patient {
   id: string;
@@ -30,8 +51,6 @@ interface Patient {
   apellidos?: string;
   numero_documento?: string;
 }
-
-type DocTipo = "DNI" | "CE" | "PASAPORTE";
 
 const ESTADO_CIVIL = [
   "",
@@ -47,13 +66,33 @@ const selectClass =
 
 function docMaxLen(tipo: DocTipo): number {
   if (tipo === "DNI") return DNI_LENGTH;
-  if (tipo === "CE") return 12;
+  if (tipo === "SIN_DOC" || tipo === "EN_TRAMITE") return 20;
   return 12;
 }
 
 function sanitizeDocumento(tipo: DocTipo, raw: string): string {
   if (tipo === "DNI") return digitsOnly(raw, DNI_LENGTH);
+  if (tipo === "SIN_DOC" || tipo === "EN_TRAMITE") {
+    return raw.replace(/[^a-zA-Z0-9\-]/g, "").slice(0, 20).toUpperCase();
+  }
   return raw.replace(/[^a-zA-Z0-9]/g, "").slice(0, docMaxLen(tipo)).toUpperCase();
+}
+
+function bandIcon(id: AgeBandId) {
+  switch (id) {
+    case "bebe":
+      return Baby;
+    case "nino":
+      return Users;
+    case "adolescente":
+      return UserRound;
+    case "adulto":
+      return UserRound;
+    case "mayor":
+      return HeartPulse;
+    default:
+      return UserRound;
+  }
 }
 
 export default function NuevoPacientePage() {
@@ -61,14 +100,18 @@ export default function NuevoPacientePage() {
   const nombresRef = useRef<HTMLInputElement>(null);
   const docRef = useRef<HTMLInputElement>(null);
   const telRef = useRef<HTMLInputElement>(null);
+  const tutorTelRef = useRef<HTMLInputElement>(null);
 
   const [busy, setBusy] = useState(false);
   const submittingRef = useRef(false);
   const [error, setError] = useState("");
   const [showMore, setShowMore] = useState(false);
+  const [showCaregiverOptional, setShowCaregiverOptional] = useState(false);
   const [docStatus, setDocStatus] = useState<"idle" | "checking" | "ok" | "dup">("idle");
   const [dupPatient, setDupPatient] = useState<Patient | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [ageBand, setAgeBand] = useState<AgeBandId>("adulto");
+  const [bandTouched, setBandTouched] = useState(false);
 
   const [form, setForm] = useState({
     nombres: "",
@@ -76,6 +119,7 @@ export default function NuevoPacientePage() {
     tipo_documento: "DNI" as DocTipo,
     numero_documento: "",
     fecha_nacimiento: "",
+    sexo: "",
     lugar_nacimiento: "",
     ocupacion: "",
     estado_civil: "",
@@ -85,6 +129,9 @@ export default function NuevoPacientePage() {
     direccion: "",
     contacto_emergencia: "",
     nombre_responsable: "",
+    parentesco_responsable: "",
+    telefono_responsable: "",
+    documento_responsable: "",
     alergias: "",
     es_migrado: false,
     fecha_ingreso_clinica: "",
@@ -96,6 +143,23 @@ export default function NuevoPacientePage() {
     nombresRef.current?.focus();
   }, []);
 
+  const age = useMemo(
+    () => calcAgeYears(form.fecha_nacimiento || null),
+    [form.fecha_nacimiento]
+  );
+  const minor = isMinor(age, ageBand);
+  const bandMeta = getAgeBand(ageBand);
+
+  // Keep age band in sync with birth date unless user explicitly overrode.
+  useEffect(() => {
+    if (!form.fecha_nacimiento) return;
+    const derived = bandFromAge(age);
+    if (derived && derived !== ageBand) {
+      setAgeBand(derived);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to DOB/age
+  }, [form.fecha_nacimiento, age]);
+
   const set = useCallback((field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setFieldErrors((prev) => {
@@ -106,51 +170,87 @@ export default function NuevoPacientePage() {
     });
   }, []);
 
-  const checkDuplicate = useCallback(async (doc: string, tipo: DocTipo, signal?: AbortSignal) => {
-    if (tipo === "DNI" && !validateDNI(doc)) {
-      setDocStatus("idle");
-      setDupPatient(null);
-      return;
+  const applyBand = (id: AgeBandId) => {
+    setBandTouched(true);
+    setAgeBand(id);
+    const meta = getAgeBand(id);
+    setForm((prev) => {
+      const nextTipo = prev.numero_documento.trim()
+        ? prev.tipo_documento
+        : meta.docDefault;
+      const nextDoc =
+        nextTipo === "SIN_DOC" || nextTipo === "EN_TRAMITE"
+          ? sanitizeDocumento(nextTipo, prev.numero_documento)
+          : sanitizeDocumento(nextTipo, prev.numero_documento);
+      return {
+        ...prev,
+        tipo_documento: nextTipo,
+        numero_documento: nextDoc,
+      };
+    });
+    if (meta.needsGuardian) {
+      setShowCaregiverOptional(true);
     }
-    if (tipo !== "DNI" && doc.length < 4) {
-      setDocStatus("idle");
-      setDupPatient(null);
-      return;
-    }
-    setDocStatus("checking");
-    try {
-      const hits = await apiFetch<Patient[]>(
-        `/api/patients/search?q=${encodeURIComponent(doc)}`,
-        { signal }
-      );
-      if (signal?.aborted) return;
-      const clash = hits.find(
-        (p) => (p.numero_documento || "").trim().toLowerCase() === doc.toLowerCase()
-      );
-      if (clash) {
-        setDupPatient(clash);
-        setDocStatus("dup");
-      } else {
+  };
+
+  const checkDuplicate = useCallback(
+    async (doc: string, tipo: DocTipo, signal?: AbortSignal) => {
+      if (!needsDocumentNumber(tipo)) {
+        setDocStatus("idle");
         setDupPatient(null);
-        setDocStatus("ok");
-      }
-    } catch (err) {
-      if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) {
-        setDocStatus((prev) => (prev === "checking" ? "idle" : prev));
         return;
       }
-      // No bloquear el alta si el prechequeo falla (red/API): el backend valida igual.
-      setDocStatus("idle");
-      setDupPatient(null);
-    }
-  }, []);
+      if (tipo === "DNI" && !validateDNI(doc)) {
+        setDocStatus("idle");
+        setDupPatient(null);
+        return;
+      }
+      if (tipo !== "DNI" && doc.length < 4) {
+        setDocStatus("idle");
+        setDupPatient(null);
+        return;
+      }
+      setDocStatus("checking");
+      try {
+        const hits = await apiFetch<Patient[]>(
+          `/api/patients/search?q=${encodeURIComponent(doc)}`,
+          { signal }
+        );
+        if (signal?.aborted) return;
+        const clash = hits.find(
+          (p) => (p.numero_documento || "").trim().toLowerCase() === doc.toLowerCase()
+        );
+        if (clash) {
+          setDupPatient(clash);
+          setDocStatus("dup");
+        } else {
+          setDupPatient(null);
+          setDocStatus("ok");
+        }
+      } catch (err) {
+        if (
+          signal?.aborted ||
+          (err instanceof DOMException && err.name === "AbortError")
+        ) {
+          setDocStatus((prev) => (prev === "checking" ? "idle" : prev));
+          return;
+        }
+        setDocStatus("idle");
+        setDupPatient(null);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     const doc = form.numero_documento.trim();
+    if (!needsDocumentNumber(form.tipo_documento)) {
+      setDocStatus("idle");
+      setDupPatient(null);
+      return;
+    }
     const ready =
-      form.tipo_documento === "DNI"
-        ? validateDNI(doc)
-        : doc.length >= 4;
+      form.tipo_documento === "DNI" ? validateDNI(doc) : doc.length >= 4;
 
     if (!ready) {
       setDocStatus("idle");
@@ -173,12 +273,12 @@ export default function NuevoPacientePage() {
     const next = sanitizeDocumento(form.tipo_documento, raw);
     set("numero_documento", next);
     setError("");
-    // Solo al completar el 8.º dígito (no al editar un DNI ya completo)
     if (
       form.tipo_documento === "DNI" &&
       next.length === DNI_LENGTH &&
       prevLen < DNI_LENGTH &&
-      form.telefono.length === 0
+      form.telefono.length === 0 &&
+      !minor
     ) {
       requestAnimationFrame(() => telRef.current?.focus());
     }
@@ -189,20 +289,44 @@ export default function NuevoPacientePage() {
     setForm((prev) => ({
       ...prev,
       tipo_documento: tipo,
-      numero_documento: cleaned,
+      numero_documento: tipo === "SIN_DOC" ? "" : cleaned,
     }));
     setDocStatus("idle");
     setDupPatient(null);
-    requestAnimationFrame(() => docRef.current?.focus());
+    if (needsDocumentNumber(tipo)) {
+      requestAnimationFrame(() => docRef.current?.focus());
+    }
   };
 
   const onTelefonoChange = (raw: string) => {
     set("telefono", normalizePeruvianMobile(raw));
   };
 
-  const blurName = (field: "nombres" | "apellidos") => {
+  const onTutorTelChange = (raw: string) => {
+    set("telefono_responsable", normalizePeruvianMobile(raw));
+  };
+
+  const blurName = (field: "nombres" | "apellidos" | "nombre_responsable") => {
     const v = form[field];
     if (v.trim()) set(field, titleCaseName(v));
+  };
+
+  const documentFormatOk = (): boolean => {
+    if (!needsDocumentNumber(form.tipo_documento)) return true;
+    const doc = form.numero_documento.trim();
+    if (!doc) return false;
+    if (form.tipo_documento === "DNI") return validateDNI(doc);
+    return doc.length >= 3;
+  };
+
+  const contactPhoneOk = (): boolean => {
+    if (minor) {
+      return (
+        validatePeruvianMobile(form.telefono_responsable) ||
+        validatePeruvianMobile(form.telefono)
+      );
+    }
+    return validatePeruvianMobile(form.telefono);
   };
 
   const validate = (): boolean => {
@@ -210,25 +334,55 @@ export default function NuevoPacientePage() {
     if (!form.nombres.trim()) errs.nombres = "Obligatorio";
     if (!form.apellidos.trim()) errs.apellidos = "Obligatorio";
 
-    const doc = form.numero_documento.trim();
-    if (!doc) {
-      errs.numero_documento = "Obligatorio";
-    } else if (form.tipo_documento === "DNI" && !validateDNI(doc)) {
-      errs.numero_documento = `DNI: exactamente ${DNI_LENGTH} dígitos`;
+    if (needsDocumentNumber(form.tipo_documento)) {
+      const doc = form.numero_documento.trim();
+      if (!doc) {
+        errs.numero_documento = "Indique el número o elija “Sin documento”";
+      } else if (form.tipo_documento === "DNI" && !validateDNI(doc)) {
+        errs.numero_documento = `DNI: exactamente ${DNI_LENGTH} dígitos`;
+      }
     }
 
-    const tel = normalizePeruvianMobile(form.telefono.trim());
-    if (!tel) {
-      errs.telefono = "Obligatorio (9 dígitos)";
-    } else if (!validatePeruvianMobile(tel)) {
-      errs.telefono = "Celular Perú: 9 dígitos empezando en 9";
+    if (minor) {
+      if (!form.fecha_nacimiento) {
+        errs.fecha_nacimiento = "Recomendado y casi obligatorio en menores";
+      }
+      if (!form.nombre_responsable.trim()) {
+        errs.nombre_responsable = "Indique el apoderado o tutor";
+      }
+      if (
+        !validatePeruvianMobile(form.telefono_responsable) &&
+        !validatePeruvianMobile(form.telefono)
+      ) {
+        errs.telefono_responsable = "Celular del tutor (9 dígitos, empieza en 9)";
+      }
+      if (
+        form.telefono_responsable &&
+        !validatePeruvianMobile(form.telefono_responsable)
+      ) {
+        errs.telefono_responsable = "Celular Perú: 9 dígitos empezando en 9";
+      }
+    } else {
+      const tel = normalizePeruvianMobile(form.telefono.trim());
+      if (!tel) {
+        errs.telefono = "Obligatorio (9 dígitos)";
+      } else if (!validatePeruvianMobile(tel)) {
+        errs.telefono = "Celular Perú: 9 dígitos empezando en 9";
+      }
+    }
+
+    if (form.fecha_nacimiento) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (form.fecha_nacimiento > today) {
+        errs.fecha_nacimiento = "No puede ser futura";
+      }
     }
 
     if (docStatus === "dup") {
       errs.numero_documento = "Documento ya registrado";
     }
 
-      if (form.es_migrado) {
+    if (form.es_migrado) {
       if (!form.fecha_ingreso_clinica) {
         errs.fecha_ingreso_clinica = "Obligatoria para alta retroactiva";
       } else if (form.fecha_ingreso_clinica > new Date().toISOString().slice(0, 10)) {
@@ -252,12 +406,20 @@ export default function NuevoPacientePage() {
     setError("");
     if (!validate()) return;
     if (docStatus === "dup") return;
-    // Sync guard: React setState is async — double-click/Enter can fire two POSTs.
     if (busy || submittingRef.current) return;
     submittingRef.current = true;
 
-    const doc = form.numero_documento.trim();
-    const tel = normalizePeruvianMobile(form.telefono.trim());
+    const doc = needsDocumentNumber(form.tipo_documento)
+      ? form.numero_documento.trim()
+      : form.numero_documento.trim() || null;
+    const tutorTel = normalizePeruvianMobile(form.telefono_responsable.trim());
+    const patientTel = normalizePeruvianMobile(form.telefono.trim());
+    // Primary clinic contact: tutor phone for minors when patient has none
+    const primaryTel =
+      patientTel ||
+      (minor && validatePeruvianMobile(tutorTel) ? tutorTel : "") ||
+      "";
+
     setBusy(true);
     const ac = new AbortController();
     const timeout = window.setTimeout(() => ac.abort(), 25000);
@@ -272,7 +434,8 @@ export default function NuevoPacientePage() {
           tipo_documento: form.tipo_documento,
           numero_documento: doc || null,
           fecha_nacimiento: form.fecha_nacimiento || null,
-          telefono: tel || null,
+          sexo: form.sexo || null,
+          telefono: primaryTel || null,
           email: form.email.trim() || null,
           direccion: form.direccion.trim() || null,
           contacto_emergencia: form.contacto_emergencia.trim() || null,
@@ -282,6 +445,9 @@ export default function NuevoPacientePage() {
           estado_civil: form.estado_civil || null,
           especialidad: form.especialidad.trim() || null,
           nombre_responsable: form.nombre_responsable.trim() || null,
+          parentesco_responsable: form.parentesco_responsable.trim() || null,
+          telefono_responsable: tutorTel || null,
+          documento_responsable: form.documento_responsable.trim() || null,
           es_migrado: form.es_migrado,
           fecha_ingreso_clinica: form.es_migrado
             ? form.fecha_ingreso_clinica || null
@@ -298,7 +464,6 @@ export default function NuevoPacientePage() {
         throw new Error("El servidor no devolvió el paciente creado.");
       }
       navigated = true;
-      // Hard nav: static export only prebuilds pacientes/_; soft-nav cannot open new ids.
       navigateToPacienteFicha(patient.id);
     } catch (err: unknown) {
       const message =
@@ -315,31 +480,38 @@ export default function NuevoPacientePage() {
     }
   };
 
-  const docHint =
-    form.tipo_documento === "DNI"
+  const docHint = !needsDocumentNumber(form.tipo_documento)
+    ? form.tipo_documento === "EN_TRAMITE"
+      ? "Opcional: número provisional"
+      : "No se exige número de documento"
+    : form.tipo_documento === "DNI"
       ? `${DNI_LENGTH} dígitos fijos`
-      : form.tipo_documento === "CE"
-        ? "Hasta 12 caracteres"
-        : "Hasta 12 caracteres";
+      : "Alfanumérico, hasta 12";
 
   const docTrailing =
     form.tipo_documento === "DNI"
       ? `${form.numero_documento.length}/${DNI_LENGTH}`
       : undefined;
 
-  const telOk = validatePeruvianMobile(form.telefono);
-  const docFormatOk =
-    form.tipo_documento === "DNI"
-      ? validateDNI(form.numero_documento)
-      : form.numero_documento.trim().length >= 4;
-  const docOk = docFormatOk && docStatus === "ok";
+  const telOk = contactPhoneOk();
+  const docFormatOk = documentFormatOk();
+  const docOk =
+    needsDocumentNumber(form.tipo_documento) && docFormatOk && docStatus === "ok";
+
   const missingFields: string[] = [];
   if (!form.nombres.trim()) missingFields.push("nombres");
   if (!form.apellidos.trim()) missingFields.push("apellidos");
   if (!docFormatOk) missingFields.push("documento");
-  if (!telOk) missingFields.push("celular válido (9 dígitos, empieza en 9)");
-  const canSubmit =
-    missingFields.length === 0 && docStatus !== "dup";
+  if (minor) {
+    if (!form.nombre_responsable.trim()) missingFields.push("apoderado");
+    if (!telOk) missingFields.push("celular del tutor");
+  } else if (!telOk) {
+    missingFields.push("celular válido");
+  }
+  if (docStatus === "dup") {
+    /* blocked below */
+  }
+  const canSubmit = missingFields.length === 0 && docStatus !== "dup";
   const submitBlockedReason =
     docStatus === "dup"
       ? "Este documento ya está registrado"
@@ -352,14 +524,18 @@ export default function NuevoPacientePage() {
   return (
     <PageContainer width="narrow">
       <div>
-        <h1 className="text-page-title text-slate-800 text-balance">Nuevo paciente</h1>
+        <h1 className="text-page-title text-balance text-slate-800">Nuevo paciente</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Solo lo esencial para abrir la ficha en menos de 30 segundos. El resto se completa después.
+          Elija el perfil de edad y complete solo lo esencial. El resto se puede
+          completar después en la ficha.
         </p>
       </div>
 
       {error && (
-        <div className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm text-danger-600" role="alert">
+        <div
+          className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm text-danger-600"
+          role="alert"
+        >
           {error}
         </div>
       )}
@@ -372,6 +548,58 @@ export default function NuevoPacientePage() {
           className="space-y-5"
           noValidate
         >
+          {/* Perfil de edad — one click */}
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <h2 className="text-section-title text-slate-800">¿Quién se atiende?</h2>
+              {(age !== null || bandTouched) && (
+                <p className="text-help text-slate-500">
+                  {formatAgeLabel(age, ageBand)}
+                  {age !== null ? ` · ${bandMeta.label}` : ""}
+                </p>
+              )}
+            </div>
+            <div
+              className="grid grid-cols-2 gap-2 sm:grid-cols-5"
+              role="radiogroup"
+              aria-label="Perfil de edad del paciente"
+            >
+              {AGE_BANDS.map((band) => {
+                const Icon = bandIcon(band.id);
+                const selected = ageBand === band.id;
+                return (
+                  <button
+                    key={band.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => applyBand(band.id)}
+                    className={[
+                      "flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left transition-smooth",
+                      selected
+                        ? "border-brand-500 bg-brand-50/80 shadow-sm ring-1 ring-brand-500/30"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
+                    ].join(" ")}
+                  >
+                    <Icon
+                      className={`h-4 w-4 ${selected ? "text-brand-600" : "text-slate-400"}`}
+                      aria-hidden
+                    />
+                    <span
+                      className={`text-sm font-semibold ${selected ? "text-brand-900" : "text-slate-800"}`}
+                    >
+                      {band.label}
+                    </span>
+                    <span className="text-[11px] leading-tight text-slate-500">
+                      {band.shortAges} años
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-help text-slate-500">{bandMeta.hint}</p>
+          </section>
+
           {/* Identidad */}
           <section className="space-y-4">
             <h2 className="text-section-title text-slate-800">Identidad</h2>
@@ -385,7 +613,7 @@ export default function NuevoPacientePage() {
                 autoComplete="given-name"
                 required
                 error={fieldErrors.nombres}
-                placeholder="María Elena"
+                placeholder={minor ? "Nombre del niño/a" : "María Elena"}
               />
               <Input
                 label="Apellidos *"
@@ -399,8 +627,31 @@ export default function NuevoPacientePage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Input
+                label={minor ? "Fecha de nacimiento *" : "Fecha de nacimiento"}
+                type="date"
+                value={form.fecha_nacimiento}
+                onChange={(e) => set("fecha_nacimiento", e.target.value)}
+                autoComplete="bday"
+                max={new Date().toISOString().slice(0, 10)}
+                error={fieldErrors.fecha_nacimiento}
+                hint={age !== null ? formatAgeLabel(age, ageBand) : "Calcula la edad al instante"}
+              />
               <label className="block">
+                <span className="mb-1 block text-label text-slate-700">Sexo</span>
+                <select
+                  value={form.sexo}
+                  onChange={(e) => set("sexo", e.target.value)}
+                  className={selectClass}
+                >
+                  <option value="">— Opcional —</option>
+                  <option value="F">Femenino</option>
+                  <option value="M">Masculino</option>
+                  <option value="X">Otro / no especifica</option>
+                </select>
+              </label>
+              <label className="block sm:pt-0">
                 <span className="mb-1 block text-label text-slate-700">Tipo documento</span>
                 <select
                   value={form.tipo_documento}
@@ -410,12 +661,18 @@ export default function NuevoPacientePage() {
                   <option value="DNI">DNI</option>
                   <option value="CE">Carné de extranjería</option>
                   <option value="PASAPORTE">Pasaporte</option>
+                  <option value="EN_TRAMITE">En trámite</option>
+                  <option value="SIN_DOC">Sin documento</option>
+                  <option value="OTRO">Otro</option>
                 </select>
               </label>
+            </div>
+
+            {needsDocumentNumber(form.tipo_documento) ? (
               <div>
                 <Input
                   ref={docRef}
-                  label="N° documento *"
+                  label={`N° ${docTipoLabel(form.tipo_documento)} *`}
                   value={form.numero_documento}
                   onChange={(e) => onDocumentoChange(e.target.value)}
                   inputMode={form.tipo_documento === "DNI" ? "numeric" : "text"}
@@ -449,16 +706,129 @@ export default function NuevoPacientePage() {
                   </p>
                 )}
               </div>
-            </div>
+            ) : (
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-3 text-sm text-slate-600">
+                <p className="font-medium text-slate-800">
+                  {docTipoLabel(form.tipo_documento)}
+                </p>
+                <p className="mt-0.5 text-help text-slate-500">
+                  Puede abrir la ficha sin número. Si después obtiene documento, edítelo en la
+                  ficha clínica.
+                </p>
+                {form.tipo_documento === "EN_TRAMITE" && (
+                  <div className="mt-3">
+                    <Input
+                      label="N° provisional (opcional)"
+                      value={form.numero_documento}
+                      onChange={(e) => onDocumentoChange(e.target.value)}
+                      autoComplete="off"
+                      hint="Cualquier referencia interna o número temporal"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
-          {/* Contacto rápido */}
+          {/* Apoderado — minors or optional support */}
+          {(minor || showCaregiverOptional || form.nombre_responsable) && (
+            <section
+              className={[
+                "space-y-4 rounded-xl border p-4",
+                minor
+                  ? "border-brand-200 bg-brand-50/40"
+                  : "border-slate-200 bg-surface-subtle",
+              ].join(" ")}
+            >
+              <div className="flex items-start gap-2.5">
+                <Shield
+                  className={`mt-0.5 h-4 w-4 shrink-0 ${minor ? "text-brand-600" : "text-slate-500"}`}
+                  aria-hidden
+                />
+                <div>
+                  <h2 className="text-section-title text-slate-800">
+                    {minor ? "Apoderado / tutor *" : "Familiar o cuidador de apoyo"}
+                  </h2>
+                  <p className="mt-0.5 text-help text-slate-500">
+                    {minor
+                      ? "Contacto principal para citas y WhatsApp. Un par de datos bastan."
+                      : "Útil en adultos mayores o pacientes que dependen de un familiar."}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Input
+                  label={minor ? "Nombre del apoderado *" : "Nombre del familiar"}
+                  value={form.nombre_responsable}
+                  onChange={(e) => set("nombre_responsable", e.target.value)}
+                  onBlur={() => blurName("nombre_responsable")}
+                  error={fieldErrors.nombre_responsable}
+                  placeholder="Nombre completo"
+                  autoComplete="name"
+                />
+                <label className="block">
+                  <span className="mb-1 block text-label text-slate-700">Parentesco</span>
+                  <select
+                    value={form.parentesco_responsable}
+                    onChange={(e) => set("parentesco_responsable", e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="">— Seleccione —</option>
+                    {PARENTESCO_OPTIONS.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Input
+                  ref={tutorTelRef}
+                  label={minor ? "Celular del apoderado *" : "Celular del familiar"}
+                  value={form.telefono_responsable}
+                  onChange={(e) => onTutorTelChange(e.target.value)}
+                  inputMode="numeric"
+                  maxLength={PHONE_LENGTH}
+                  placeholder="987654321"
+                  error={fieldErrors.telefono_responsable}
+                  hint="9 dígitos, empieza en 9"
+                  trailing={`${form.telefono_responsable.length}/${PHONE_LENGTH}`}
+                  success={validatePeruvianMobile(form.telefono_responsable)}
+                />
+                <Input
+                  label="DNI del apoderado"
+                  value={form.documento_responsable}
+                  onChange={(e) =>
+                    set("documento_responsable", digitsOnly(e.target.value, 12))
+                  }
+                  inputMode="numeric"
+                  placeholder="Opcional"
+                  autoComplete="off"
+                />
+              </div>
+            </section>
+          )}
+
+          {!minor && !showCaregiverOptional && !form.nombre_responsable && (
+            <button
+              type="button"
+              onClick={() => setShowCaregiverOptional(true)}
+              className="text-sm font-medium text-brand-600 hover:text-brand-700"
+            >
+              + Añadir familiar o cuidador de apoyo
+            </button>
+          )}
+
+          {/* Contacto */}
           <section className="space-y-4">
             <h2 className="text-section-title text-slate-800">Contacto</h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Input
                 ref={telRef}
-                label="Celular *"
+                label={
+                  minor
+                    ? "Celular del paciente (opcional)"
+                    : "Celular del paciente *"
+                }
                 value={form.telefono}
                 onChange={(e) => onTelefonoChange(e.target.value)}
                 inputMode="numeric"
@@ -467,39 +837,34 @@ export default function NuevoPacientePage() {
                 autoComplete="tel-national"
                 placeholder="987654321"
                 error={fieldErrors.telefono}
-                hint="9 dígitos, empieza en 9"
+                hint={
+                  minor
+                    ? "Si no tiene, usamos el del apoderado"
+                    : "9 dígitos, empieza en 9"
+                }
                 trailing={`${form.telefono.length}/${PHONE_LENGTH}`}
-                success={telOk}
+                success={validatePeruvianMobile(form.telefono)}
               />
-              <Input
-                label="Fecha de nacimiento"
-                type="date"
-                value={form.fecha_nacimiento}
-                onChange={(e) => set("fecha_nacimiento", e.target.value)}
-                autoComplete="bday"
-                max={new Date().toISOString().slice(0, 10)}
-              />
+              <label className="block">
+                <span className="mb-1 block text-label text-slate-700">
+                  Alergias <span className="font-normal text-slate-500">(recomendado)</span>
+                </span>
+                <textarea
+                  value={form.alergias}
+                  onChange={(e) => set("alergias", e.target.value)}
+                  rows={2}
+                  className={selectClass}
+                  placeholder="Penicilina, látex… o escriba Ninguna"
+                />
+              </label>
             </div>
-            <label className="block">
-              <span className="mb-1 block text-label text-slate-700">
-                Alergias <span className="font-normal text-slate-500">(recomendado)</span>
-              </span>
-              <textarea
-                value={form.alergias}
-                onChange={(e) => set("alergias", e.target.value)}
-                rows={2}
-                className={selectClass}
-                placeholder="Penicilina, látex… o escriba Ninguna"
-              />
-            </label>
           </section>
 
-          {/* Especialidad de atención */}
-          <section className="space-y-4">
+          {/* Especialidad */}
+          <section className="space-y-3">
             <h2 className="text-section-title text-slate-800">Especialidad de atención</h2>
             <p className="text-sm text-slate-500">
-              Indica en qué especialidad odontológica se atenderá al paciente. Sirve para
-              filtrar y organizar el listado de pacientes.
+              Ayuda a filtrar el listado (ortodoncia, pediatría, etc.).
             </p>
             <SpecialtySelect
               label="Especialidad"
@@ -529,12 +894,6 @@ export default function NuevoPacientePage() {
                           saldo_inicial_migracion: "0",
                         }),
                   }));
-                  setFieldErrors((prev) => {
-                    const next = { ...prev };
-                    delete next.fecha_ingreso_clinica;
-                    delete next.saldo_inicial_migracion;
-                    return next;
-                  });
                 }}
                 className="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-600"
               />
@@ -543,7 +902,7 @@ export default function NuevoPacientePage() {
                   Paciente ya existía antes del sistema (alta retroactiva)
                 </span>
                 <span className="mt-0.5 block text-help text-slate-500">
-                  Carga historia previa sin distorsionar reportes de productividad del día.
+                  Carga historia previa sin distorsionar reportes del día.
                 </span>
               </span>
             </label>
@@ -570,28 +929,18 @@ export default function NuevoPacientePage() {
                     rows={3}
                     maxLength={5000}
                     className={selectClass}
-                    placeholder="Antecedentes y tratamientos previos al sistema…"
+                    placeholder="Antecedentes y tratamientos previos…"
                   />
-                  {fieldErrors.resumen_historia_previa && (
-                    <p className="mt-1 text-help text-danger-600">
-                      {fieldErrors.resumen_historia_previa}
-                    </p>
-                  )}
-                  <p className="mt-1 text-help text-slate-400">
-                    {form.resumen_historia_previa.length}/5000
-                  </p>
                 </label>
-                <div>
-                  <Input
-                    label="Saldo inicial (S/)"
-                    type="number"
-                    step="0.01"
-                    value={form.saldo_inicial_migracion}
-                    onChange={(e) => set("saldo_inicial_migracion", e.target.value)}
-                    error={fieldErrors.saldo_inicial_migracion}
-                    hint="Positivo si el paciente tiene un saldo pendiente. Déjalo en 0 si no aplica."
-                  />
-                </div>
+                <Input
+                  label="Saldo inicial (S/)"
+                  type="number"
+                  step="0.01"
+                  value={form.saldo_inicial_migracion}
+                  onChange={(e) => set("saldo_inicial_migracion", e.target.value)}
+                  error={fieldErrors.saldo_inicial_migracion}
+                  hint="0 si no aplica."
+                />
               </div>
             )}
           </section>
@@ -631,25 +980,27 @@ export default function NuevoPacientePage() {
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Input
-                    label="Ocupación"
+                    label={minor ? "Colegio / actividad" : "Ocupación"}
                     value={form.ocupacion}
                     onChange={(e) => set("ocupacion", e.target.value)}
                     autoComplete="organization-title"
                   />
-                  <label className="block">
-                    <span className="mb-1 block text-label text-slate-700">Estado civil</span>
-                    <select
-                      value={form.estado_civil}
-                      onChange={(e) => set("estado_civil", e.target.value)}
-                      className={selectClass}
-                    >
-                      {ESTADO_CIVIL.map((opt) => (
-                        <option key={opt || "empty"} value={opt}>
-                          {opt || "—"}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  {!minor && (
+                    <label className="block">
+                      <span className="mb-1 block text-label text-slate-700">Estado civil</span>
+                      <select
+                        value={form.estado_civil}
+                        onChange={(e) => set("estado_civil", e.target.value)}
+                        className={selectClass}
+                      >
+                        {ESTADO_CIVIL.map((opt) => (
+                          <option key={opt || "empty"} value={opt}>
+                            {opt || "—"}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                 </div>
                 <Input
                   label="Dirección"
@@ -657,20 +1008,12 @@ export default function NuevoPacientePage() {
                   onChange={(e) => set("direccion", e.target.value)}
                   autoComplete="street-address"
                 />
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Input
-                    label="Contacto de emergencia"
-                    value={form.contacto_emergencia}
-                    onChange={(e) => set("contacto_emergencia", e.target.value)}
-                    placeholder="Nombre y celular"
-                  />
-                  <Input
-                    label="Nombre del responsable"
-                    value={form.nombre_responsable}
-                    onChange={(e) => set("nombre_responsable", e.target.value)}
-                    hint="Si el paciente es menor de edad"
-                  />
-                </div>
+                <Input
+                  label="Contacto de emergencia (otro)"
+                  value={form.contacto_emergencia}
+                  onChange={(e) => set("contacto_emergencia", e.target.value)}
+                  placeholder="Nombre y celular adicionales"
+                />
               </div>
             )}
           </div>
@@ -685,7 +1028,12 @@ export default function NuevoPacientePage() {
               >
                 Crear y abrir Ficha Clínica
               </Button>
-              <Button type="button" variant="ghost" onClick={() => router.back()} disabled={busy}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => router.back()}
+                disabled={busy}
+              >
                 Cancelar
               </Button>
               <span className="text-help text-slate-500 sm:ml-auto">

@@ -34,6 +34,12 @@ import {
 } from "@/components/patient/PatientEditModal";
 import { formatFichaCode } from "@/lib/ficha";
 import { ESPECIALIDADES_ODONTOLOGICAS, especialidadShort } from "@/lib/especialidades";
+import {
+  bandFromAge,
+  bandLabel,
+  calcAgeYears,
+  docTipoLabel,
+} from "@/lib/patientAge";
 
 type EstadoFilter = "activos" | "inactivos" | "todos";
 
@@ -362,6 +368,16 @@ export default function PacientesPage() {
                           <Badge variant="brand" className="font-mono tracking-wide">
                             {formatFichaCode(p.numero_ficha)}
                           </Badge>
+                          {(() => {
+                            const age = calcAgeYears(p.fecha_nacimiento);
+                            const band = bandFromAge(age);
+                            if (age === null || !band) return null;
+                            return (
+                              <Badge variant="neutral">
+                                {bandLabel(band)} · {age}a
+                              </Badge>
+                            );
+                          })()}
                           {inactive && <Badge variant="neutral">Inactivo</Badge>}
                         </div>
                       </div>
@@ -469,7 +485,13 @@ export default function PacientesPage() {
                       <ul className="mt-3 space-y-1.5 text-sm text-slate-500">
                         <li className="flex items-center gap-2">
                           <IdCard className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                          <span>{p.numero_documento || "Sin documento"}</span>
+                          <span>
+                            {p.numero_documento
+                              ? `${docTipoLabel(p.tipo_documento)} ${p.numero_documento}`
+                              : p.tipo_documento
+                                ? docTipoLabel(p.tipo_documento)
+                                : "Sin documento"}
+                          </span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Phone className="h-3.5 w-3.5 shrink-0 text-slate-400" />

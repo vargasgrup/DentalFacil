@@ -23,7 +23,11 @@ export interface PatientAdmin {
   lugar_nacimiento?: string | null;
   ocupacion?: string | null;
   estado_civil?: string | null;
+  sexo?: string | null;
   nombre_responsable?: string | null;
+  parentesco_responsable?: string | null;
+  telefono_responsable?: string | null;
+  documento_responsable?: string | null;
   especialidad?: string | null;
   activo?: boolean;
   created_at: string;
@@ -32,7 +36,14 @@ export interface PatientAdmin {
 const FIELD =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600";
 
-const DOC_TIPOS = ["DNI", "CE", "Pasaporte", "Otro"] as const;
+const DOC_TIPOS = [
+  "DNI",
+  "CE",
+  "PASAPORTE",
+  "EN_TRAMITE",
+  "SIN_DOC",
+  "OTRO",
+] as const;
 
 interface PatientEditModalProps {
   patient: PatientAdmin;
@@ -55,7 +66,11 @@ export function PatientEditModal({ patient, onClose, onSaved }: PatientEditModal
     lugar_nacimiento: patient.lugar_nacimiento || "",
     ocupacion: patient.ocupacion || "",
     estado_civil: patient.estado_civil || "",
+    sexo: patient.sexo || "",
     nombre_responsable: patient.nombre_responsable || "",
+    parentesco_responsable: patient.parentesco_responsable || "",
+    telefono_responsable: patient.telefono_responsable || "",
+    documento_responsable: patient.documento_responsable || "",
     especialidad: patient.especialidad || "",
   });
   const [saving, setSaving] = useState(false);
@@ -98,7 +113,11 @@ export function PatientEditModal({ patient, onClose, onSaved }: PatientEditModal
           lugar_nacimiento: form.lugar_nacimiento.trim() || null,
           ocupacion: form.ocupacion.trim() || null,
           estado_civil: form.estado_civil || null,
+          sexo: form.sexo || null,
           nombre_responsable: form.nombre_responsable.trim() || null,
+          parentesco_responsable: form.parentesco_responsable.trim() || null,
+          telefono_responsable: form.telefono_responsable.trim() || null,
+          documento_responsable: form.documento_responsable.trim() || null,
           especialidad: form.especialidad.trim() || null,
         }),
       });
@@ -210,7 +229,20 @@ export function PatientEditModal({ patient, onClose, onSaved }: PatientEditModal
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-label text-slate-700">Teléfono</span>
+                <span className="mb-1 block text-label text-slate-700">Sexo</span>
+                <select
+                  value={form.sexo}
+                  onChange={(e) => set("sexo", e.target.value)}
+                  className={FIELD}
+                >
+                  <option value="">—</option>
+                  <option value="F">Femenino</option>
+                  <option value="M">Masculino</option>
+                  <option value="X">Otro / no especifica</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-label text-slate-700">Teléfono paciente</span>
                 <input
                   value={form.telefono}
                   onChange={(e) => set("telefono", e.target.value)}
@@ -278,11 +310,36 @@ export function PatientEditModal({ patient, onClose, onSaved }: PatientEditModal
                   className={FIELD}
                 />
               </label>
-              <label className="block sm:col-span-2">
-                <span className="mb-1 block text-label text-slate-700">Nombre del responsable</span>
+              <label className="block">
+                <span className="mb-1 block text-label text-slate-700">Apoderado / responsable</span>
                 <input
                   value={form.nombre_responsable}
                   onChange={(e) => set("nombre_responsable", e.target.value)}
+                  className={FIELD}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-label text-slate-700">Parentesco</span>
+                <input
+                  value={form.parentesco_responsable}
+                  onChange={(e) => set("parentesco_responsable", e.target.value)}
+                  className={FIELD}
+                  placeholder="Madre, Padre, Tutor…"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-label text-slate-700">Celular del apoderado</span>
+                <input
+                  value={form.telefono_responsable}
+                  onChange={(e) => set("telefono_responsable", e.target.value)}
+                  className={FIELD}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-label text-slate-700">Doc. del apoderado</span>
+                <input
+                  value={form.documento_responsable}
+                  onChange={(e) => set("documento_responsable", e.target.value)}
                   className={FIELD}
                 />
               </label>

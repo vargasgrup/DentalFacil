@@ -231,22 +231,31 @@ def create_patient(
     doc = _normalize_documento(payload.numero_documento)
     _assert_unique_document(db, payload.tipo_documento, doc)
 
+    tipo_doc = (payload.tipo_documento or "DNI").strip() or "DNI"
+    if tipo_doc in ("SIN_DOC", "EN_TRAMITE") and not doc:
+        # Allow multiple patients without a real document number.
+        doc = None
+
     patient = Patient(
         numero_ficha=_next_ficha_number(db),
         nombres=payload.nombres.strip(),
         apellidos=payload.apellidos.strip(),
-        tipo_documento=payload.tipo_documento or "DNI",
+        tipo_documento=tipo_doc,
         numero_documento=doc,
         fecha_nacimiento=payload.fecha_nacimiento,
         lugar_nacimiento=payload.lugar_nacimiento,
         ocupacion=payload.ocupacion,
         estado_civil=payload.estado_civil,
+        sexo=(payload.sexo or None),
         especialidad=(payload.especialidad or "").strip() or None,
         telefono=payload.telefono,
         email=payload.email,
         direccion=payload.direccion,
         contacto_emergencia=payload.contacto_emergencia,
-        nombre_responsable=payload.nombre_responsable,
+        nombre_responsable=(payload.nombre_responsable or "").strip() or None,
+        parentesco_responsable=(payload.parentesco_responsable or "").strip() or None,
+        telefono_responsable=(payload.telefono_responsable or "").strip() or None,
+        documento_responsable=(payload.documento_responsable or "").strip() or None,
         alergias=payload.alergias,
         es_migrado=bool(payload.es_migrado),
         fecha_ingreso_clinica=payload.fecha_ingreso_clinica if payload.es_migrado else None,

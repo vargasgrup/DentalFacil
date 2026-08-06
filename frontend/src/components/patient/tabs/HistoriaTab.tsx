@@ -103,8 +103,11 @@ export function HistoriaTab({
               className={FIELD_CLASS}
             >
               <option value="DNI">DNI</option>
-              <option value="CE">CE</option>
-              <option value="Pasaporte">Pasaporte</option>
+              <option value="CE">Carné extranjería</option>
+              <option value="PASAPORTE">Pasaporte</option>
+              <option value="EN_TRAMITE">En trámite</option>
+              <option value="SIN_DOC">Sin documento</option>
+              <option value="OTRO">Otro</option>
             </select>
           </label>
           <Input
@@ -127,6 +130,19 @@ export function HistoriaTab({
             value={edad !== null ? `${edad} años` : "—"}
             disabled
           />
+          <label className="block">
+            <span className="mb-1 block text-label tracking-wide text-slate-700">Sexo</span>
+            <select
+              value={patientForm.sexo || ""}
+              onChange={(e) => setPatientForm({ ...patientForm, sexo: e.target.value })}
+              className={FIELD_CLASS}
+            >
+              <option value="">—</option>
+              <option value="F">Femenino</option>
+              <option value="M">Masculino</option>
+              <option value="X">Otro / no especifica</option>
+            </select>
+          </label>
           <Input
             label="Lugar de nacimiento / procedencia"
             value={patientForm.lugar_nacimiento || ""}
@@ -171,7 +187,7 @@ export function HistoriaTab({
             onChange={(e) => setPatientForm({ ...patientForm, email: e.target.value })}
           />
           <Input
-            label="Teléfono / celular"
+            label="Teléfono / celular del paciente"
             value={patientForm.telefono || ""}
             onChange={(e) => setPatientForm({ ...patientForm, telefono: e.target.value })}
             placeholder="9XXXXXXXX"
@@ -188,14 +204,45 @@ export function HistoriaTab({
             value={patientForm.direccion || ""}
             onChange={(e) => setPatientForm({ ...patientForm, direccion: e.target.value })}
           />
-          <Input
-            label="Padre/madre/tutor (si aplica)"
-            value={patientForm.nombre_responsable || ""}
-            onChange={(e) =>
-              setPatientForm({ ...patientForm, nombre_responsable: e.target.value })
-            }
-            placeholder="Nombre del responsable"
-          />
+        </div>
+
+        <div className="mt-4 rounded-xl border border-slate-200 bg-surface-subtle p-4">
+          <p className="mb-3 text-sm font-semibold text-slate-800">
+            Apoderado / tutor o familiar de apoyo
+          </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input
+              label="Nombre del responsable"
+              value={patientForm.nombre_responsable || ""}
+              onChange={(e) =>
+                setPatientForm({ ...patientForm, nombre_responsable: e.target.value })
+              }
+              placeholder="Padre, madre, tutor, cuidador…"
+            />
+            <Input
+              label="Parentesco"
+              value={patientForm.parentesco_responsable || ""}
+              onChange={(e) =>
+                setPatientForm({ ...patientForm, parentesco_responsable: e.target.value })
+              }
+              placeholder="Madre, Padre, Tutor…"
+            />
+            <Input
+              label="Celular del responsable"
+              value={patientForm.telefono_responsable || ""}
+              onChange={(e) =>
+                setPatientForm({ ...patientForm, telefono_responsable: e.target.value })
+              }
+              placeholder="9XXXXXXXX"
+            />
+            <Input
+              label="Documento del responsable"
+              value={patientForm.documento_responsable || ""}
+              onChange={(e) =>
+                setPatientForm({ ...patientForm, documento_responsable: e.target.value })
+              }
+            />
+          </div>
         </div>
 
         <label className="mt-4 block">

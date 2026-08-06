@@ -94,3 +94,49 @@ def test_patient_especialidad_create_and_filter(
     )
     assert patched.status_code == 200, patched.text
     assert patched.json()["especialidad"] == "Endodoncia"
+
+
+def test_create_minor_without_document_and_guardian(
+    client: TestClient,
+    admin_headers: dict[str, str],
+):
+    resp = client.post(
+        "/api/patients",
+        headers=admin_headers,
+        json={
+            "nombres": "Lucía",
+            "apellidos": "Ramos",
+            "tipo_documento": "SIN_DOC",
+            "numero_documento": None,
+            "fecha_nacimiento": "2018-05-12",
+            "sexo": "F",
+            "nombre_responsable": "María Ramos",
+            "parentesco_responsable": "Madre",
+            "telefono_responsable": "987654321",
+            "telefono": "987654321",
+            "especialidad": "Odontopediatría",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["tipo_documento"] == "SIN_DOC"
+    assert body["numero_documento"] in (None, "")
+    assert body["nombre_responsable"] == "María Ramos"
+    assert body["parentesco_responsable"] == "Madre"
+    assert body["telefono_responsable"] == "987654321"
+    assert body["sexo"] == "F"
+
+    # A second child without document must also be allowed
+    resp2 = client.post(
+        "/api/patients",
+        headers=admin_headers,
+        json={
+            "nombres": "Pedro",
+            "apellidos": "López",
+            "tipo_documento": "SIN_DOC",
+            "nombre_responsable": "Ana López",
+            "telefono_responsable": "912345678",
+            "telefono": "912345678",
+        },
+    )
+    assert resp2.status_code == 201, resp2.text

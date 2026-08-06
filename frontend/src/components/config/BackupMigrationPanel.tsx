@@ -377,7 +377,7 @@ export function BackupMigrationPanel() {
     <ConfigSection
       title="Respaldo y Migración"
       icon={<Archive className="h-4 w-4" aria-hidden />}
-      description="Genera un paquete completo (base de datos + archivos) para USB o migrar a otra PC. Solo administradores."
+      description="Respalda y restaura datos de la clínica: pacientes, historia clínica, finanzas, agenda, medios y usuarios. No cambia la interfaz ni la versión del software instalado. Solo administradores."
       actions={
         <Button
           type="button"
@@ -645,8 +645,9 @@ export function BackupMigrationPanel() {
           <div>
             <h3 className="text-sm font-semibold text-slate-800">Restaurar desde backup</h3>
             <p className="text-help text-slate-600">
-              Reemplaza todos los datos y archivos de esta instalación. Úselo para migrar de una
-              PC a otra. Se creará un backup de seguridad previo automáticamente.
+              Fusiona pacientes, historia clínica, finanzas, agenda, medios y usuarios.
+              No revierte la interfaz ni la versión del software instalado. Se crea un backup
+              de seguridad previo. Tras restaurar debe reiniciar e iniciar sesión.
             </p>
           </div>
         </div>
@@ -703,7 +704,7 @@ export function BackupMigrationPanel() {
             {validation.ok && (
               <div className="mt-3 space-y-2">
                 <Input
-                  label='Escriba CONFIRMAR para reemplazar todos los datos'
+                  label="Escriba CONFIRMAR para restaurar datos clínicos (no revierte el software)"
                   value={confirmText}
                   onChange={(e) => setConfirmText(e.target.value)}
                 />
@@ -714,7 +715,7 @@ export function BackupMigrationPanel() {
                   disabled={confirmText.trim().toUpperCase() !== "CONFIRMAR"}
                   onClick={() => void runRestore()}
                 >
-                  Restaurar y reemplazar todos los datos
+                  Restaurar datos de pacientes / finanzas / usuarios
                 </Button>
               </div>
             )}

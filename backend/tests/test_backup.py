@@ -100,33 +100,71 @@ def test_backup_restore_requires_confirm(
     assert bad.status_code == 400
 
 
-def test_backup_restore_succeeds_on_windows_paths(
+def test_backup_restore_preserves_destination_settings_and_merges_patients(
     client: TestClient,
     admin_headers: dict[str, str],
     monkeypatch,
     tmp_path: Path,
+    patient: dict,
 ):
-    """Full restore must release SQLite handles and replace WAL sidecars safely."""
-    monkeypatch.setenv("BACKUP_DIRECTORY", str(tmp_path / "backups3"))
+    """Restore merges clinical data; keeps destination backup_settings."""
+    import sqlite3
+
+    from app.config import settings
+    from app.paths import resolve_sqlite_file
+
+    monkeypatch.setenv("BACKUP_DIRECTORY", str(tmp_path / "backups_merge"))
+
+    live = resolve_sqlite_file(settings.DATABASE_URL)
+    # Ensure settings row exists through API
+    s0 = client.get("/api/backup/settings", headers=admin_headers)
+    assert s0.status_code == 200, s0.text
+
+    with sqlite3.connect(str(live)) as conn:
+        conn.execute("UPDATE backup_settings SET preferred_hour = '03:33'")
+        conn.commit()
+        patients_before = int(
+            conn.execute("SELECT COUNT(*) FROM patients").fetchone()[0]
+        )
+        hour_before = conn.execute(
+            "SELECT preferred_hour FROM backup_settings LIMIT 1"
+        ).fetchone()[0]
+    assert patients_before >= 1
+    assert hour_before == "03:33"
+
     gen = client.post("/api/backup/generate", headers=admin_headers)
     assert gen.status_code == 200, gen.text
+    # Change destination after generate — full file replace from zip would restore 03:33
+    with sqlite3.connect(str(live)) as conn:
+        conn.execute("UPDATE backup_settings SET preferred_hour = '04:44'")
+        conn.commit()
+
     hist = client.get("/api/backup/history", headers=admin_headers).json()[0]
     dl = client.get(f"/api/backup/{hist['id']}/download", headers=admin_headers)
     assert dl.status_code == 200
 
-    files = {"file": ("restore.zip", dl.content, "application/zip")}
     ok = client.post(
         "/api/backup/restore",
         headers=admin_headers,
-        files=files,
+        files={"file": ("restore.zip", dl.content, "application/zip")},
         data={"confirm_token": "CONFIRMAR"},
     )
     assert ok.status_code == 200, ok.text
     body = ok.json()
     assert body["ok"] is True
-    assert body.get("restart_required") is True
-    # Hot apply or same-process pending apply both count as success on Windows
-    assert body.get("db_applied") is True or body.get("files_restored") is not None
+    assert body.get("ui_and_app_preserved") is True
+    assert body.get("restore_mode") == "merge_clinical_keep_app_schema"
+
+    with sqlite3.connect(str(live)) as conn:
+        patients_after = int(
+            conn.execute("SELECT COUNT(*) FROM patients").fetchone()[0]
+        )
+        hour_after = conn.execute(
+            "SELECT preferred_hour FROM backup_settings LIMIT 1"
+        ).fetchone()[0]
+
+    assert patients_after >= 1
+    assert hour_after == "04:44"
 
 
 def test_backup_settings_custom_directory(

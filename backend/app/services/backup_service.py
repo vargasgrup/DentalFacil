@@ -28,7 +28,13 @@ from app.models import BackupHistory, BackupSettings, User
 from app.models.ids import BACKUP_SETTINGS_ID, new_uuid
 from app.paths import BACKEND_ROOT, resolve_sqlite_file, resolve_under_backend
 from app.services.audit import log_audit
-from app.sqlite_restore import apply_pending_sqlite_restore, stage_pending_restore
+from app.sqlite_restore import (
+    CLINICAL_DATA_TABLES,
+    SYSTEM_TABLES_NEVER_RESTORE,
+    apply_pending_clinical_merge,
+    merge_clinical_sqlite_into_live,
+    stage_pending_clinical_merge,
+)
 
 logger = get_logger("backup_service")
 
@@ -38,7 +44,9 @@ except ZoneInfoNotFoundError:
     # Windows without tzdata: fixed UTC-5 (Peru does not observe DST)
     CLINIC_TZ = timezone(timedelta(hours=-5))
     logger.warning("tzdata missing — using fixed UTC-5 for America/Lima")
-BACKUP_FORMAT_VERSION = "1.0"
+# 1.0 = full zip with clinica.db (legacy)
+# 1.1 = same package layout + explicit clinical-data restore semantics
+BACKUP_FORMAT_VERSION = "1.1"
 CONFIRM_TOKEN = "CONFIRMAR"
 
 _BACKEND_ROOT = BACKEND_ROOT
@@ -886,6 +894,10 @@ def create_backup(
                 "app_name": _product_name(),
                 "clinic_name": settings.CLINIC_NAME,
                 "backup_format_version": BACKUP_FORMAT_VERSION,
+                "package_kind": "clinical_data",
+                "restore_mode": "merge_clinical_keep_app_schema",
+                "clinical_tables": list(CLINICAL_DATA_TABLES),
+                "excluded_on_restore": sorted(SYSTEM_TABLES_NEVER_RESTORE),
                 "created_at": datetime.now(CLINIC_TZ).isoformat(),
                 "source_head_revision": HEAD_REVISION,
                 "source_db_engine": "sqlite",
@@ -897,6 +909,11 @@ def create_backup(
                 "generated_by": triggered_by,
                 "app_instance_id": BACKUP_SETTINGS_ID,
                 "backup_directory": str(backup_dir),
+                "note_es": (
+                    "La restauración fusiona pacientes, historia clínica, finanzas, "
+                    "agenda, medios y usuarios. No reemplaza el software, la UI ni "
+                    "el esquema de la versión instalada en destino."
+                ),
             }
             zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
 
@@ -1287,8 +1304,17 @@ def validate_backup_bytes(data: bytes) -> ValidationResult:
                 "database/clinica.db",
             )
             manifest = json.loads(zf.read(manifest_member).decode("utf-8"))
-            if manifest.get("backup_format_version") != BACKUP_FORMAT_VERSION:
-                warnings.append("Versión de formato de backup distinta; se intentará de todos modos")
+            fmt = str(manifest.get("backup_format_version") or "")
+            if fmt not in (BACKUP_FORMAT_VERSION, "1.0", "1.1"):
+                warnings.append(
+                    f"Versión de formato de backup ({fmt or 'desconocida'}) distinta; "
+                    "se intentará de todos modos (solo datos clínicos)."
+                )
+            elif fmt == "1.0":
+                warnings.append(
+                    "Backup legacy 1.0: se aplicará solo datos clínicos/usuarios "
+                    "(no se revierte la versión del software ni la UI)."
+                )
             src_rev = str(manifest.get("source_head_revision") or "")
             if src_rev and src_rev != HEAD_REVISION:
                 order = _alembic_revision_order()
@@ -1350,6 +1376,28 @@ def _replace_tree(src_dir: Path, dest_dir: Path) -> int:
     return count
 
 
+def _heal_schema_after_restore() -> None:
+    """Ensure live install is at current software schema (never stay on backup's old revision)."""
+    try:
+        from app.migrate import run_migrations_blocking
+
+        run_migrations_blocking()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("post-restore migrations note: %s", exc)
+    try:
+        from app.ensure_auth_schema import ensure_auth_schema
+
+        ensure_auth_schema()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("post-restore ensure_auth_schema: %s", exc)
+    try:
+        from app.ensure_backup_schema import ensure_backup_schema
+
+        ensure_backup_schema()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("post-restore ensure_backup_schema: %s", exc)
+
+
 def restore_backup(
     db: Session,
     data: bytes,
@@ -1362,7 +1410,7 @@ def restore_backup(
     if (confirm_token or "").strip().upper() != CONFIRM_TOKEN:
         raise HTTPException(
             status_code=400,
-            detail='Debe escribir CONFIRMAR para continuar con la restauración',
+            detail="Debe escribir CONFIRMAR para continuar con la restauración",
         )
 
     user_count = int(db.execute(text("SELECT COUNT(*) FROM users")).scalar() or 0)
@@ -1376,7 +1424,11 @@ def restore_backup(
     if not _restore_lock.acquire(blocking=False):
         raise HTTPException(status_code=503, detail="Ya hay una restauración en curso")
 
-    report: dict[str, Any] = {"ok": False, "warnings": list(validation.warnings)}
+    report: dict[str, Any] = {
+        "ok": False,
+        "warnings": list(validation.warnings),
+        "restore_mode": "merge_clinical_keep_app_schema",
+    }
     import io
     import tempfile
 
@@ -1414,30 +1466,49 @@ def restore_backup(
 
             snap = td_path / "database" / "clinica.db"
             if not snap.exists():
-                raise HTTPException(status_code=400, detail="El paquete no incluye database/clinica.db")
+                raise HTTPException(
+                    status_code=400, detail="El paquete no incluye database/clinica.db"
+                )
             _integrity_check(snap)
 
             live = resolve_sqlite_path()
-            applied_hot = False
-            try:
-                _replace_live_sqlite(snap, live)
-                applied_hot = True
-            except HTTPException as exc:
-                # Windows file lock: stage for next process start (engine closed)
-                logger.warning("hot restore failed (%s) — staging pending restore", exc.detail)
-                stage_pending_restore(snap, live)
-                report["warnings"].append(
-                    "La base quedó programada para aplicarse al reiniciar N&K Dental Soft "
-                    "(Windows tenía el archivo en uso)."
-                )
+            live.parent.mkdir(parents=True, exist_ok=True)
+            merge_info: dict[str, Any] = {}
+            applied = False
 
+            # Prefer in-place merge so destination schema / alembic remain the NEW install
+            try:
+                if live.is_file():
+                    _quiesce_sqlite_for_replace(live)
+                merge_info = merge_clinical_sqlite_into_live(snap, live)
+                applied = True
+            except Exception as exc:  # noqa: BLE001
+                detail = getattr(exc, "detail", None) or str(exc)
+                logger.warning(
+                    "clinical merge hot path failed (%s) — staging pending clinical merge",
+                    detail,
+                )
+                stage_pending_clinical_merge(snap, live)
+                report["warnings"].append(
+                    "Los datos clínicos quedaron programados para fusionarse al reiniciar "
+                    "N&K Dental Soft (archivo de base en uso). El software y la UI no se "
+                    "reemplazan; solo se restauran pacientes, finanzas y usuarios."
+                )
+                # Try deferred apply in same process
+                if apply_pending_clinical_merge(settings.DATABASE_URL):
+                    applied = True
+                    merge_info = {"mode": "pending_merged_in_process"}
+
+            # Patient / clinical media only under configured media roots (never frontend)
             uploads_root = td_path / "uploads"
             restored_files = 0
             for key, dest in _upload_roots().items():
                 restored_files += _replace_tree(uploads_root / key, dest)
 
             rows: dict[str, int] = {}
-            if applied_hot:
+            if applied:
+                _dispose_engine()
+                _heal_schema_after_restore()
                 _dispose_engine()
                 with SessionLocal() as s2:
                     try:
@@ -1457,66 +1528,50 @@ def restore_backup(
                         entity_id="backup",
                         action="restore",
                         user_id=user_id,
-                        detail={"tables": len(rows), "files": restored_files, "hot": True},
+                        detail={
+                            "mode": "merge_clinical_keep_app_schema",
+                            "merge": merge_info,
+                            "tables": len(rows),
+                            "files": restored_files,
+                        },
                     )
                     s2.commit()
             else:
-                # Apply staged DB now that pool is disposed (same process — tests / soft restart)
-                if apply_pending_sqlite_restore(settings.DATABASE_URL):
-                    applied_hot = True
-                    _dispose_engine()
-                    with SessionLocal() as s2:
-                        try:
-                            s2.execute(
-                                text(
-                                    "UPDATE users SET token_version = COALESCE(token_version, 0) + 1"
-                                )
-                            )
-                            s2.commit()
-                        except Exception:  # noqa: BLE001
-                            s2.rollback()
-                        rows = _row_counts(s2)
-                        log_audit(
-                            s2,
-                            patient_id=None,
-                            entity_type="system",
-                            entity_id="backup",
-                            action="restore",
-                            user_id=user_id,
-                            detail={
-                                "tables": len(rows),
-                                "files": restored_files,
-                                "hot": False,
-                            },
-                        )
-                        s2.commit()
-                else:
-                    report["warnings"].append(
-                        "Reinicie el servicio backend para terminar de aplicar la base de datos."
-                    )
+                report["warnings"].append(
+                    "Reinicie N&K Dental Soft para terminar de fusionar la base de datos clínica."
+                )
 
             report.update(
                 {
                     "ok": True,
-                    "tables_restored": len(rows) if rows else None,
-                    "row_counts": rows or None,
+                    "tables_restored": len(merge_info.get("tables_merged") or [])
+                    if merge_info
+                    else (len(rows) if rows else None),
+                    "row_counts": merge_info.get("rows") or rows or None,
+                    "merge": merge_info or None,
                     "files_restored": restored_files,
                     "source_head_revision": validation.manifest.get("source_head_revision"),
+                    "install_head_revision": HEAD_REVISION,
                     "restart_required": True,
-                    "db_applied": bool(applied_hot),
+                    "db_applied": bool(applied),
+                    "ui_and_app_preserved": True,
                     "message": (
-                        "Restauración completada. Reinicie N&K Dental Soft e inicie sesión "
-                        "con un usuario incluido en el backup."
-                        if applied_hot
+                        "Datos clínicos restaurados (pacientes, historia, finanzas, agenda, medios "
+                        "y usuarios). La versión del software, la interfaz y el esquema de la "
+                        "instalación actual se conservan. Reinicie e inicie sesión de nuevo."
+                        if applied
                         else (
-                            "Archivos restaurados. Reinicie N&K Dental Soft para aplicar "
-                            "la base de datos y luego inicie sesión."
+                            "Medios restaurados. Reinicie N&K Dental Soft para fusionar los datos "
+                            "clínicos (la interfaz y funciones del software no se revierten)."
                         )
                     ),
                 }
             )
             logger.info(
-                "restore ok applied=%s files=%s", applied_hot, restored_files
+                "restore clinical-merge ok applied=%s files=%s merge=%s",
+                applied,
+                restored_files,
+                merge_info.get("mode"),
             )
             return report
     finally:

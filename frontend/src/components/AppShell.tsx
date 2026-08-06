@@ -2,14 +2,9 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import {
-  ChevronRight,
-  PanelLeft,
-  PanelLeftClose,
-  PanelLeftOpen,
-  X,
-} from "lucide-react";
+import { ChevronRight, PanelLeftOpen, X } from "lucide-react";
 import { Sidebar } from "./Sidebar";
+import { SidebarEdgeToggle } from "./SidebarEdgeToggle";
 import { Topbar } from "./Topbar";
 import { BrandLogo } from "./BrandLogo";
 import { MaintenanceAlert } from "./MaintenanceAlert";
@@ -55,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Desktop rail: expanded o collapsed */}
       {(mode === "expanded" || mode === "collapsed") && (
         <aside
-          className={`fixed left-0 top-0 z-30 hidden h-dvh ${railWidth} flex-col border-r border-slate-400/80 bg-gradient-to-b from-slate-200 via-slate-100 to-slate-50 shadow-[10px_0_32px_-12px_rgba(15,23,42,0.38)] transition-[width] duration-[var(--motion-duration,180ms)] ease-smooth md:flex`}
+          className={`relative fixed left-0 top-0 z-30 hidden h-dvh overflow-visible ${railWidth} flex-col border-r border-slate-400/80 bg-gradient-to-b from-slate-200 via-slate-100 to-slate-50 shadow-[10px_0_32px_-12px_rgba(15,23,42,0.38)] transition-[width] duration-[var(--motion-duration,180ms)] ease-smooth md:flex`}
           aria-label="Barra de navegación"
           data-sidebar-mode={mode}
         >
@@ -81,31 +76,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )}
             </Link>
           </div>
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="relative flex min-h-0 flex-1 flex-col">
             <Sidebar collapsed={isIconRail} />
           </div>
-          <div className="shrink-0 border-t border-slate-300/80 p-2">
-            <button
-              type="button"
-              onClick={cycleMode}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-2 py-2 text-xs font-medium text-slate-600 transition-smooth hover:bg-white hover:text-slate-900"
-              title={
-                mode === "expanded"
-                  ? "Compactar barra lateral"
-                  : "Pasar a modo flotante"
-              }
-              aria-label="Cambiar modo de barra lateral"
-            >
-              {mode === "expanded" ? (
-                <>
-                  <PanelLeftClose className="h-4 w-4" aria-hidden />
-                  <span>Compactar</span>
-                </>
-              ) : (
-                <PanelLeft className="h-4 w-4" aria-hidden />
-              )}
-            </button>
-          </div>
+          {/* Pastilla en el bisel, centro vertical — colapsar / expandir */}
+          <SidebarEdgeToggle
+            collapsed={isIconRail}
+            onToggle={() =>
+              setMode(mode === "collapsed" ? "expanded" : "collapsed")
+            }
+          />
         </aside>
       )}
 

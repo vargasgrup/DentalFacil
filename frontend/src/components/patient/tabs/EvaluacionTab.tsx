@@ -16,6 +16,7 @@ import {
   type PlanItem,
   type TreatmentPlans,
 } from "@/lib/treatmentPlans";
+import { patientWhatsAppPhone } from "@/lib/patientContact";
 import { ConsentimientoInformadoPanel } from "../ConsentimientoInformadoPanel";
 import { FIELD_CLASS } from "../constants";
 import type { ClinicalRecord, Patient, SaveState } from "../types";
@@ -169,7 +170,7 @@ export function EvaluacionTab({
               label="Presupuesto"
               documentType="presupuesto"
               downloadUrl={`/api/documents/presupuesto/${patientId}?plan_id=${planBundle.active_id}`}
-              telefono={patient.telefono}
+              telefono={patientWhatsAppPhone(patient)}
               mensaje={`Hola ${patient.nombres}, adjuntamos el presupuesto de tu plan de tratamiento. Cualquier consulta estamos a disposición. Gracias.`}
               onBeforeFetch={async () => {
                 await saveRecord();

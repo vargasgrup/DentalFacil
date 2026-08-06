@@ -14,6 +14,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { especialidadShort } from "@/lib/especialidades";
 import { normalizeEstado, type TreatmentPlans } from "@/lib/treatmentPlans";
 import { useAuth } from "@/lib/auth";
+import { patientWhatsAppPhone } from "@/lib/patientContact";
 import { canAccessModule } from "@/lib/roles";
 import { FIELD_CLASS } from "../constants";
 import type {
@@ -339,7 +340,7 @@ export function SeguimientoTab({
                           label="Evolución"
                           documentType="evolucion"
                           downloadUrl={`/api/documents/evolucion/${e.id}`}
-                          telefono={patient.telefono}
+                          telefono={patientWhatsAppPhone(patient)}
                           mensaje={`Hola ${patient.nombres}, adjuntamos el registro de evolución clínica. Gracias.`}
                           compact
                           hidePreview
@@ -592,7 +593,7 @@ export function SeguimientoTab({
               label="Ficha clínica"
               documentType="ficha"
               downloadUrl={`/api/documents/ficha/${patientId}`}
-              telefono={patient.telefono}
+              telefono={patientWhatsAppPhone(patient)}
               mensaje={`Hola ${patient.nombres}, adjuntamos tu ficha clínica. Cualquier consulta estamos a disposición. Gracias.`}
             />
           </div>
@@ -602,7 +603,7 @@ export function SeguimientoTab({
               label="Presupuesto"
               documentType="presupuesto"
               downloadUrl={`/api/documents/presupuesto/${patientId}?plan_id=${planBundle.active_id}`}
-              telefono={patient.telefono}
+              telefono={patientWhatsAppPhone(patient)}
               mensaje={`Hola ${patient.nombres}, adjuntamos el presupuesto de tu plan de tratamiento. Gracias.`}
               onBeforeFetch={async () => {
                 await saveRecord();
@@ -615,7 +616,7 @@ export function SeguimientoTab({
               label="Consentimiento"
               documentType="consentimiento"
               downloadUrl={`/api/documents/consentimiento/${patientId}`}
-              telefono={patient.telefono}
+              telefono={patientWhatsAppPhone(patient)}
               mensaje={`Hola ${patient.nombres}, adjuntamos el consentimiento informado. Gracias.`}
               markSentUrl={`/api/documents/whatsapp-sent?patient_id=${patientId}&tipo=consentimiento`}
             />

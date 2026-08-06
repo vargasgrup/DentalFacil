@@ -8,6 +8,7 @@ import {
   DEFAULT_CONSENT_TIPO,
 } from "@/lib/consentCatalog";
 import { formatDateTime } from "@/lib/datetime";
+import { patientWhatsAppPhone } from "@/lib/patientContact";
 import type { PlanItem } from "@/lib/treatmentPlans";
 import type { ClinicalRecord, Patient } from "./types";
 
@@ -221,7 +222,7 @@ export function ConsentimientoInformadoPanel({
         documentType="consentimiento"
         downloadUrl={downloadUrl}
         defaultFormat="A4"
-        telefono={patient.telefono}
+        telefono={patientWhatsAppPhone(patient)}
         mensaje={
           mode === "plan"
             ? `Hola ${patient.nombres}, adjuntamos el consentimiento informado de tu plan de tratamiento. Gracias.`

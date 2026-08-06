@@ -44,6 +44,7 @@ import {
   needsDocumentNumber,
 } from "@/lib/patientAge";
 import { inferSexoFromNombres } from "@/lib/nameGender";
+import { patientWhatsAppPhone } from "@/lib/patientContact";
 
 interface Patient {
   id: string;
@@ -104,8 +105,10 @@ export default function NuevoPacientePage() {
   const docRef = useRef<HTMLInputElement>(null);
   const fechaNacRef = useRef<HTMLInputElement>(null);
   const telRef = useRef<HTMLInputElement>(null);
+  const tutorNombreRef = useRef<HTMLInputElement>(null);
   const tutorTelRef = useRef<HTMLInputElement>(null);
   const alergiasRef = useRef<HTMLTextAreaElement>(null);
+  const especialidadRef = useRef<HTMLSelectElement>(null);
 
   const [busy, setBusy] = useState(false);
   const submittingRef = useRef(false);
@@ -326,12 +329,19 @@ export default function NuevoPacientePage() {
     const next = normalizePeruvianMobile(raw);
     set("telefono", next);
     if (next.length === PHONE_LENGTH && prevLen < PHONE_LENGTH) {
-      focusNext(alergiasRef.current);
+      // Menores: seguir al bloque apoderado; adultos: alergias / especialidad.
+      if (minor) focusNext(tutorNombreRef.current);
+      else focusNext(alergiasRef.current);
     }
   };
 
   const onTutorTelChange = (raw: string) => {
-    set("telefono_responsable", normalizePeruvianMobile(raw));
+    const prevLen = form.telefono_responsable.length;
+    const next = normalizePeruvianMobile(raw);
+    set("telefono_responsable", next);
+    if (next.length === PHONE_LENGTH && prevLen < PHONE_LENGTH) {
+      focusNext(alergiasRef.current);
+    }
   };
 
   /** Solo fechas ISO completas dd/mm/yyyy en el control (YYYY-MM-DD). */
@@ -476,6 +486,10 @@ export default function NuevoPacientePage() {
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     setError("");
+    if (docStatus === "checking") {
+      setError("Espere a que termine la verificación del documento…");
+      return;
+    }
     if (!validate()) return;
     if (docStatus === "dup") return;
     if (busy || submittingRef.current) return;
@@ -486,11 +500,15 @@ export default function NuevoPacientePage() {
       : form.numero_documento.trim() || null;
     const tutorTel = normalizePeruvianMobile(form.telefono_responsable.trim());
     const patientTel = normalizePeruvianMobile(form.telefono.trim());
-    // Primary clinic contact: tutor phone for minors when patient has none
-    const primaryTel =
-      patientTel ||
-      (minor && validatePeruvianMobile(tutorTel) ? tutorTel : "") ||
-      "";
+    // Primary clinic contact + guardian fallback (same rule used by ficha/WhatsApp).
+    const primaryTel = patientWhatsAppPhone({
+      telefono: patientTel,
+      telefono_responsable: tutorTel,
+    });
+    const sexo =
+      form.sexo ||
+      inferSexoFromNombres(titleCaseName(form.nombres)) ||
+      null;
 
     setBusy(true);
     const ac = new AbortController();
@@ -506,7 +524,7 @@ export default function NuevoPacientePage() {
           tipo_documento: form.tipo_documento,
           numero_documento: doc || null,
           fecha_nacimiento: form.fecha_nacimiento || null,
-          sexo: form.sexo || null,
+          sexo,
           telefono: primaryTel || null,
           email: form.email.trim() || null,
           direccion: form.direccion.trim() || null,
@@ -573,25 +591,39 @@ export default function NuevoPacientePage() {
   const missingFields: string[] = [];
   if (!form.nombres.trim()) missingFields.push("nombres");
   if (!form.apellidos.trim()) missingFields.push("apellidos");
-  if (!docFormatOk) missingFields.push("documento");
+  if (needsDocumentNumber(form.tipo_documento)) {
+    const docVal = form.numero_documento.trim();
+    if (!docVal) missingFields.push("número de documento");
+    else if (form.tipo_documento === "DNI" && !validateDNI(docVal)) {
+      missingFields.push(`DNI (${DNI_LENGTH} dígitos)`);
+    } else if (!docFormatOk) {
+      missingFields.push("documento válido");
+    }
+  }
   if (minor) {
+    if (!form.fecha_nacimiento) missingFields.push("fecha de nacimiento");
     if (!form.nombre_responsable.trim()) missingFields.push("apoderado");
-    if (!telOk) missingFields.push("celular del tutor");
+    if (!telOk) missingFields.push("celular del tutor o paciente");
   } else if (!telOk) {
-    missingFields.push("celular válido");
+    missingFields.push("celular WhatsApp (9 dígitos)");
   }
-  if (docStatus === "dup") {
-    /* blocked below */
+  if (form.es_migrado && !form.fecha_ingreso_clinica) {
+    missingFields.push("fecha de ingreso (migración)");
   }
-  const canSubmit = missingFields.length === 0 && docStatus !== "dup";
+  const canSubmit =
+    missingFields.length === 0 &&
+    docStatus !== "dup" &&
+    docStatus !== "checking";
   const submitBlockedReason =
     docStatus === "dup"
       ? "Este documento ya está registrado"
-      : busy
-        ? "Creando paciente…"
-        : !canSubmit
-          ? `Completa: ${missingFields.join(", ")}`
-          : undefined;
+      : docStatus === "checking"
+        ? "Verificando documento…"
+        : busy
+          ? "Creando paciente…"
+          : !canSubmit
+            ? `Completa: ${missingFields.join(", ")}`
+            : undefined;
 
   return (
     <PageContainer width="narrow">
@@ -877,6 +909,7 @@ export default function NuevoPacientePage() {
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input
+                  ref={tutorNombreRef}
                   label={minor ? "Nombre del apoderado *" : "Nombre del familiar"}
                   value={form.nombre_responsable}
                   onChange={(e) => set("nombre_responsable", e.target.value)}
@@ -937,32 +970,48 @@ export default function NuevoPacientePage() {
             </button>
           )}
 
-          {/* 5. Alergias y resto */}
-          <section className="space-y-4">
-            <h2 className="text-section-title text-slate-800">Salud y atención</h2>
-            <label className="block">
-              <span className="mb-1 block text-label text-slate-700">
-                Alergias <span className="font-normal text-slate-500">(recomendado)</span>
-              </span>
-              <textarea
-                ref={alergiasRef}
-                value={form.alergias}
-                onChange={(e) => set("alergias", e.target.value)}
-                rows={2}
-                className={selectClass}
-                placeholder="Penicilina, látex… o escriba Ninguna"
-              />
-            </label>
-            <p className="text-sm text-slate-500">
-              Especialidad — ayuda a filtrar el listado (ortodoncia, pediatría, etc.).
-            </p>
-            <SpecialtySelect
-              label="Especialidad"
-              value={form.especialidad}
-              onChange={(v) => set("especialidad", v)}
-              allowEmpty
-              required={false}
-            />
+          {/* 5. Alergias + especialidad (una fila en desktop) */}
+          <section className="space-y-3">
+            <div>
+              <h2 className="text-section-title text-slate-800">Salud y atención</h2>
+              <p className="mt-0.5 text-help text-slate-500">
+                Alergias clínicas y especialidad de seguimiento en el listado.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start">
+              <label className="block lg:col-span-7">
+                <span className="mb-1 block text-label text-slate-700">
+                  Alergias{" "}
+                  <span className="font-normal text-slate-500">(recomendado)</span>
+                </span>
+                <textarea
+                  ref={alergiasRef}
+                  value={form.alergias}
+                  onChange={(e) => set("alergias", e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      focusNext(especialidadRef.current);
+                    }
+                  }}
+                  rows={2}
+                  className={`${selectClass} min-h-[2.75rem] resize-y`}
+                  placeholder="Penicilina, látex… o escriba Ninguna"
+                />
+              </label>
+              <div className="lg:col-span-5">
+                <SpecialtySelect
+                  ref={especialidadRef}
+                  label="Especialidad"
+                  value={form.especialidad}
+                  onChange={(v) => set("especialidad", v)}
+                  allowEmpty
+                  required={false}
+                  className="w-full"
+                  hint="Filtra agenda y listado (ortodoncia, pediatría…)"
+                />
+              </div>
+            </div>
           </section>
 
           {/* Alta retroactiva */}

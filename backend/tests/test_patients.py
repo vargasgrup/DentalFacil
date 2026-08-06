@@ -96,10 +96,60 @@ def test_patient_especialidad_create_and_filter(
     assert patched.json()["especialidad"] == "Endodoncia"
 
 
-def test_create_minor_without_document_and_guardian(
+def test_create_patient_full_fields_linked(
     client: TestClient,
     admin_headers: dict[str, str],
 ):
+    """Alta con alergias, especialidad, sexo y tutor — deben persistir y listarse."""
+    resp = client.post(
+        "/api/patients",
+        headers=admin_headers,
+        json={
+            "nombres": "Sofía",
+            "apellidos": "Mendoza",
+            "tipo_documento": "DNI",
+            "numero_documento": "55667788",
+            "fecha_nacimiento": "2015-03-20",
+            "sexo": "F",
+            "telefono": "912345678",
+            "alergias": "Penicilina",
+            "especialidad": "Odontopediatría",
+            "nombre_responsable": "Rosa Mendoza",
+            "parentesco_responsable": "Madre",
+            "telefono_responsable": "987111222",
+            "documento_responsable": "10203040",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["alergias"] == "Penicilina"
+    assert body["especialidad"] == "Odontopediatría"
+    assert body["sexo"] == "F"
+    assert body["telefono"] == "912345678"
+    assert body["telefono_responsable"] == "987111222"
+    assert body["documento_responsable"] == "10203040"
+    assert body["parentesco_responsable"] == "Madre"
+
+    got = client.get(f"/api/patients/{body['id']}", headers=admin_headers)
+    assert got.status_code == 200
+    assert got.json()["alergias"] == "Penicilina"
+
+    listed = client.get(
+        "/api/patients",
+        headers=admin_headers,
+        params={"especialidad": "Odontopediatría"},
+    )
+    assert listed.status_code == 200
+    assert body["id"] in {p["id"] for p in listed.json()}
+
+    search = client.get(
+        "/api/patients/search",
+        headers=admin_headers,
+        params={"q": "55667788"},
+    )
+    assert search.status_code == 200
+    assert any(p["id"] == body["id"] for p in search.json())
+
     resp = client.post(
         "/api/patients",
         headers=admin_headers,

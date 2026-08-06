@@ -21,9 +21,10 @@ const RAIL_SURFACE =
   "border-r border-slate-300/90 bg-gradient-to-b from-slate-200 via-slate-100 to-slate-50";
 
 /**
- * Shell: rail de navegación EN FLUJO (no fixed + padding).
- * Así el menú llena de arriba a abajo y el contenido pega al borde sin
- * el hueco vertical que producía md:pl-64 + sidebar fixed desincronizados.
+ * Shell: rail EN FLUJO + viewport altura fija.
+ * El documento (html/body) NUNCA hace scroll en sesión app: solo regiones
+ * internas (`.app-page-scroll` o cuerpo de ficha). Así el topbar no “comparte”
+ * scroll con el contenido.
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { demoMode } = useAuth();
@@ -38,6 +39,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     isFloatingOverlay,
   } = useSidebar();
 
+  // Lock document scroll for the whole time the clinical shell is mounted
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    html.classList.add("nk-app-shell");
+    body.classList.add("nk-app-shell");
+    return () => {
+      html.classList.remove("nk-app-shell");
+      body.classList.remove("nk-app-shell");
+    };
+  }, []);
+
+  // Keep drawer lock for nested dialogs without dropping shell class
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -52,7 +66,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     mode === "collapsed" ? SHELL_SIDEBAR_COLLAPSED_WIDTH : SHELL_SIDEBAR_WIDTH;
 
   return (
-    <div className="flex h-dvh min-h-0 w-full bg-surface-muted">
+    <div className="flex h-dvh max-h-dvh min-h-0 w-full overflow-hidden bg-surface-muted">
       <MaintenanceAlert />
 
       {/* Desktop rail — in-flow, altura completa del viewport */}
@@ -202,7 +216,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </>
       )}
 
-      {/* Columna de trabajo: arranca justo al borde del rail */}
+      {/* Columna de trabajo: altura acotada; scroll SOLO dentro de main children */}
       <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface-muted">
         <Topbar
           onMenuClick={openSidebar}
@@ -219,7 +233,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
         <main className="app-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {children}
+          {/* Fuerza que la página ocupe toda la altura disponible del main */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {children}
+          </div>
         </main>
         <MobileBottomNav />
       </div>

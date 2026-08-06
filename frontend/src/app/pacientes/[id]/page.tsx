@@ -1,7 +1,6 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { PageContainer } from "@/components/ui/PageContainer";
 import { FichaHeader } from "@/components/patient/FichaHeader";
 import { FichaTabNav } from "@/components/patient/FichaTabNav";
 import { HistoriaTab } from "@/components/patient/tabs/HistoriaTab";
@@ -10,10 +9,14 @@ import { SeguimientoTab } from "@/components/patient/tabs/SeguimientoTab";
 import { useFichaClinica } from "@/components/patient/hooks/useFichaClinica";
 import { resolvePacienteIdFromRoute } from "@/lib/pacienteRoutes";
 
+/**
+ * Ficha clínica: layout en 3 filas de grid.
+ * Filas 1–2 (header + tabs) NO scrollean.
+ * Fila 3 es el único overflow-y — igual que topbar fuera del body scroll.
+ */
 export default function FichaClinicaPage() {
   const params = useParams();
   const router = useRouter();
-  // Static export only embeds id="_"; real UUID comes from the browser URL.
   const patientId = resolvePacienteIdFromRoute(params?.id);
   const f = useFichaClinica(patientId);
 
@@ -42,15 +45,13 @@ export default function FichaClinicaPage() {
   }
 
   return (
-    <PageContainer width="wide" layout="split" className="!space-y-0">
-      {/* Nombre / breadcrumb: fijo bajo el topbar (mismo contrato que chrome) */}
-      <div className="shrink-0 space-y-3 pb-3">
+    <div className="ficha-page" data-layout="ficha-pinned-chrome">
+      <div className="ficha-page__chrome space-y-2 pb-2">
         <FichaHeader
           patient={f.patient}
           onBack={() => router.push("/pacientes")}
           onPatientUpdated={f.applyPatientUpdate}
         />
-
         {f.error && (
           <div className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm text-danger-600">
             {f.error}
@@ -58,11 +59,11 @@ export default function FichaClinicaPage() {
         )}
       </div>
 
-      {/* Tabs: FUERA del scroll — no se mueven con la rueda del mouse */}
-      <FichaTabNav activeTab={f.fichaTab} onTabChange={f.setFichaTab} />
+      <div className="ficha-page__tabs">
+        <FichaTabNav activeTab={f.fichaTab} onTabChange={f.setFichaTab} />
+      </div>
 
-      {/* Único scrollport de la ficha: solo el panel activo */}
-      <div className="app-page-scroll min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain pt-4">
+      <div className="ficha-scroll-body space-y-5" data-scrollport="ficha-panel">
         {f.fichaTab === "historia" && (
           <HistoriaTab
             patient={f.patient}
@@ -139,6 +140,6 @@ export default function FichaClinicaPage() {
           />
         )}
       </div>
-    </PageContainer>
+    </div>
   );
 }

@@ -9,16 +9,13 @@ interface FichaTabNavProps {
 }
 
 /**
- * Tabs de ficha — chrome Fijo (no sticky).
- * Deben vivir FUERA del overflow-y-auto de la página (PageContainer layout=split).
- * Así no se desplazan con el scroll, igual que el topbar del shell.
+ * Tabs de ficha — chrome estático (sin position:sticky).
+ * El padre `.ficha-page` usa grid; esta fila no scrollea.
+ * Solo el panel (`.ficha-scroll-body`) se mueve con la rueda.
  */
 export function FichaTabNav({ activeTab, onTabChange }: FichaTabNavProps) {
   return (
-    <div
-      className="shrink-0 border-b border-slate-200 bg-white py-3"
-      data-pinned-chrome="ficha-tabs"
-    >
+    <div className="bg-white py-2.5" data-pinned-chrome="ficha-tabs">
       <div
         className="flex flex-wrap gap-2"
         role="tablist"

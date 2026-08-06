@@ -100,6 +100,7 @@ export default function NuevoPacientePage() {
   const router = useRouter();
   const nombresRef = useRef<HTMLInputElement>(null);
   const docRef = useRef<HTMLInputElement>(null);
+  const fechaNacRef = useRef<HTMLInputElement>(null);
   const telRef = useRef<HTMLInputElement>(null);
   const tutorTelRef = useRef<HTMLInputElement>(null);
 
@@ -276,14 +277,13 @@ export default function NuevoPacientePage() {
     const next = sanitizeDocumento(form.tipo_documento, raw);
     set("numero_documento", next);
     setError("");
+    // Tras completar el DNI, avanzar al siguiente campo natural: fecha de nacimiento.
     if (
       form.tipo_documento === "DNI" &&
       next.length === DNI_LENGTH &&
-      prevLen < DNI_LENGTH &&
-      form.telefono.length === 0 &&
-      !minor
+      prevLen < DNI_LENGTH
     ) {
-      requestAnimationFrame(() => telRef.current?.focus());
+      requestAnimationFrame(() => fechaNacRef.current?.focus());
     }
   };
 
@@ -751,6 +751,7 @@ export default function NuevoPacientePage() {
             {/* 3. Fecha de nacimiento + sexo */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Input
+                ref={fechaNacRef}
                 label={minor ? "Fecha de nacimiento *" : "Fecha de nacimiento"}
                 type="date"
                 value={form.fecha_nacimiento}

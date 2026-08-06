@@ -263,32 +263,44 @@ def _p_html(text: str, style: ParagraphStyle) -> Paragraph:
     return Paragraph(text, style)
 
 
+# Separadores 80mm: mismo grosor y ancho (aspecto profesional uniforme)
+_SEP_THICK_80 = 0.75
+_SEP_GAP_80 = 1.6  # pt arriba/abajo del separador
+
+
 def _styles(fmt: str) -> dict[str, ParagraphStyle]:
     """
     Estilos por formato.
 
     80mm: Courier + tamaños mínimos ~8–11 pt (legible en TM-U220A y térmicas).
+    Campos apilados (emisión, cliente, pagos): interlineado compacto.
     A5/A4: Helvetica de lectura en hoja A (documentos oficina).
     """
     if fmt == "80mm":
         # Mínimos impresos (pt): título 11, cuerpo 9.5, secundaria 8.5, pie 8
         title_sz, body_sz, small_sz, tiny_sz = 11, 9.5, 8.5, 8
-        after = 2.2
-        lead_extra = 4.2  # aire entre líneas: impact no “pica” bien el interlineado bajo
+        # Interlineado compacto: body ~11 pt; spaceAfter mínimo entre renglones
+        after = 0.6
+        lead_extra = 1.5
+        field_after = 0.4  # F. Emisión / Cliente / Pagos… aún más ceñido
         font_r, font_b = TICKET_FONT, TICKET_FONT_BOLD
         mute = TICKET_INK  # sin gris: el impact lo desvanece o lo hace ilegible
     elif fmt == "A5":
         title_sz, body_sz, small_sz, tiny_sz = 12, 9, 8, 7
         after = 2.0
         lead_extra = 3.0
+        field_after = after
         font_r, font_b = "Helvetica", "Helvetica-Bold"
         mute = colors.HexColor("#334155")
     else:
         title_sz, body_sz, small_sz, tiny_sz = 14, 10, 9, 8
         after = 2.0
         lead_extra = 3.0
+        field_after = after
         font_r, font_b = "Helvetica", "Helvetica-Bold"
         mute = colors.HexColor("#334155")
+
+    field_lead = body_sz + (1.2 if fmt == "80mm" else lead_extra)
 
     return {
         "center_bold": ParagraphStyle(
@@ -298,7 +310,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             alignment=1,
             leading=title_sz + lead_extra,
             spaceBefore=0,
-            spaceAfter=after,
+            spaceAfter=after + (0.8 if fmt == "80mm" else 0),
             textColor=TICKET_INK if fmt == "80mm" else colors.black,
             wordWrap="CJK",
         ),
@@ -337,6 +349,20 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             textColor=TICKET_INK if fmt == "80mm" else colors.black,
             wordWrap="CJK",
         ),
+        # Bloques de datos en 1 renglón c/u (emisión, cliente, pagos, estado)
+        "field": ParagraphStyle(
+            "l_field",
+            fontName=font_r,
+            fontSize=body_sz,
+            alignment=0,
+            leading=field_lead,
+            spaceBefore=0,
+            spaceAfter=field_after,
+            leftIndent=0,
+            firstLineIndent=0,
+            textColor=TICKET_INK if fmt == "80mm" else colors.black,
+            wordWrap="CJK",
+        ),
         "left_bold": ParagraphStyle(
             "l_bold",
             fontName=font_b,
@@ -363,42 +389,53 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
         "total": ParagraphStyle(
             "total",
             fontName=font_b,
-            fontSize=body_sz + 1.5 if fmt != "80mm" else 11.5,
+            fontSize=body_sz + 1.5 if fmt != "80mm" else 11,
             alignment=0,
-            leading=(body_sz + 1.5 if fmt != "80mm" else 11.5) + lead_extra,
-            spaceAfter=after + 1,
+            leading=(body_sz + 1.5 if fmt != "80mm" else 11) + 1.2,
+            spaceAfter=after + 0.4,
             textColor=TICKET_INK if fmt == "80mm" else colors.black,
             wordWrap="CJK",
         ),
     }
 
 
-def _line(content_w: float, *, tight: bool = False) -> HRFlowable:
-    """Línea sólida gruesa: visible en matricial (dash fino se pierde)."""
-    before = 2.0 if tight else 3.2
-    after = 2.0 if tight else 3.2
+def _sep(content_w: float, *, tight: bool = False) -> HRFlowable:
+    """Separador de bloque: en 80mm siempre el mismo grosor y ancho completo."""
+    if tight:
+        return HRFlowable(
+            width=content_w,
+            thickness=_SEP_THICK_80,
+            color=TICKET_BLACK,
+            spaceBefore=_SEP_GAP_80,
+            spaceAfter=_SEP_GAP_80,
+            hAlign="LEFT",
+        )
     return HRFlowable(
         width=content_w,
-        thickness=1.1 if tight else 0.8,
-        color=TICKET_BLACK,
-        spaceBefore=before,
-        spaceAfter=after,
+        thickness=0.6,
+        color=colors.HexColor("#334155"),
+        spaceBefore=2.4,
+        spaceAfter=2.4,
         hAlign="LEFT",
     )
 
 
+def _line(content_w: float, *, tight: bool = False) -> HRFlowable:
+    """Alias histórico → mismo separador unificado."""
+    return _sep(content_w, tight=tight)
+
+
 def _dash(content_w: float, *, tight: bool = False) -> HRFlowable:
-    """Separador de secciones: en 80mm también sólido (no guiones)."""
-    before = 1.6 if tight else 2.2
-    after = 1.6 if tight else 2.2
+    """Alias histórico → mismo separador unificado (80mm sin dash fino)."""
+    if tight:
+        return _sep(content_w, tight=True)
     return HRFlowable(
         width=content_w,
-        thickness=0.9 if tight else 0.5,
-        color=TICKET_BLACK if tight else colors.HexColor("#334155"),
-        spaceBefore=before,
-        spaceAfter=after,
-        # No dash en 80mm: patrones (1,1.5) se desvanecen en TM-U220A
-        dash=None if tight else (1, 1.5),
+        thickness=0.5,
+        color=colors.HexColor("#334155"),
+        spaceBefore=2.2,
+        spaceAfter=2.2,
+        dash=(1, 1.5),
         hAlign="LEFT",
     )
 
@@ -459,32 +496,23 @@ def build_comprobante_story(
             dir_txt += f" · COP {profile.cop_registro}"
         story.append(_p(dir_txt, styles["center_small"]))
 
-    story.append(Spacer(1, 1.6 * mm if tight else 2.5 * mm))
-    story.append(_line(content_w, tight=tight))
-    story.append(Spacer(1, 1.2 * mm if tight else 1.8 * mm))
+    story.append(Spacer(1, 1.0 * mm if tight else 2.5 * mm))
+    story.append(_sep(content_w, tight=tight))
     story.append(_p("COMPROBANTE DE PAGO", styles["center_bold"]))
     story.append(_p(serie, styles["center_bold"]))
-    story.append(Spacer(1, 1.0 * mm if tight else 1.5 * mm))
-    story.append(_dash(content_w, tight=tight))
+    story.append(_sep(content_w, tight=tight))
 
-    story.append(
-        _p_html(f"<b>F. Emisión:</b> {_esc(f_emision)}", styles["left"])
-    )
-    story.append(
-        _p_html(f"<b>H. Emisión:</b> {_esc(h_emision)}", styles["left"])
-    )
-    story.append(_p_html(f"<b>Cliente:</b> {_esc(patient)}", styles["left"]))
-    story.append(_p_html(f"<b>Documento:</b> {_esc(doc_num)}", styles["left"]))
+    field = styles["field"]
+    story.append(_p_html(f"<b>F. Emisión:</b> {_esc(f_emision)}", field))
+    story.append(_p_html(f"<b>H. Emisión:</b> {_esc(h_emision)}", field))
+    story.append(_p_html(f"<b>Cliente:</b> {_esc(patient)}", field))
+    story.append(_p_html(f"<b>Documento:</b> {_esc(doc_num)}", field))
     if telefono:
-        story.append(
-            _p_html(f"<b>Teléfono:</b> {_esc(telefono)}", styles["left"])
-        )
+        story.append(_p_html(f"<b>Teléfono:</b> {_esc(telefono)}", field))
     if direccion and direccion != "—":
-        story.append(
-            _p_html(f"<b>Dirección:</b> {_esc(direccion)}", styles["left"])
-        )
+        story.append(_p_html(f"<b>Dirección:</b> {_esc(direccion)}", field))
 
-    story.append(_dash(content_w, tight=tight))
+    story.append(_sep(content_w, tight=tight))
 
     # --- Ítems ---
     # 80mm: tipografía + tamaño mínimo legible en impact (nunca < 8 pt)
@@ -511,12 +539,12 @@ def build_comprobante_story(
     drift = content_w - sum(col_widths)
     col_widths[1] += drift
 
-    lead_row = body_fs + 3.5 if fmt == "80mm" else body_fs + 2
+    lead_row = body_fs + 1.6 if fmt == "80mm" else body_fs + 2
     hdr_desc = ParagraphStyle(
         "tick_hdr_d",
         fontName=font_b,
         fontSize=header_fs,
-        leading=header_fs + 2,
+        leading=header_fs + 1.5,
         alignment=0,
         textColor=TICKET_INK,
     )
@@ -524,7 +552,7 @@ def build_comprobante_story(
         "tick_hdr_r",
         fontName=font_b,
         fontSize=header_fs,
-        leading=header_fs + 2,
+        leading=header_fs + 1.5,
         alignment=2,
         textColor=TICKET_INK,
     )
@@ -561,7 +589,7 @@ def build_comprobante_story(
         ],
     ]
     items_table = Table(item_rows, colWidths=col_widths, hAlign="LEFT")
-    pad = 2.0 if tight else 1.5
+    pad = 1.5 if tight else 1.5
     items_table.setStyle(
         TableStyle(
             [
@@ -575,65 +603,64 @@ def build_comprobante_story(
                 ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
                 ("LEFTPADDING", (0, 0), (-1, -1), pad),
                 ("RIGHTPADDING", (0, 0), (-1, -1), pad),
-                ("TOPPADDING", (0, 0), (-1, -1), 2.5 if tight else 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5 if tight else 2),
-                ("LINEBELOW", (0, 0), (-1, 0), 0.9 if tight else 0.4, TICKET_BLACK),
+                ("TOPPADDING", (0, 0), (-1, -1), 1.5 if tight else 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5 if tight else 2),
+                # Misma trama que _sep en 80mm
+                ("LINEBELOW", (0, 0), (-1, 0), _SEP_THICK_80 if tight else 0.4, TICKET_BLACK),
             ]
         )
     )
     story.append(items_table)
-    story.append(_dash(content_w, tight=tight))
+    story.append(_sep(content_w, tight=tight))
 
-    # --- Totales ---
+    # --- Totales y pagos (mismo estilo field = interlineado compacto) ---
     story.append(
         _p_html(
             f"<b>Total a pagar: {_esc(format_price_plain(monto))}</b>",
             styles["total"],
         )
     )
-    story.append(_p(f"Son: {monto_en_letras(monto)}", styles["left"]))
-    story.append(Spacer(1, 1.2 * mm))
-    story.append(_p_html("<b>Condición de pago:</b> Contado", styles["left"]))
-    story.append(_p_html("<b>Pagos:</b>", styles["left"]))
-    story.append(
-        _p(f"* {metodo} — {format_price_plain(monto)}", styles["left"])
-    )
+    story.append(_p(f"Son: {monto_en_letras(monto)}", field))
+    story.append(Spacer(1, 0.8 * mm if tight else 1.2 * mm))
+    story.append(_p_html("<b>Condición de pago:</b> Contado", field))
+    story.append(_p_html("<b>Pagos:</b>", field))
+    story.append(_p(f"* {metodo} — {format_price_plain(monto)}", field))
 
     t_costo = data.get("tratamiento_costo")
     t_ac = data.get("tratamiento_a_cuenta")
     t_saldo = data.get("tratamiento_saldo")
     if t_costo is not None and t_ac is not None and t_saldo is not None:
-        story.append(Spacer(1, 1.2 * mm))
-        story.append(_p_html("<b>Estado del tratamiento:</b>", styles["left"]))
+        story.append(Spacer(1, 0.8 * mm if tight else 1.2 * mm))
+        story.append(_p_html("<b>Estado del tratamiento:</b>", field))
+        story.append(_p(f"Costo: {format_price_plain(float(t_costo))}", field))
+        # Dos líneas cortas evitan "S/\n52.00" partido a media palabra en Courier
         story.append(
-            _p(f"Costo: {format_price_plain(float(t_costo))}", styles["left"])
+            _p(f"A cuenta: {format_price_plain(float(t_ac))}", field)
         )
         story.append(
-            _p(
-                f"A cuenta: {format_price_plain(float(t_ac))} · "
-                f"Saldo: {format_price_plain(float(t_saldo))}",
-                styles["left"],
-            )
+            _p(f"Saldo: {format_price_plain(float(t_saldo))}", field)
         )
         if float(t_saldo) > 0.009:
             story.append(
                 _p(
                     f"Pendiente por cobrar: {format_price_plain(float(t_saldo))}",
-                    styles["left"],
+                    field,
                 )
             )
 
-    story.append(_p_html(f"<b>Atendido por:</b> {_esc(vendedor)}", styles["left"]))
+    story.append(_p_html(f"<b>Atendido por:</b> {_esc(vendedor)}", field))
 
-    story.append(_dash(content_w, tight=tight))
-    story.append(_p("Código hash:", styles["left_bold"] if tight else styles["left"]))
+    story.append(_sep(content_w, tight=tight))
+    story.append(
+        _p("Código hash:", styles["left_bold"] if tight else styles["left"])
+    )
     story.append(_p(codigo_hash, styles["center_small"]))
-    story.append(Spacer(1, 1.8 * mm))
+    story.append(Spacer(1, 1.4 * mm if tight else 1.8 * mm))
 
     # QR más grande en 80mm: impact necesita módulos más anchos
     qr_size = 22 if fmt == "80mm" else 34
     story.append(_qr_image(qr_payload, size_mm=qr_size))
-    story.append(Spacer(1, 1.4 * mm))
+    story.append(Spacer(1, 1.2 * mm if tight else 1.4 * mm))
 
     story.append(
         _p(
@@ -644,7 +671,7 @@ def build_comprobante_story(
     story.append(_p("¡Gracias por su preferencia!", styles["center_small"]))
     # Pie de corte para rollo / matricial (aire al final)
     if tight:
-        story.append(Spacer(1, 3 * mm))
-        story.append(_line(content_w, tight=True))
+        story.append(Spacer(1, 2.5 * mm))
+        story.append(_sep(content_w, tight=True))
 
     return story

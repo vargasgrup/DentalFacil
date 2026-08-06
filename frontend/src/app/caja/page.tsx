@@ -1,25 +1,61 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { X } from "lucide-react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { AlertCircle, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { PageContainer } from "@/components/ui/PageContainer";
+import { StatCard } from "@/components/ui/Card";
 import { CashPageHeader } from "@/components/caja/CashPageHeader";
 import { OpenCashPanel } from "@/components/caja/OpenCashPanel";
 import { CloseCashConfirm } from "@/components/caja/CloseCashConfirm";
 import { CloseCashSummary } from "@/components/caja/CloseCashSummary";
 import { CashSessionDashboard } from "@/components/caja/CashSessionDashboard";
+import { CashDebtsPanel } from "@/components/caja/CashDebtsPanel";
 import { IncomeForm } from "@/components/caja/IncomeForm";
 import { ExpenseForm } from "@/components/caja/ExpenseForm";
 import { TransactionsTable } from "@/components/caja/TransactionsTable";
-import type { CashSession, CashTransaction, CloseSummary, PaymentTarget } from "@/components/caja/types";
+import type {
+  CashMovements,
+  CashPeriod,
+  CashSession,
+  CashTransaction,
+  CloseSummary,
+  DebtPatient,
+  DebtsOverview,
+  PaymentTarget,
+  SessionTotals,
+} from "@/components/caja/types";
 import { isAbonoConcepto, round2 } from "@/components/caja/utils";
 import type { PickedPatient } from "@/components/PatientPicker";
 import { useAppRefresh } from "@/hooks/useAppRefresh";
 
+function totalsFromTxs(
+  txs: CashTransaction[],
+  montoInicial = 0
+): SessionTotals {
+  const active = txs.filter((t) => !t.anulado);
+  const ingresos = active
+    .filter((t) => t.tipo === "ingreso")
+    .reduce((s, t) => s + t.monto, 0);
+  const egresos = active
+    .filter((t) => t.tipo === "egreso")
+    .reduce((s, t) => s + t.monto, 0);
+  const porMetodo: Record<string, number> = {};
+  for (const t of active) {
+    if (t.tipo !== "ingreso") continue;
+    porMetodo[t.metodo_pago] = (porMetodo[t.metodo_pago] || 0) + t.monto;
+  }
+  return {
+    ingresos,
+    egresos,
+    saldo: montoInicial + ingresos - egresos,
+    porMetodo,
+  };
+}
+
 export default function CajaPage() {
   const [session, setSession] = useState<CashSession | null>(null);
-  const [transactions, setTransactions] = useState<CashTransaction[]>([]);
+  const [sessionTxs, setSessionTxs] = useState<CashTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -30,7 +66,17 @@ export default function CajaPage() {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [closeSummary, setCloseSummary] = useState<CloseSummary | null>(null);
   const [lastReceipt, setLastReceipt] = useState<CashTransaction | null>(null);
-  const [tipoFilter, setTipoFilter] = useState<"todos" | "ingreso" | "egreso">("todos");
+  const [tipoFilter, setTipoFilter] = useState<"todos" | "ingreso" | "egreso">(
+    "todos"
+  );
+  const [period, setPeriod] = useState<CashPeriod>("hoy");
+  const periodInitRef = useRef(false);
+  const [historyTx, setHistoryTx] = useState<CashTransaction[]>([]);
+  const [periodIngresos, setPeriodIngresos] = useState(0);
+  const [periodEgresos, setPeriodEgresos] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [debts, setDebts] = useState<DebtsOverview | null>(null);
+  const [debtsLoading, setDebtsLoading] = useState(false);
 
   const [montoInicial, setMontoInicial] = useState("50");
   const [incomeConcepto, setIncomeConcepto] = useState("");
@@ -70,29 +116,48 @@ export default function CajaPage() {
     [incomeTotal, mixtoSuma]
   );
 
-  const totals = useMemo(() => {
-    const active = transactions.filter((t) => !t.anulado);
-    const ingresos = active
-      .filter((t) => t.tipo === "ingreso")
-      .reduce((s, t) => s + t.monto, 0);
-    const egresos = active
-      .filter((t) => t.tipo === "egreso")
-      .reduce((s, t) => s + t.monto, 0);
-    const saldo = (session?.monto_inicial || 0) + ingresos - egresos;
-    const porMetodo: Record<string, number> = {};
-    for (const t of active) {
-      if (t.tipo !== "ingreso") continue;
-      porMetodo[t.metodo_pago] = (porMetodo[t.metodo_pago] || 0) + t.monto;
-    }
-    return { ingresos, egresos, saldo, porMetodo };
-  }, [transactions, session]);
+  /** KPIs / cierre: always the open session, not the history filter. */
+  const sessionTotals = useMemo(
+    () => totalsFromTxs(sessionTxs, session?.monto_inicial || 0),
+    [sessionTxs, session]
+  );
 
   const filteredTx = useMemo(() => {
-    if (tipoFilter === "todos") return transactions;
-    return transactions.filter((t) => t.tipo === tipoFilter);
-  }, [transactions, tipoFilter]);
+    if (tipoFilter === "todos") return historyTx;
+    return historyTx.filter((t) => t.tipo === tipoFilter);
+  }, [historyTx, tipoFilter]);
 
-  const loadData = useCallback(async () => {
+  const loadDebts = useCallback(async () => {
+    setDebtsLoading(true);
+    try {
+      const data = await apiFetch<DebtsOverview>("/api/cash/deudas");
+      setDebts(data);
+    } catch {
+      setDebts(null);
+    } finally {
+      setDebtsLoading(false);
+    }
+  }, []);
+
+  const loadMovements = useCallback(async (p: CashPeriod) => {
+    setHistoryLoading(true);
+    try {
+      const data = await apiFetch<CashMovements>(
+        `/api/cash/movements?period=${encodeURIComponent(p)}&include_voided=true`
+      );
+      setHistoryTx(data.items || []);
+      setPeriodIngresos(data.ingresos || 0);
+      setPeriodEgresos(data.egresos || 0);
+    } catch {
+      setHistoryTx([]);
+      setPeriodIngresos(0);
+      setPeriodEgresos(0);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  const loadSession = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -100,9 +165,19 @@ export default function CajaPage() {
       setSession(s);
       if (s) {
         const txs = await apiFetch<CashTransaction[]>("/api/cash/transactions");
-        setTransactions(txs);
+        setSessionTxs(txs);
+        if (!periodInitRef.current) {
+          periodInitRef.current = true;
+          setPeriod("sesion");
+        }
       } else {
-        setTransactions([]);
+        setSessionTxs([]);
+        if (!periodInitRef.current) {
+          periodInitRef.current = true;
+          setPeriod("hoy");
+        } else {
+          setPeriod((prev) => (prev === "sesion" ? "hoy" : prev));
+        }
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error al cargar caja");
@@ -111,12 +186,21 @@ export default function CajaPage() {
     }
   }, []);
 
+  const loadData = useCallback(async () => {
+    await Promise.all([loadSession(), loadDebts()]);
+  }, [loadSession, loadDebts]);
+
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    void loadMovements(period);
+  }, [period, loadMovements]);
 
   useAppRefresh(() => {
     void loadData();
+    void loadMovements(period);
   });
 
   useEffect(() => {
@@ -134,7 +218,6 @@ export default function CajaPage() {
       .then((res) => {
         if (cancelled) return;
         setPaymentTargets(res.targets || []);
-        setPayTarget("auto");
       })
       .catch(() => {
         if (cancelled) return;
@@ -149,6 +232,12 @@ export default function CajaPage() {
     };
   }, [incomePatient?.id]);
 
+  const refreshAfterTx = async () => {
+    await loadData();
+    await loadMovements(period);
+    await loadDebts();
+  };
+
   const openCash = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -159,7 +248,10 @@ export default function CajaPage() {
         body: JSON.stringify({ monto_inicial: parseFloat(montoInicial) || 0 }),
       });
       setShowOpen(false);
+      periodInitRef.current = true;
+      setPeriod("sesion");
       await loadData();
+      await loadMovements("sesion");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "No se pudo abrir caja");
     } finally {
@@ -167,7 +259,10 @@ export default function CajaPage() {
     }
   };
 
-  const closeCash = async (payload: { monto_contado: number; notas?: string }) => {
+  const closeCash = async (payload: {
+    monto_contado: number;
+    notas?: string;
+  }) => {
     setSaving(true);
     setError("");
     try {
@@ -181,10 +276,13 @@ export default function CajaPage() {
       setCloseSummary(summary);
       setShowCloseConfirm(false);
       setSession(null);
-      setTransactions([]);
+      setSessionTxs([]);
       setLastReceipt(null);
       setShowIncome(false);
       setShowExpense(false);
+      setPeriod("hoy");
+      await loadDebts();
+      await loadMovements("hoy");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "No se pudo cerrar caja");
     } finally {
@@ -219,9 +317,11 @@ export default function CajaPage() {
         );
       }
       setLastReceipt(null);
-      await loadData();
+      await refreshAfterTx();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "No se pudo anular el movimiento");
+      setError(
+        err instanceof Error ? err.message : "No se pudo anular el movimiento"
+      );
     } finally {
       setSaving(false);
     }
@@ -239,6 +339,55 @@ export default function CajaPage() {
     setIncomePatient(null);
     setPaymentTargets([]);
     setPayTarget("auto");
+  };
+
+  const startCobrarFromDebt = (debt: DebtPatient, lineId?: string) => {
+    if (!session) {
+      setError("Abra la caja para registrar un cobro.");
+      return;
+    }
+    const nameParts = debt.patient_nombre.trim().split(/\s+/);
+    const apellidos =
+      nameParts.length > 1 ? nameParts.slice(-1).join(" ") : "";
+    const nombres =
+      nameParts.length > 1
+        ? nameParts.slice(0, -1).join(" ")
+        : debt.patient_nombre;
+    const fichaNum = Number(String(debt.ficha).replace(/\D/g, "")) || 0;
+    const patient: PickedPatient = {
+      id: debt.patient_id,
+      numero_ficha: fichaNum,
+      nombres,
+      apellidos,
+      telefono: debt.telefono || undefined,
+    };
+    const line = lineId
+      ? debt.lines.find((l) => l.evolution_entry_id === lineId)
+      : debt.lines[0];
+    setIncomePatient(patient);
+    setIncomeConcepto(
+      line
+        ? `Abono — ${line.label}${
+            line.pieza_fdi ? ` (pieza ${line.pieza_fdi})` : ""
+          }`
+        : "Abono a tratamiento"
+    );
+    setIncomeMonto(
+      String(
+        round2(line ? line.saldo : debt.saldo) > 0
+          ? round2(line ? line.saldo : debt.saldo)
+          : debt.saldo
+      )
+    );
+    if (line) {
+      setPayTarget(`evolution:${line.evolution_entry_id}`);
+    } else {
+      setPayTarget("auto");
+    }
+    setShowIncome(true);
+    setShowExpense(false);
+    setLastReceipt(null);
+    setError("");
   };
 
   const saveIncome = async (): Promise<CashTransaction | null> => {
@@ -333,28 +482,22 @@ export default function CajaPage() {
         patient_telefono: tx.patient_telefono || incomePatient?.telefono || null,
         patient_nombre:
           tx.patient_nombre ||
-          (incomePatient ? `${incomePatient.nombres} ${incomePatient.apellidos}` : null),
+          (incomePatient
+            ? `${incomePatient.nombres} ${incomePatient.apellidos}`
+            : null),
         pagos_parciales: tx.pagos_parciales || pagos_parciales || null,
       };
 
-      // Feedback: abono aplicado al plan/evolución
       const allocated = Number(tx.allocated_total ?? 0);
       if (incomePatient?.id && allocated <= 0.009 && paymentTargets.length > 0) {
         setError(
           "Cobro registrado en Caja, pero no se aplicó al plan/evolución. Elige un destino en «Aplicar a» o revisa que el ítem tenga saldo."
         );
-      } else if (
-        incomePatient?.id &&
-        typeof tx.saldo_pendiente_destino === "number" &&
-        tx.saldo_pendiente_destino > 0.009
-      ) {
-        setError("");
       }
 
       setLastReceipt(enriched);
-      await loadData();
+      await refreshAfterTx();
 
-      // Refrescar destinos (saldo restante) y avisar a la ficha clínica
       if (incomePatient?.id) {
         const saldoFromPay =
           typeof tx.saldo_pendiente_destino === "number"
@@ -370,7 +513,9 @@ export default function CajaPage() {
               (tx.evolution_entry_id &&
                 t.kind === "evolution" &&
                 t.id === tx.evolution_entry_id) ||
-              (tx.plan_item_ref && t.kind === "plan" && t.id === tx.plan_item_ref) ||
+              (tx.plan_item_ref &&
+                t.kind === "plan" &&
+                t.id === tx.plan_item_ref) ||
               (tx.allocations || []).some(
                 (a) => a.kind === t.kind && a.id === t.id
               )
@@ -403,7 +548,9 @@ export default function CajaPage() {
       }
       return enriched;
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "No se pudo registrar el ingreso");
+      setError(
+        err instanceof Error ? err.message : "No se pudo registrar el ingreso"
+      );
       return null;
     } finally {
       setSaving(false);
@@ -434,15 +581,17 @@ export default function CajaPage() {
       setExpenseConcepto("");
       setExpenseMonto("");
       setExpenseMetodo("efectivo");
-      await loadData();
+      await refreshAfterTx();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "No se pudo registrar el egreso");
+      setError(
+        err instanceof Error ? err.message : "No se pudo registrar el egreso"
+      );
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) {
+  if (loading && !session && !debts) {
     return (
       <PageContainer>
         <div className="skeleton h-8 w-32 rounded-lg" />
@@ -455,7 +604,9 @@ export default function CajaPage() {
     );
   }
 
-  const barMax = Math.max(totals.ingresos, totals.egresos, 1);
+  const barMax = Math.max(sessionTotals.ingresos, sessionTotals.egresos, 1);
+  const debtTotal = debts?.deuda_total ?? 0;
+  const debtPacientes = debts?.deuda_pacientes ?? 0;
 
   return (
     <PageContainer>
@@ -483,94 +634,146 @@ export default function CajaPage() {
       />
 
       {closeSummary && (
-        <CloseCashSummary summary={closeSummary} onDismiss={() => setCloseSummary(null)} />
+        <CloseCashSummary
+          summary={closeSummary}
+          onDismiss={() => setCloseSummary(null)}
+        />
       )}
 
       {showCloseConfirm && session && (
         <CloseCashConfirm
           session={session}
-          totals={totals}
+          totals={sessionTotals}
           saving={saving}
           onConfirm={(p) => void closeCash(p)}
           onCancel={() => setShowCloseConfirm(false)}
         />
       )}
 
-      {!session ? (
-        <OpenCashPanel
-          showOpen={showOpen}
-          montoInicial={montoInicial}
-          setMontoInicial={setMontoInicial}
-          saving={saving}
-          onOpen={openCash}
-          onShowOpen={() => setShowOpen(true)}
-          onCancelOpen={() => setShowOpen(false)}
-        />
-      ) : (
-        <div className="space-y-5">
-          <CashSessionDashboard session={session} totals={totals} barMax={barMax} />
-
-          {showIncome && (
-            <IncomeForm
-              incomePatient={incomePatient}
-              setIncomePatient={setIncomePatient}
-              incomeConcepto={incomeConcepto}
-              setIncomeConcepto={setIncomeConcepto}
-              incomeMonto={incomeMonto}
-              setIncomeMonto={setIncomeMonto}
-              incomeMetodo={incomeMetodo}
-              setIncomeMetodo={setIncomeMetodo}
-              incomeMixto={incomeMixto}
-              setIncomeMixto={setIncomeMixto}
-              incomePartes={incomePartes}
-              setIncomePartes={setIncomePartes}
-              payTarget={payTarget}
-              setPayTarget={setPayTarget}
-              paymentTargets={paymentTargets}
-              targetsLoading={targetsLoading}
-              incomeTotal={incomeTotal}
-              mixtoSuma={mixtoSuma}
-              mixtoDiff={mixtoDiff}
+      <div className="space-y-5">
+        {!session ? (
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <StatCard
+                icon={<AlertCircle className="h-5 w-5" />}
+                label="Deuda pendiente"
+                value={`S/ ${debtTotal.toFixed(2)}`}
+                subtext={
+                  debtPacientes === 0
+                    ? "Sin saldos por cobrar"
+                    : `${debtPacientes} ${
+                        debtPacientes === 1 ? "paciente" : "pacientes"
+                      } con saldo`
+                }
+                variant="warning"
+              />
+            </div>
+            <OpenCashPanel
+              showOpen={showOpen}
+              montoInicial={montoInicial}
+              setMontoInicial={setMontoInicial}
               saving={saving}
-              lastReceipt={lastReceipt}
-              setError={setError}
-              onSubmit={createIncome}
-              onClose={() => setShowIncome(false)}
-              onResetForm={resetIncomeForm}
-              onClearReceipt={() => {
-                setLastReceipt(null);
-              }}
+              onOpen={openCash}
+              onShowOpen={() => setShowOpen(true)}
+              onCancelOpen={() => setShowOpen(false)}
             />
-          )}
-
-          {showExpense && (
-            <ExpenseForm
-              expenseConcepto={expenseConcepto}
-              setExpenseConcepto={setExpenseConcepto}
-              expenseMonto={expenseMonto}
-              setExpenseMonto={setExpenseMonto}
-              expenseMetodo={expenseMetodo}
-              setExpenseMetodo={setExpenseMetodo}
-              saving={saving}
-              onSubmit={createExpense}
-              onClose={() => setShowExpense(false)}
-            />
-          )}
-
-          <TransactionsTable
-            transactions={transactions}
-            filteredTx={filteredTx}
-            tipoFilter={tipoFilter}
-            setTipoFilter={setTipoFilter}
-            onCobrar={() => {
-              setShowIncome(true);
-              setShowExpense(false);
-            }}
-            onVoid={(tx) => void voidTransaction(tx)}
-            voidingId={saving ? "busy" : null}
+          </>
+        ) : (
+          <CashSessionDashboard
+            session={session}
+            totals={sessionTotals}
+            barMax={barMax}
+            deudaTotal={debtTotal}
+            deudaPacientes={debtPacientes}
           />
-        </div>
-      )}
+        )}
+
+        <CashDebtsPanel
+          debts={debts}
+          loading={debtsLoading}
+          sessionOpen={Boolean(session)}
+          onCobrar={startCobrarFromDebt}
+        />
+
+        {session && showIncome && (
+          <IncomeForm
+            incomePatient={incomePatient}
+            setIncomePatient={setIncomePatient}
+            incomeConcepto={incomeConcepto}
+            setIncomeConcepto={setIncomeConcepto}
+            incomeMonto={incomeMonto}
+            setIncomeMonto={setIncomeMonto}
+            incomeMetodo={incomeMetodo}
+            setIncomeMetodo={setIncomeMetodo}
+            incomeMixto={incomeMixto}
+            setIncomeMixto={setIncomeMixto}
+            incomePartes={incomePartes}
+            setIncomePartes={setIncomePartes}
+            payTarget={payTarget}
+            setPayTarget={setPayTarget}
+            paymentTargets={paymentTargets}
+            targetsLoading={targetsLoading}
+            incomeTotal={incomeTotal}
+            mixtoSuma={mixtoSuma}
+            mixtoDiff={mixtoDiff}
+            saving={saving}
+            lastReceipt={lastReceipt}
+            setError={setError}
+            onSubmit={createIncome}
+            onClose={() => setShowIncome(false)}
+            onResetForm={resetIncomeForm}
+            onClearReceipt={() => {
+              setLastReceipt(null);
+            }}
+          />
+        )}
+
+        {session && showExpense && (
+          <ExpenseForm
+            expenseConcepto={expenseConcepto}
+            setExpenseConcepto={setExpenseConcepto}
+            expenseMonto={expenseMonto}
+            setExpenseMonto={setExpenseMonto}
+            expenseMetodo={expenseMetodo}
+            setExpenseMetodo={setExpenseMetodo}
+            saving={saving}
+            onSubmit={createExpense}
+            onClose={() => setShowExpense(false)}
+          />
+        )}
+
+        <TransactionsTable
+          transactions={historyTx}
+          filteredTx={filteredTx}
+          tipoFilter={tipoFilter}
+          setTipoFilter={setTipoFilter}
+          period={period}
+          setPeriod={(p) => {
+            if (p === "sesion" && !session) {
+              setError(
+                "No hay sesión abierta. Elija Hoy, Semana, Mes o Año para ver el historial."
+              );
+              return;
+            }
+            setPeriod(p);
+          }}
+          sessionOpen={Boolean(session)}
+          periodIngresos={periodIngresos}
+          periodEgresos={periodEgresos}
+          periodLoading={historyLoading}
+          onCobrar={() => {
+            if (!session) {
+              setError("Abra la caja para registrar un cobro.");
+              return;
+            }
+            setShowIncome(true);
+            setShowExpense(false);
+          }}
+          onVoid={(tx) => void voidTransaction(tx)}
+          voidingId={saving ? "busy" : null}
+          allowVoid={Boolean(session) && period === "sesion"}
+        />
+      </div>
     </PageContainer>
   );
 }

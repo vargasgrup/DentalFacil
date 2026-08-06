@@ -133,6 +133,42 @@ class CashTransactionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DebtLineOut(BaseModel):
+    evolution_entry_id: str
+    label: str
+    pieza_fdi: Optional[str] = None
+    costo: float
+    a_cuenta: float
+    saldo: float
+
+
+class DebtPatientOut(BaseModel):
+    patient_id: str
+    patient_nombre: str
+    initials: str
+    ficha: str
+    telefono: Optional[str] = None
+    saldo: float
+    lines: list[DebtLineOut] = Field(default_factory=list)
+
+
+class DebtsOverviewOut(BaseModel):
+    deuda_total: float
+    deuda_pacientes: int
+    items: list[DebtPatientOut]
+
+
+class CashMovementsOut(BaseModel):
+    period: str
+    start: Optional[datetime] = None
+    end: Optional[datetime] = None
+    session_id: Optional[str] = None
+    ingresos: float
+    egresos: float
+    neto: float
+    items: list[CashTransactionOut]
+
+
 class CashCloseSummary(BaseModel):
     session_id: str
     monto_inicial: float

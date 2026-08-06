@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownCircle, ArrowUpCircle, Scale } from "lucide-react";
+import { AlertCircle, ArrowDownCircle, ArrowUpCircle, Scale } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Card, StatCard } from "@/components/ui/Card";
 import { formatDateTime } from "@/lib/datetime";
@@ -11,21 +11,42 @@ interface CashSessionDashboardProps {
   session: CashSession;
   totals: SessionTotals;
   barMax: number;
+  deudaTotal?: number;
+  deudaPacientes?: number;
 }
 
-export function CashSessionDashboard({ session, totals, barMax }: CashSessionDashboardProps) {
+export function CashSessionDashboard({
+  session,
+  totals,
+  barMax,
+  deudaTotal = 0,
+  deudaPacientes = 0,
+}: CashSessionDashboardProps) {
   return (
     <>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          icon={<AlertCircle className="h-5 w-5" />}
+          label="Deuda pendiente"
+          value={`S/ ${deudaTotal.toFixed(2)}`}
+          subtext={
+            deudaPacientes === 0
+              ? "Sin saldos por cobrar"
+              : `${deudaPacientes} ${
+                  deudaPacientes === 1 ? "paciente" : "pacientes"
+                } con saldo`
+          }
+          variant="warning"
+        />
         <StatCard
           icon={<ArrowDownCircle className="h-5 w-5" />}
-          label="Total ingresos"
+          label="Ingresos (sesión)"
           value={`S/ ${totals.ingresos.toFixed(2)}`}
           variant="success"
         />
         <StatCard
           icon={<ArrowUpCircle className="h-5 w-5" />}
-          label="Total egresos"
+          label="Egresos (sesión)"
           value={`S/ ${totals.egresos.toFixed(2)}`}
           variant="warning"
         />

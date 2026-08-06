@@ -67,3 +67,41 @@ export interface SessionTotals {
   saldo: number;
   porMetodo: Record<string, number>;
 }
+
+export type CashPeriod = "sesion" | "hoy" | "semana" | "mes" | "anio";
+
+export interface DebtLine {
+  evolution_entry_id: string;
+  label: string;
+  pieza_fdi?: string | null;
+  costo: number;
+  a_cuenta: number;
+  saldo: number;
+}
+
+export interface DebtPatient {
+  patient_id: string;
+  patient_nombre: string;
+  initials: string;
+  ficha: string;
+  telefono?: string | null;
+  saldo: number;
+  lines: DebtLine[];
+}
+
+export interface DebtsOverview {
+  deuda_total: number;
+  deuda_pacientes: number;
+  items: DebtPatient[];
+}
+
+export interface CashMovements {
+  period: CashPeriod | string;
+  start?: string | null;
+  end?: string | null;
+  session_id?: string | null;
+  ingresos: number;
+  egresos: number;
+  neto: number;
+  items: CashTransaction[];
+}

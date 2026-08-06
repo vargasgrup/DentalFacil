@@ -25,7 +25,7 @@ export function CashPageHeader({
         { label: "Caja" },
       ]}
       title="Caja"
-      description="Cobros del día: registra, imprime o envía el comprobante en un par de clics."
+      description="Cobros, deudas pendientes y movimientos (sesión, día, semana, mes o año)."
       actions={
         session ? (
           <>

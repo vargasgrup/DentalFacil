@@ -10,14 +10,17 @@ from app.db_prefetch import prefetch_patients
 from app.models import CashSession, CashTransaction, Patient, User
 from app.schemas.cash import (
     CashCloseSummary,
+    CashMovementsOut,
     CashSessionClose,
     CashSessionOpen,
     CashSessionOut,
     CashTransactionCreate,
     CashTransactionOut,
     CashTransactionVoid,
+    DebtsOverviewOut,
 )
 from app.services.patient_access import get_active_patient_or_404
+from app.services.cash_overview import list_cash_movements, list_pending_debts
 
 router = APIRouter(prefix="/api/cash", tags=["cash"])
 
@@ -406,6 +409,54 @@ def list_transactions(
         .all()
     )
     return _txs_to_out(db, txs)
+
+
+@router.get("/deudas", response_model=DebtsOverviewOut)
+def cash_pending_debts(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_module("caja")),
+):
+    """Saldos clínicos por paciente (misma fuente que Dashboard · Deuda pendiente)."""
+    data = list_pending_debts(db, limit=200)
+    return DebtsOverviewOut(**data)
+
+
+@router.get("/movements", response_model=CashMovementsOut)
+def cash_movements(
+    period: str = "hoy",
+    tipo: str | None = None,
+    include_voided: bool = True,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_module("caja")),
+):
+    """Movimientos consolidados: sesión abierta, hoy, semana, mes o año."""
+    allowed = {"sesion", "hoy", "semana", "mes", "anio"}
+    p = (period or "hoy").strip().lower()
+    if p not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"period inválido. Use: {', '.join(sorted(allowed))}",
+        )
+    if tipo and tipo not in ("ingreso", "egreso", "todos"):
+        raise HTTPException(status_code=400, detail="tipo debe ser ingreso, egreso o todos")
+    tipo_f = None if not tipo or tipo == "todos" else tipo
+    raw = list_cash_movements(
+        db,
+        period=p,  # type: ignore[arg-type]
+        tipo=tipo_f,
+        include_voided=include_voided,
+    )
+    items = _txs_to_out(db, raw["items"])
+    return CashMovementsOut(
+        period=raw["period"],
+        start=raw["start"],
+        end=raw["end"],
+        session_id=raw["session_id"],
+        ingresos=raw["ingresos"],
+        egresos=raw["egresos"],
+        neto=raw["neto"],
+        items=items,
+    )
 
 
 @router.get("/transactions/patient/{patient_id}", response_model=list[CashTransactionOut])

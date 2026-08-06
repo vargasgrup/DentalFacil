@@ -227,3 +227,91 @@ def test_cash_pago_mixto_splits_by_method_for_audit(
     assert summary["por_metodo"]["yape"] == 80.0
     assert summary["total_esperado"] == 200.0  # 100 initial + 100
     assert summary["diferencia"] == 0.0
+
+
+def test_cash_deudas_and_period_movements(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    patient: dict,
+    open_cash_session: dict,
+):
+    """Caja debe listar deudas clínicas y movimientos por período."""
+    plan = {
+        "active_id": "plan_a",
+        "alternatives": [
+            {
+                "id": "plan_a",
+                "nombre": "Plan A",
+                "items": [
+                    {
+                        "id": "pi_deuda_caja1",
+                        "item": "Corona metal-porcelana",
+                        "pieza_fdi": "12",
+                        "cantidad": 1,
+                        "costo_unitario": 450,
+                        "a_cuenta": 0,
+                        "estado": "pendiente",
+                        "origen": "manual",
+                    }
+                ],
+            }
+        ],
+    }
+    rec = client.patch(
+        f"/api/clinical/{patient['id']}/record",
+        headers=admin_headers,
+        json={"plan_tratamiento": plan},
+    )
+    assert rec.status_code == 200, rec.text
+    evo_id = rec.json()["plan_tratamiento"]["alternatives"][0]["items"][0][
+        "evolution_entry_id"
+    ]
+    assert evo_id
+
+    deudas = client.get("/api/cash/deudas", headers=admin_headers)
+    assert deudas.status_code == 200, deudas.text
+    body = deudas.json()
+    assert body["deuda_pacientes"] >= 1
+    assert body["deuda_total"] >= 450.0
+    match = next(d for d in body["items"] if d["patient_id"] == patient["id"])
+    assert match["saldo"] >= 450.0
+    assert any(line["evolution_entry_id"] == evo_id for line in match["lines"])
+
+    pay = client.post(
+        "/api/cash/transactions",
+        headers=admin_headers,
+        json={
+            "patient_id": patient["id"],
+            "tipo": "ingreso",
+            "concepto": "Abono — Corona metal-porcelana (pieza 12)",
+            "monto": 130.0,
+            "metodo_pago": "efectivo",
+            "allocate": True,
+            "evolution_entry_id": evo_id,
+        },
+    )
+    assert pay.status_code == 201, pay.text
+
+    mov_sesion = client.get(
+        "/api/cash/movements?period=sesion", headers=admin_headers
+    )
+    assert mov_sesion.status_code == 200, mov_sesion.text
+    ms = mov_sesion.json()
+    assert ms["period"] == "sesion"
+    assert ms["ingresos"] == 130.0
+    assert any(t["id"] == pay.json()["id"] for t in ms["items"])
+
+    for p in ("hoy", "semana", "mes", "anio"):
+        r = client.get(f"/api/cash/movements?period={p}", headers=admin_headers)
+        assert r.status_code == 200, r.text
+        assert r.json()["ingresos"] >= 130.0
+
+    bad = client.get("/api/cash/movements?period=xxx", headers=admin_headers)
+    assert bad.status_code == 400
+
+    deudas2 = client.get("/api/cash/deudas", headers=admin_headers)
+    assert deudas2.status_code == 200
+    m2 = next(
+        d for d in deudas2.json()["items"] if d["patient_id"] == patient["id"]
+    )
+    assert abs(m2["saldo"] - 320.0) < 0.02

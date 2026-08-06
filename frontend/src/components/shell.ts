@@ -23,3 +23,5 @@ export const SHELL_SIDEBAR_BRAND_CLASS = [
 
 /** Desktop/tablet sidebar rail width (keep in sync with AppShell padding). */
 export const SHELL_SIDEBAR_WIDTH = "w-64";
+/** Icon-only collapsed rail */
+export const SHELL_SIDEBAR_COLLAPSED_WIDTH = "w-[4.5rem]";

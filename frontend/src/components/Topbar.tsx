@@ -14,6 +14,9 @@ import {
   Menu,
   MessageCircle,
   RefreshCw,
+  PanelLeft,
+  Rows2,
+  Rows3,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
@@ -27,6 +30,8 @@ import { formatFichaCode } from "@/lib/ficha";
 import { SHELL_TOPBAR_CLASS } from "./shell";
 import { useRealtimeSync, type RealtimeStatus } from "@/hooks/useRealtimeSync";
 import { isLanDesktopRuntime } from "@/lib/runtimeMode";
+import { useUiPreferences } from "@/lib/uiPreferences";
+import type { SidebarMode } from "./SidebarContext";
 
 function realtimeLabel(status: RealtimeStatus): {
   text: string;
@@ -78,7 +83,16 @@ const CTRL = "h-9";
 const ICON_BTN =
   `inline-flex ${CTRL} w-9 items-center justify-center rounded-xl border border-transparent text-slate-500 transition-smooth hover:border-slate-200/80 hover:bg-white hover:text-slate-800 hover:shadow-sm`;
 
-export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
+export function Topbar({
+  onMenuClick,
+  onSidebarModeClick,
+  sidebarMode,
+}: {
+  onMenuClick?: () => void;
+  onSidebarModeClick?: () => void;
+  sidebarMode?: SidebarMode;
+}) {
+  const { density, setDensity } = useUiPreferences();
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout } = useAuth();
@@ -212,6 +226,45 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           <span className="hidden min-[400px]:inline pr-0.5">Menú</span>
         </button>
       )}
+
+      {onSidebarModeClick && (
+        <button
+          type="button"
+          onClick={onSidebarModeClick}
+          className={`${ICON_BTN} hidden md:inline-flex`}
+          title={
+            sidebarMode === "expanded"
+              ? "Compactar barra lateral"
+              : sidebarMode === "collapsed"
+                ? "Modo flotante (más espacio)"
+                : "Expandir barra lateral"
+          }
+          aria-label="Cambiar modo de barra lateral"
+        >
+          <PanelLeft className="h-4 w-4" aria-hidden />
+        </button>
+      )}
+
+      <button
+        type="button"
+        onClick={() =>
+          setDensity(density === "compact" ? "comfortable" : "compact")
+        }
+        className={`${ICON_BTN} hidden sm:inline-flex`}
+        title={
+          density === "compact"
+            ? "Densidad: compacta (clic para cómoda)"
+            : "Densidad: cómoda (clic para compacta)"
+        }
+        aria-label="Alternar densidad de interfaz"
+        aria-pressed={density === "compact"}
+      >
+        {density === "compact" ? (
+          <Rows2 className="h-4 w-4" aria-hidden />
+        ) : (
+          <Rows3 className="h-4 w-4" aria-hidden />
+        )}
+      </button>
 
       {/* Command search */}
       <div ref={searchRef} className="relative min-w-0 max-w-xl flex-1">

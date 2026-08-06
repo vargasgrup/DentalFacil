@@ -5,6 +5,13 @@
 /* CSS vars mirror DESIGN.md / Tailwind tokens for non-Tailwind consumers */
 :root {
   --font-sans: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
+  --font-scale: 1;
+  --spacing-unit: 1rem;
+  --row-height: 2.75rem;
+  --font-size-base: 1rem;
+  --main-pad-x: 1.5rem;
+  --main-pad-y: 1.5rem;
+  --motion-duration: 180ms;
   --bg: #f8fafc;
   --surface1: #ffffff;
   --surface2: #f1f5f9;
@@ -20,14 +27,73 @@
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
   --shadow-md: 0 4px 8px -2px rgba(15, 23, 42, 0.08);
   --r-container: 0.75rem;
+  /* Breakpoint references (documentados):
+     mobile <640 · tablet 640–1024 · desktop 1024–1920 · ultrawide >1920 */
+}
+
+html[data-density="compact"] {
+  --spacing-unit: 0.65rem;
+  --row-height: 2.25rem;
+  --font-size-base: 0.9375rem;
+  --main-pad-x: 0.75rem;
+  --main-pad-y: 0.75rem;
+}
+
+html[data-density="comfortable"] {
+  --spacing-unit: 1rem;
+  --row-height: 2.75rem;
+  --font-size-base: 1rem;
+  --main-pad-x: 1.5rem;
+  --main-pad-y: 1.5rem;
+}
+
+html[data-reduced-motion="on"] {
+  --motion-duration: 0.01ms;
 }
 
 html,
 body {
   @apply bg-surface-muted text-slate-800 antialiased;
   font-family: var(--font-sans);
+  font-size: calc(var(--font-size-base) * var(--font-scale, 1));
   letter-spacing: 0.01em;
   line-height: 1.55;
+}
+
+/* Layout de contenido principal (AppShell) */
+.app-main {
+  padding-left: var(--main-pad-x);
+  padding-right: var(--main-pad-x);
+  padding-top: var(--main-pad-y);
+  padding-bottom: calc(var(--main-pad-y) + 4rem);
+}
+
+@media (min-width: 640px) {
+  html[data-density="comfortable"] {
+    --main-pad-x: 1.5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .app-main {
+    padding-bottom: var(--main-pad-y);
+  }
+}
+
+/* Densidad en tablas de alto volumen */
+html[data-density="compact"] table td,
+html[data-density="compact"] table th {
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+html[data-density="compact"] .space-y-6 {
+  --tw-space-y-reverse: 0;
+}
+
+.transition-smooth {
+  transition-duration: var(--motion-duration, 180ms);
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 h1,
@@ -93,7 +159,8 @@ html {
   animation: shimmer 1.5s infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
+@media (prefers-reduced-motion: reduce),
+  html[data-reduced-motion="on"] {
   *,
   *::before,
   *::after {

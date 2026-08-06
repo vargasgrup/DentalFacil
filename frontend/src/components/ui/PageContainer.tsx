@@ -3,9 +3,9 @@ import { HTMLAttributes, ReactNode } from "react";
 type PageWidth = "full" | "wide" | "default" | "narrow";
 
 const widths: Record<PageWidth, string> = {
-  /** Lista / dashboard / agenda / caja */
-  full: "max-w-5xl xl:max-w-7xl",
-  wide: "max-w-6xl",
+  /** Lista / dashboard / agenda / caja — tope ultrawide */
+  full: "max-w-5xl xl:max-w-7xl 2xl:max-w-[90rem] min-[1921px]:max-w-[100rem]",
+  wide: "max-w-6xl min-[1921px]:max-w-7xl",
   /** Configuración */
   default: "max-w-4xl",
   /** Reportes */

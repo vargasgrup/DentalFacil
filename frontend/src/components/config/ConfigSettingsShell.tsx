@@ -11,6 +11,7 @@ import {
   Cloud,
   Clock,
   KeyRound,
+  Monitor,
   Search,
   Tag,
   User,
@@ -29,7 +30,8 @@ export type ConfigSectionId =
   | "especialidades"
   | "recordatorios"
   | "equipos"
-  | "respaldo";
+  | "respaldo"
+  | "interfaz";
 
 type NavItem = {
   id: ConfigSectionId;
@@ -128,6 +130,13 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Sistema",
     items: [
+      {
+        id: "interfaz",
+        label: "Interfaz y densidad",
+        icon: Monitor,
+        description:
+          "Densidad de tablas, modo de barra lateral y preferencias locales de este equipo.",
+      },
       {
         id: "respaldo",
         label: "Respaldo y Migración",

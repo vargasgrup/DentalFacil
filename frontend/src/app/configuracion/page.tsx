@@ -18,6 +18,7 @@ import { UsersAdminPanel } from "@/components/config/UsersAdminPanel";
 import { BackupMigrationPanel } from "@/components/config/BackupMigrationPanel";
 import { PasswordResetRequestsPanel } from "@/components/config/PasswordResetRequestsPanel";
 import { ConnectedClientsPanel } from "@/components/config/ConnectedClientsPanel";
+import { UiAppearancePanel } from "@/components/config/UiAppearancePanel";
 import {
   ConfigSettingsShell,
   type ConfigSectionId,
@@ -608,6 +609,8 @@ export default function ConfiguracionPage() {
             onSubmit={saveReminderConfig}
           />
         );
+      case "interfaz":
+        return <UiAppearancePanel />;
       case "equipos":
         return isAdmin ? <ConnectedClientsPanel /> : null;
       case "usuarios":

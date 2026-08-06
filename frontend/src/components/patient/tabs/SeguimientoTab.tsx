@@ -22,7 +22,6 @@ import type {
   EvolutionEntry,
   FinancialSummary,
   Patient,
-  PaymentTarget,
   PaymentTx,
 } from "../types";
 
@@ -55,22 +54,6 @@ export interface SeguimientoTabProps {
     entryId: string,
     patch: Record<string, string | number | null>
   ) => Promise<void>;
-  showPayment: boolean;
-  openPaymentForm: () => Promise<void>;
-  payMonto: string;
-  setPayMonto: (v: string) => void;
-  payConcepto: string;
-  setPayConcepto: (v: string) => void;
-  payMetodo: string;
-  setPayMetodo: (v: string) => void;
-  payTarget: string;
-  setPayTarget: (v: string) => void;
-  paymentTargets: PaymentTarget[];
-  paySaving: boolean;
-  payError: string;
-  payInfo: string;
-  cashOpen: boolean | null;
-  registerPayment: (e: React.FormEvent) => Promise<void>;
   saveRecord: () => Promise<void>;
   onNavigate: (path: string) => void;
 }
@@ -93,22 +76,6 @@ export function SeguimientoTab({
   deleteEvolution,
   updateEvolutionEstado,
   updateEvolutionField,
-  showPayment,
-  openPaymentForm,
-  payMonto,
-  setPayMonto,
-  payConcepto,
-  setPayConcepto,
-  payMetodo,
-  setPayMetodo,
-  payTarget,
-  setPayTarget,
-  paymentTargets,
-  paySaving,
-  payError,
-  payInfo,
-  cashOpen,
-  registerPayment,
   saveRecord,
   onNavigate,
 }: SeguimientoTabProps) {
@@ -399,8 +366,9 @@ export function SeguimientoTab({
             <MoneyCard label="Saldo" value={financial?.saldo} tone="warning" />
           </div>
           <p className="mt-2 text-help text-slate-500">
-            El pago se registra en Caja y se asigna a Evolución / Plan (A cuenta y Saldo) en
-            el mismo acto. Costo oficial = evolución · Pagado oficial = caja.
+            Los cobros se registran únicamente en el módulo <strong>Caja</strong>.
+            Aquí se muestra el saldo clínico y el historial de pagos aplicados al
+            paciente. Costo oficial = evolución · Pagado oficial = caja.
             {typeof financial?.a_cuenta_clinico === "number" && (
               <>
                 {" "}
@@ -416,136 +384,26 @@ export function SeguimientoTab({
               </>
             )}
           </p>
-          <div className="mt-3 flex justify-end">
+          <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
             {canAccessModule(user, "caja") ? (
               <Button
                 variant="secondary"
-                onClick={openPaymentForm}
+                onClick={() => onNavigate("/caja")}
                 disabled={inactive}
-                title={inactive ? "Paciente inactivo — solo lectura" : undefined}
-                icon={!showPayment ? <Plus className="h-4 w-4" /> : undefined}
+                title={
+                  inactive
+                    ? "Paciente inactivo — solo lectura"
+                    : "Ir a Caja para registrar un cobro"
+                }
               >
-                {showPayment ? "Cancelar" : "Registrar pago"}
+                Ir a Caja (cobrar)
               </Button>
             ) : (
               <p className="text-help text-slate-400">
-                El cobro requiere acceso al módulo Caja.
+                Cobros solo en módulo Caja (sin permiso de cobro).
               </p>
             )}
           </div>
-          {canAccessModule(user, "caja") && showPayment && (
-            <form
-              onSubmit={registerPayment}
-              className="mt-3 space-y-3 rounded-card border border-slate-200 bg-white p-4"
-            >
-              <h3 className="font-medium text-slate-700">Registrar pago</h3>
-              <p className="text-help text-slate-400">
-                {cashOpen === false
-                  ? "No hay caja abierta: al registrar se abrirá automáticamente (monto inicial S/ 0)."
-                  : cashOpen === true
-                    ? "Caja abierta. El monto entra a Caja y actualiza A cuenta / Saldo del destino clínico."
-                    : "El monto entra a Caja y actualiza A cuenta / Saldo (FIFO automático o línea elegida). Si la caja está cerrada, se abrirá al registrar."}
-              </p>
-              {payError && (
-                <p
-                  role="alert"
-                  className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-800"
-                >
-                  {payError}
-                </p>
-              )}
-              {payInfo && !payError && (
-                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                  {payInfo}
-                </p>
-              )}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <Input
-                  label="Monto (S/)"
-                  type="number"
-                  step="0.01"
-                  min={0.01}
-                  value={payMonto}
-                  onChange={(e) => setPayMonto(e.target.value)}
-                  required
-                  disabled={paySaving}
-                />
-                <label className="block sm:col-span-1 lg:col-span-1">
-                  <span className="mb-1 block text-label text-slate-700">
-                    Aplicar a
-                  </span>
-                  <select
-                    value={payTarget}
-                    disabled={paySaving}
-                    onChange={(e) => {
-                      setPayTarget(e.target.value);
-                      const t = paymentTargets.find(
-                        (x) => `${x.kind}:${x.id}` === e.target.value
-                      );
-                      if (t && !payConcepto) {
-                        setPayConcepto(
-                          `Abono — ${t.label}${
-                            t.pieza_fdi ? ` (pieza ${t.pieza_fdi})` : ""
-                          }`
-                        );
-                      }
-                      if (t && !payMonto) {
-                        setPayMonto(String(t.saldo));
-                      }
-                    }}
-                    className={FIELD_CLASS}
-                  >
-                    <option value="auto">
-                      Automático (FIFO — saldos abiertos)
-                    </option>
-                    {paymentTargets.map((t) => (
-                      <option key={`${t.kind}:${t.id}`} value={`${t.kind}:${t.id}`}>
-                        {t.kind === "evolution" ? "Evolución" : "Plan"}: {t.label}
-                        {t.pieza_fdi ? ` · pieza ${t.pieza_fdi}` : ""} — saldo S/{" "}
-                        {t.saldo.toFixed(2)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <TreatmentAutocomplete
-                  label="Concepto"
-                  value={payConcepto}
-                  onChange={setPayConcepto}
-                  onSelect={(t) => {
-                    setPayConcepto(t.nombre);
-                    if (!payMonto && t.precio_referencial) {
-                      setPayMonto(String(t.precio_referencial));
-                    }
-                  }}
-                  placeholder="Abono, cuota ortodoncia…"
-                />
-                <label className="block">
-                  <span className="mb-1 block text-label text-slate-700">Método</span>
-                  <select
-                    value={payMetodo}
-                    disabled={paySaving}
-                    onChange={(e) => setPayMetodo(e.target.value)}
-                    className={FIELD_CLASS}
-                  >
-                    <option value="efectivo">Efectivo</option>
-                    <option value="tarjeta">Tarjeta</option>
-                    <option value="transferencia">Transferencia</option>
-                    <option value="yape">Yape</option>
-                    <option value="plin">Plin</option>
-                  </select>
-                </label>
-              </div>
-              {paymentTargets.length === 0 && (
-                <p className="text-help text-warning-700">
-                  No hay líneas con saldo en plan/evolución. El pago quedará en Caja como
-                  abono del paciente (podrás asignarlo cuando existan costos).
-                </p>
-              )}
-              <Button type="submit" loading={paySaving} disabled={paySaving}>
-                {paySaving ? "Registrando…" : "Registrar"}
-              </Button>
-            </form>
-          )}
 
           {payments.length > 0 && (
             <div className="mt-5">

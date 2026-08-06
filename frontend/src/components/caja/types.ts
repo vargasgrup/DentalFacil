@@ -17,6 +17,9 @@ export interface CashTransaction {
   grupo_pago_id?: string | null;
   plan_item_ref?: string | null;
   evolution_entry_id?: string | null;
+  anulado?: boolean;
+  anulado_en?: string | null;
+  anulacion_motivo?: string | null;
   created_at: string;
   allocated_total?: number | null;
   unallocated_amount?: number | null;
@@ -51,6 +54,9 @@ export interface CloseSummary {
   egresos: number;
   neto: number;
   total_esperado: number;
+  monto_contado: number;
+  diferencia: number;
+  cierre_notas?: string | null;
   por_metodo: Record<string, number>;
   monto_final: number;
 }

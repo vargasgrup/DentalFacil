@@ -35,12 +35,13 @@ class AllocationError(ValueError):
 
 
 def _cash_paid_evolution(db: Session, evolution_entry_id: str) -> float:
-    """Σ ingresos de Caja vinculados a esta línea de evolución."""
+    """Σ ingresos de Caja no anulados vinculados a esta línea de evolución."""
     total = (
         db.query(func.coalesce(func.sum(CashTransaction.monto), 0))
         .filter(
             CashTransaction.evolution_entry_id == evolution_entry_id,
             CashTransaction.tipo == "ingreso",
+            CashTransaction.anulado.is_(False),
         )
         .scalar()
     )
@@ -48,7 +49,7 @@ def _cash_paid_evolution(db: Session, evolution_entry_id: str) -> float:
 
 
 def _cash_paid_plan_item(db: Session, patient_id: str, plan_item_id: str) -> float:
-    """Σ ingresos de Caja con plan_item_ref o evolución ligada al ítem."""
+    """Σ ingresos de Caja no anulados con plan_item_ref o evolución ligada al ítem."""
     evo_ids = [
         r[0]
         for r in db.query(ClinicalEvolutionEntry.id)
@@ -61,6 +62,7 @@ def _cash_paid_plan_item(db: Session, patient_id: str, plan_item_id: str) -> flo
     q = db.query(func.coalesce(func.sum(CashTransaction.monto), 0)).filter(
         CashTransaction.patient_id == patient_id,
         CashTransaction.tipo == "ingreso",
+        CashTransaction.anulado.is_(False),
         CashTransaction.plan_item_ref == plan_item_id,
     )
     by_ref = float(q.scalar() or 0)
@@ -71,22 +73,21 @@ def _cash_paid_plan_item(db: Session, patient_id: str, plan_item_id: str) -> flo
             .filter(
                 CashTransaction.evolution_entry_id.in_(evo_ids),
                 CashTransaction.tipo == "ingreso",
+                CashTransaction.anulado.is_(False),
             )
             .scalar()
             or 0
         )
     # Evitar doble conteo: un mismo cobro puede tener ambos refs
-    # Preferimos el máximo coherente (misma magnitud típica)
     if by_ref > 0 and by_evo > 0:
-        # Si los montos son casi iguales, es el mismo conjunto de filas
         if abs(by_ref - by_evo) < 0.02:
             return round(by_ref, 2)
-        # Si hay overlap parcial, usar la suma de txs únicas
         rows = (
             db.query(CashTransaction.monto, CashTransaction.id)
             .filter(
                 CashTransaction.patient_id == patient_id,
                 CashTransaction.tipo == "ingreso",
+                CashTransaction.anulado.is_(False),
                 (
                     (CashTransaction.plan_item_ref == plan_item_id)
                     | (CashTransaction.evolution_entry_id.in_(evo_ids))
@@ -108,13 +109,31 @@ def _cash_paid_plan_item(db: Session, patient_id: str, plan_item_id: str) -> flo
 def sync_evolution_a_cuenta_from_cash(
     db: Session, entry: ClinicalEvolutionEntry
 ) -> float:
-    """Alinea a_cuenta con Caja (nunca baja lo ya cobrado). Retorna a_cuenta efectivo."""
+    """Alinea a_cuenta con Caja. Si hay cobros (activos o anulados), Σ cash es autoridad."""
     paid_cash = _cash_paid_evolution(db, entry.id)
     current = float(entry.a_cuenta or 0)
     costo = float(entry.costo or 0)
-    effective = round(min(costo, max(current, paid_cash)), 2) if costo > 0 else round(
-        max(current, paid_cash), 2
+    has_cash_history = (
+        db.query(CashTransaction.id)
+        .filter(
+            CashTransaction.evolution_entry_id == entry.id,
+            CashTransaction.tipo == "ingreso",
+        )
+        .first()
+        is not None
     )
+    if has_cash_history:
+        # Incluye anulaciones: bajar a_cuenta al valor real cobrado
+        effective = (
+            round(min(costo, paid_cash), 2) if costo > 0 else round(paid_cash, 2)
+        )
+    else:
+        # Migración / a_cuenta manual sin movimientos de caja
+        effective = (
+            round(min(costo, max(current, paid_cash)), 2)
+            if costo > 0
+            else round(max(current, paid_cash), 2)
+        )
     if abs(effective - current) > 0.009:
         entry.a_cuenta = effective
     return effective

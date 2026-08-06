@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_module
@@ -9,14 +10,34 @@ from app.db_prefetch import prefetch_patients
 from app.models import CashSession, CashTransaction, Patient, User
 from app.schemas.cash import (
     CashCloseSummary,
+    CashSessionClose,
     CashSessionOpen,
     CashSessionOut,
     CashTransactionCreate,
     CashTransactionOut,
+    CashTransactionVoid,
 )
 from app.services.patient_access import get_active_patient_or_404
 
 router = APIRouter(prefix="/api/cash", tags=["cash"])
+
+
+def _patient_whatsapp_phone(patient: Patient | None) -> str | None:
+    if not patient:
+        return None
+    own = "".join(c for c in (patient.telefono or "") if c.isdigit())
+    if len(own) >= 9:
+        return patient.telefono
+    tutor = "".join(
+        c for c in (getattr(patient, "telefono_responsable", None) or "") if c.isdigit()
+    )
+    if len(tutor) >= 9:
+        return patient.telefono_responsable  # type: ignore[attr-defined]
+    return patient.telefono or getattr(patient, "telefono_responsable", None) or None
+
+
+def _is_active_tx(tx: CashTransaction) -> bool:
+    return not bool(getattr(tx, "anulado", False))
 
 
 def _tx_to_out(
@@ -37,7 +58,7 @@ def _tx_to_out(
         cash_session_id=tx.cash_session_id,
         patient_id=tx.patient_id,
         patient_nombre=f"{patient.nombres} {patient.apellidos}" if patient else None,
-        patient_telefono=patient.telefono if patient else None,
+        patient_telefono=_patient_whatsapp_phone(patient),
         tipo=tx.tipo,
         concepto=tx.concepto,
         monto=float(tx.monto),
@@ -46,6 +67,9 @@ def _tx_to_out(
         plan_item_ref=getattr(tx, "plan_item_ref", None),
         pieza_fdi=getattr(tx, "pieza_fdi", None),
         evolution_entry_id=getattr(tx, "evolution_entry_id", None),
+        anulado=bool(getattr(tx, "anulado", False)),
+        anulado_en=getattr(tx, "anulado_en", None),
+        anulacion_motivo=getattr(tx, "anulacion_motivo", None),
         created_at=tx.created_at,
         allocated_total=allocated_total,
         unallocated_amount=unallocated_amount,
@@ -56,7 +80,6 @@ def _tx_to_out(
 
 
 def _txs_to_out(db: Session, txs: list[CashTransaction]) -> list[CashTransactionOut]:
-    """Serializa transacciones con prefetch de pacientes (evita N+1)."""
     patients = prefetch_patients(db, (t.patient_id for t in txs))
     return [
         _tx_to_out(t, patient=patients.get(t.patient_id) if t.patient_id else None)
@@ -72,11 +95,6 @@ def _run_clinical_allocation(
     evolution_entry_id: str | None,
     plan_item_ref: str | None,
 ) -> tuple[float, float, list[dict], float | None]:
-    """Apply ingreso to plan/evolución. Raises HTTPException on explicit target failure.
-
-    Must run BEFORE the new CashTransaction is flushed (or before it has clinical
-    refs), so sync-from-cash does not double-count this same cobro.
-    """
     from app.services.payment_allocation import AllocationError, allocate_ingreso
 
     explicit = bool(evolution_entry_id or plan_item_ref)
@@ -123,7 +141,6 @@ def _refresh_allocation_after_cash_flush(
     *,
     patient_id: str | None = None,
 ) -> tuple[list[dict] | None, float | None]:
-    """After cash refs are flushed, align a_cuenta with Σ Caja and refresh saldos."""
     from app.services.payment_allocation import (
         sync_evolution_a_cuenta_from_cash,
         _sync_plan_from_entry,
@@ -221,16 +238,70 @@ def _backfill_tx_refs(
 
 
 def _get_open_session(db: Session) -> CashSession | None:
-    return db.query(CashSession).filter(CashSession.estado == "abierta").first()
+    return (
+        db.query(CashSession)
+        .filter(CashSession.estado == "abierta")
+        .order_by(CashSession.abierta_en.asc())
+        .first()
+    )
+
+
+def _require_open_session(db: Session) -> CashSession:
+    session = _get_open_session(db)
+    if not session:
+        raise HTTPException(
+            status_code=400,
+            detail="No hay caja abierta. Abra la caja en el módulo Caja antes de registrar movimientos.",
+        )
+    return session
+
+
+def _session_saldo(db: Session, session: CashSession) -> float:
+    txs = (
+        db.query(CashTransaction)
+        .filter(
+            CashTransaction.cash_session_id == session.id,
+            CashTransaction.anulado.is_(False),
+        )
+        .all()
+    )
+    ingresos = sum(float(t.monto) for t in txs if t.tipo == "ingreso")
+    egresos = sum(float(t.monto) for t in txs if t.tipo == "egreso")
+    return round(float(session.monto_inicial) + ingresos - egresos, 2)
+
+
+def _publish_tx_created(user: User, tx: CashTransaction, *, monto: float | None = None) -> None:
+    from app.realtime.connection_manager import publish_event
+
+    publish_event(
+        "cash.transaction.created",
+        {
+            "id": tx.id,
+            "patientId": tx.patient_id,
+            "monto": float(monto if monto is not None else (tx.monto or 0)),
+            "tipo": tx.tipo,
+            "grupo_pago_id": getattr(tx, "grupo_pago_id", None),
+        },
+        actor=user.id,
+    )
+
+
+def _tag_anticipo_concepto(concepto: str, unallocated: float) -> str:
+    if unallocated <= 0.009:
+        return concepto
+    base = (concepto or "").strip()
+    tag = f"anticipo S/ {unallocated:.2f}"
+    if tag in base.lower():
+        return base
+    return f"{base} · {tag}" if base else tag
 
 
 @router.get("/session", response_model=CashSessionOut | None)
 def get_current_session(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("caja")),
 ):
-    s = _get_open_session(db)
-    return s
+    return _get_open_session(db)
 
 
 @router.post("/session/open", response_model=CashSessionOut, status_code=status.HTTP_201_CREATED)
@@ -245,9 +316,14 @@ def open_session(
         usuario_id=user.id,
         monto_inicial=payload.monto_inicial,
         estado="abierta",
+        open_lock=1,
     )
     db.add(session)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Ya hay una caja abierta") from None
     db.refresh(session)
     from app.realtime.connection_manager import publish_event
 
@@ -257,6 +333,7 @@ def open_session(
 
 @router.post("/session/close", response_model=CashCloseSummary)
 def close_session(
+    payload: CashSessionClose,
     db: Session = Depends(get_db),
     user: User = Depends(require_module("caja")),
 ):
@@ -266,7 +343,10 @@ def close_session(
 
     transactions = (
         db.query(CashTransaction)
-        .filter(CashTransaction.cash_session_id == session.id)
+        .filter(
+            CashTransaction.cash_session_id == session.id,
+            CashTransaction.anulado.is_(False),
+        )
         .all()
     )
 
@@ -274,6 +354,8 @@ def close_session(
     egresos = sum(float(t.monto) for t in transactions if t.tipo == "egreso")
     neto = ingresos - egresos
     total_esperado = float(session.monto_inicial) + neto
+    monto_contado = round(float(payload.monto_contado), 2)
+    diferencia = round(monto_contado - total_esperado, 2)
 
     por_metodo: dict[str, float] = {}
     for t in transactions:
@@ -281,8 +363,13 @@ def close_session(
             por_metodo[t.metodo_pago] = por_metodo.get(t.metodo_pago, 0) + float(t.monto)
 
     session.monto_final = total_esperado
+    session.monto_contado = monto_contado
+    session.diferencia = diferencia
+    session.cierre_notas = (payload.notas or "").strip() or None
+    session.cerrada_por_id = user.id
     session.cerrada_en = datetime.now(timezone.utc)
     session.estado = "cerrada"
+    session.open_lock = None
     db.commit()
 
     from app.realtime.connection_manager import publish_event
@@ -296,6 +383,9 @@ def close_session(
         egresos=egresos,
         neto=neto,
         total_esperado=total_esperado,
+        monto_contado=monto_contado,
+        diferencia=diferencia,
+        cierre_notas=session.cierre_notas,
         por_metodo=por_metodo,
         monto_final=total_esperado,
     )
@@ -324,7 +414,7 @@ def list_patient_payments(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """All income transactions for a patient (payment history for Ficha Clínica)."""
+    """Historial de cobros del paciente (solo lectura en ficha; el cobro es en Caja)."""
     if not db.get(Patient, patient_id):
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
     txs = (
@@ -332,6 +422,7 @@ def list_patient_payments(
         .filter(
             CashTransaction.patient_id == patient_id,
             CashTransaction.tipo == "ingreso",
+            CashTransaction.anulado.is_(False),
         )
         .order_by(CashTransaction.created_at.desc())
         .all()
@@ -339,23 +430,102 @@ def list_patient_payments(
     return _txs_to_out(db, txs)
 
 
-def _ensure_open_session(db: Session, user: User) -> CashSession:
-    """Return open caja, creating one with monto_inicial=0 if needed.
-
-    Clinical «Registrar pago» must not hang or fail silently when caja was never
-    opened that day — auto-open keeps money flow continuous on Railway / local.
-    """
-    session = _get_open_session(db)
-    if session:
-        return session
-    session = CashSession(
-        usuario_id=user.id,
-        monto_inicial=0,
-        estado="abierta",
+@router.post(
+    "/transactions/{transaction_id}/void",
+    response_model=CashTransactionOut,
+)
+def void_transaction(
+    transaction_id: str,
+    payload: CashTransactionVoid,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_module("caja")),
+):
+    """Anula un cobro/egreso de la sesión abierta y resincroniza a_cuenta clínico."""
+    from app.models import ClinicalEvolutionEntry
+    from app.services.payment_allocation import (
+        sync_evolution_a_cuenta_from_cash,
+        _sync_plan_from_entry,
+        reconcile_plan_evolution_costs,
     )
-    db.add(session)
-    db.flush()
-    return session
+
+    session = _require_open_session(db)
+    tx = db.get(CashTransaction, transaction_id)
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transacción no encontrada")
+    if tx.cash_session_id != session.id:
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se pueden anular movimientos de la caja abierta actual",
+        )
+    if getattr(tx, "anulado", False):
+        raise HTTPException(status_code=400, detail="El movimiento ya está anulado")
+
+    siblings = [tx]
+    if tx.grupo_pago_id:
+        siblings = (
+            db.query(CashTransaction)
+            .filter(CashTransaction.grupo_pago_id == tx.grupo_pago_id)
+            .all()
+        )
+
+    now = datetime.now(timezone.utc)
+    motivo = payload.motivo.strip()
+    patient_ids: set[str] = set()
+    evo_ids: set[str] = set()
+    for s in siblings:
+        if getattr(s, "anulado", False):
+            continue
+        s.anulado = True
+        s.anulado_en = now
+        s.anulado_por_id = user.id
+        s.anulacion_motivo = motivo
+        if s.patient_id:
+            patient_ids.add(s.patient_id)
+        if s.evolution_entry_id:
+            evo_ids.add(s.evolution_entry_id)
+
+    for evo_id in evo_ids:
+        entry = db.get(ClinicalEvolutionEntry, evo_id)
+        if entry:
+            # Forzar a_cuenta a Σ cash activa (puede bajar al anular)
+            paid = (
+                db.query(CashTransaction)
+                .filter(
+                    CashTransaction.evolution_entry_id == evo_id,
+                    CashTransaction.tipo == "ingreso",
+                    CashTransaction.anulado.is_(False),
+                )
+                .all()
+            )
+            entry.a_cuenta = round(sum(float(t.monto) for t in paid), 2)
+            _sync_plan_from_entry(db, entry)
+
+    for pid in patient_ids:
+        reconcile_plan_evolution_costs(db, pid)
+
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500, detail=f"No se pudo anular el movimiento: {exc}"
+        ) from exc
+
+    for s in siblings:
+        db.refresh(s)
+    primary = next((s for s in siblings if s.id == transaction_id), siblings[0])
+    from app.realtime.connection_manager import publish_event
+
+    publish_event(
+        "cash.transaction.voided",
+        {
+            "id": primary.id,
+            "patientId": primary.patient_id,
+            "grupo_pago_id": primary.grupo_pago_id,
+        },
+        actor=user.id,
+    )
+    return _tx_to_out(primary, db)
 
 
 @router.post("/transactions", response_model=CashTransactionOut, status_code=status.HTTP_201_CREATED)
@@ -371,11 +541,21 @@ def create_transaction(
     if float(payload.monto) <= 0:
         raise HTTPException(status_code=400, detail="El monto debe ser mayor a cero")
 
-    session = _ensure_open_session(db, user)
+    session = _require_open_session(db)
+
+    if payload.tipo == "egreso":
+        saldo = _session_saldo(db, session)
+        if float(payload.monto) - saldo > 0.009:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"El egreso (S/ {float(payload.monto):.2f}) supera el saldo "
+                    f"disponible en caja (S/ {saldo:.2f})."
+                ),
+            )
 
     plan_ref = (payload.plan_item_ref or "").strip() or None
     evo_id = (payload.evolution_entry_id or "").strip() or None
-
     from app.models.ids import new_uuid
 
     splits = payload.pagos_parciales or []
@@ -402,11 +582,11 @@ def create_transaction(
                 plan_item_ref=plan_ref,
                 pieza_fdi=payload.pieza_fdi,
                 evolution_entry_id=evo_id,
+                anulado=False,
             )
             db.add(tx)
             created.append(tx)
 
-        # Allocate BEFORE flush so Σ Caja aún no incluye este cobro (evita doble conteo).
         allocated_total = 0.0
         unallocated_amount = None
         allocations_out = None
@@ -425,6 +605,10 @@ def create_transaction(
                 plan_item_ref=plan_ref,
             )
             _backfill_tx_refs(db, created, allocations_out or [])
+            if unallocated_amount and unallocated_amount > 0.009:
+                tagged = _tag_anticipo_concepto(concepto_base, unallocated_amount)
+                for tx in created:
+                    tx.concepto = tagged
 
         db.flush()
         if allocations_out and payload.patient_id:
@@ -456,22 +640,24 @@ def create_transaction(
         out.monto = float(payload.monto)
         out.metodo_pago = "mixto"
         out.grupo_pago_id = grupo_id
+        _publish_tx_created(user, primary, monto=float(payload.monto))
         return out
 
+    concepto = payload.concepto.strip()
     tx = CashTransaction(
         cash_session_id=session.id,
         patient_id=payload.patient_id,
         tipo=payload.tipo,
-        concepto=payload.concepto,
+        concepto=concepto,
         monto=payload.monto,
         metodo_pago=payload.metodo_pago,
         plan_item_ref=plan_ref,
         pieza_fdi=payload.pieza_fdi,
         evolution_entry_id=evo_id,
+        anulado=False,
     )
     db.add(tx)
 
-    # Allocate BEFORE flush (autoflush=False): a_cuenta += monto, then cash gets refs.
     allocated_total = (
         0.0 if (payload.allocate and payload.tipo == "ingreso" and payload.patient_id) else None
     )
@@ -492,6 +678,8 @@ def create_transaction(
             plan_item_ref=plan_ref,
         )
         _backfill_tx_refs(db, [tx], allocations_out or [])
+        if unallocated_amount and unallocated_amount > 0.009:
+            tx.concepto = _tag_anticipo_concepto(concepto, unallocated_amount)
 
     db.flush()
     if allocations_out and payload.patient_id:
@@ -508,18 +696,7 @@ def create_transaction(
             detail=f"No se pudo guardar el pago: {exc}",
         ) from exc
     db.refresh(tx)
-    from app.realtime.connection_manager import publish_event
-
-    publish_event(
-        "cash.transaction.created",
-        {
-            "id": tx.id,
-            "patientId": tx.patient_id,
-            "monto": float(tx.monto or 0),
-            "tipo": tx.tipo,
-        },
-        actor=user.id,
-    )
+    _publish_tx_created(user, tx)
     return _tx_to_out(
         tx,
         db,

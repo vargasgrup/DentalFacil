@@ -591,9 +591,16 @@ def _build_cierre_caja(story: list, data: dict, styles: dict, fmt: str):
         ["Ingresos", f"S/ {data.get('ingresos', 0):.2f}"],
         ["Egresos", f"S/ {data.get('egresos', 0):.2f}"],
         ["Neto", f"S/ {data.get('neto', 0):.2f}"],
-        ["Total en caja", f"S/ {data.get('total_esperado', 0):.2f}"],
+        ["Total esperado", f"S/ {data.get('total_esperado', 0):.2f}"],
+        ["Monto contado", f"S/ {data.get('monto_contado', data.get('total_esperado', 0)):.2f}"],
+        ["Diferencia", f"S/ {data.get('diferencia', 0):.2f}"],
     ]
     story.append(_build_table(rows, [content_w * 0.6, content_w * 0.4], styles))
+    if data.get("cierre_notas"):
+        story.append(Spacer(1, 4))
+        story.append(
+            Paragraph(f"<b>Notas:</b> {data.get('cierre_notas')}", styles["small"])
+        )
     story.append(Spacer(1, 6))
 
     por_metodo = data.get("por_metodo", {})

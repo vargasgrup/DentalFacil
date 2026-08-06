@@ -21,7 +21,6 @@ import type {
   FinancialSummary,
   FichaTab,
   Patient,
-  PaymentTarget,
   PaymentTx,
   SaveState,
 } from "../types";
@@ -66,16 +65,6 @@ const [patient, setPatient] = useState<Patient | null>(null);
   });
   const [showEvoForm, setShowEvoForm] = useState(false);
 
-  const [showPayment, setShowPayment] = useState(false);
-  const [payMonto, setPayMonto] = useState("");
-  const [payConcepto, setPayConcepto] = useState("");
-  const [payMetodo, setPayMetodo] = useState("efectivo");
-  const [payTarget, setPayTarget] = useState("auto"); // auto | evolution:<id> | plan:<id>
-  const [paymentTargets, setPaymentTargets] = useState<PaymentTarget[]>([]);
-  const [paySaving, setPaySaving] = useState(false);
-  const [payError, setPayError] = useState("");
-  const [payInfo, setPayInfo] = useState("");
-  const [cashOpen, setCashOpen] = useState<boolean | null>(null);
   const [allergyInput, setAllergyInput] = useState("");
   const [fichaTab, setFichaTab] = useState<FichaTab>("historia");
   const [hasOdontogramSnapshot, setHasOdontogramSnapshot] = useState<boolean | null>(null);
@@ -170,18 +159,8 @@ const [patient, setPatient] = useState<Patient | null>(null);
 
   const refreshFinancial = async () => {
     try {
-      const [f, targets, session] = await Promise.all([
-        apiFetch<FinancialSummary>(`/api/clinical/${patientId}/financial`),
-        apiFetch<{ targets: PaymentTarget[] }>(
-          `/api/clinical/${patientId}/payment-targets`
-        ),
-        apiFetch<{ id: string; estado: string } | null>("/api/cash/session").catch(
-          () => null
-        ),
-      ]);
+      const f = await apiFetch<FinancialSummary>(`/api/clinical/${patientId}/financial`);
       setFinancial(f);
-      setPaymentTargets(targets.targets || []);
-      setCashOpen(Boolean(session && session.estado === "abierta"));
       await loadPayments();
     } catch {
       /* ignore */
@@ -189,25 +168,16 @@ const [patient, setPatient] = useState<Patient | null>(null);
   };
 
   const refreshClinicalMoney = async () => {
-    const [evo, fin, targets, pays, session] = await Promise.all([
+    const [evo, fin, pays] = await Promise.all([
       apiFetch<EvolutionEntry[]>(`/api/clinical/${patientId}/evolution`),
       apiFetch<FinancialSummary>(`/api/clinical/${patientId}/financial`),
-      apiFetch<{ targets: PaymentTarget[] }>(
-        `/api/clinical/${patientId}/payment-targets`
-      ).catch(() => ({ targets: [] as PaymentTarget[] })),
       apiFetch<PaymentTx[]>(`/api/cash/transactions/patient/${patientId}`).catch(
         () => [] as PaymentTx[]
-      ),
-      apiFetch<{ id: string; estado: string } | null>("/api/cash/session").catch(
-        () => null
       ),
     ]);
     setEvolution(evo);
     setFinancial(fin);
-    setPaymentTargets(targets.targets || []);
     setPayments(pays);
-    setCashOpen(Boolean(session && session.estado === "abierta"));
-    // Keep plan economics in sync after allocation
     try {
       const r = await apiFetch<ClinicalRecord>(
         `/api/clinical/${patientId}/record`
@@ -229,42 +199,6 @@ const [patient, setPatient] = useState<Patient | null>(null);
     return () =>
       window.removeEventListener("dentalfacil:clinical-money-updated", onMoney);
   }, [patientId]);
-
-  const openPaymentForm = async () => {
-    const next = !showPayment;
-    setShowPayment(next);
-    setPayError("");
-    setPayInfo("");
-    if (next) {
-      setPayTarget("auto");
-      await refreshFinancial();
-    }
-  };
-
-  const ensureCashSessionOpen = async (): Promise<void> => {
-    const session = await apiFetch<{ id: string; estado: string } | null>(
-      "/api/cash/session"
-    );
-    if (session && session.estado === "abierta") {
-      setCashOpen(true);
-      return;
-    }
-    try {
-      await apiFetch("/api/cash/session/open", {
-        method: "POST",
-        body: JSON.stringify({ monto_inicial: 0 }),
-      });
-      setCashOpen(true);
-      setPayInfo("Se abrió la caja automáticamente (monto inicial S/ 0.00).");
-    } catch (err: any) {
-      // Race: another tab/user opened caja between check and open
-      if (/Ya hay una caja/i.test(String(err?.message || ""))) {
-        setCashOpen(true);
-        return;
-      }
-      throw err;
-    }
-  };
 
   const savePatient = async () => {
     setPatientSaved("saving");
@@ -326,17 +260,13 @@ const [patient, setPatient] = useState<Patient | null>(null);
         ...recordForm,
         antecedentes_odontologicos: odontoText,
       });
-      // Refresh evolução + resumen + payment targets (plan save auto-syncs)
-      const [evo, fin, targets] = await Promise.all([
+      // Refresh evolución + resumen financiero (plan save auto-syncs)
+      const [evo, fin] = await Promise.all([
         apiFetch<EvolutionEntry[]>(`/api/clinical/${patientId}/evolution`),
         apiFetch<FinancialSummary>(`/api/clinical/${patientId}/financial`),
-        apiFetch<{ targets: PaymentTarget[] }>(
-          `/api/clinical/${patientId}/payment-targets`
-        ).catch(() => ({ targets: [] as PaymentTarget[] })),
       ]);
       setEvolution(evo);
       setFinancial(fin);
-      setPaymentTargets(targets.targets || []);
       setRecordSaved("saved");
       setTimeout(() => setRecordSaved("idle"), 2000);
     } catch (err: any) {
@@ -439,84 +369,6 @@ const [patient, setPatient] = useState<Patient | null>(null);
       }
     } catch (err: any) {
       setError(err.message);
-    }
-  };
-
-  const registerPayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setPayError("");
-    if (patient?.activo === false) {
-      setPayError("Paciente inactivo. Reactívalo antes de registrar cobros.");
-      return;
-    }
-    const monto = parseFloat(payMonto);
-    if (!Number.isFinite(monto) || monto <= 0) {
-      setPayError("Ingresa un monto válido mayor a cero.");
-      return;
-    }
-    setPaySaving(true);
-    try {
-      await ensureCashSessionOpen();
-
-      let evolution_entry_id: string | undefined;
-      let plan_item_ref: string | undefined;
-      if (payTarget.startsWith("evolution:")) {
-        evolution_entry_id = payTarget.slice("evolution:".length);
-      } else if (payTarget.startsWith("plan:")) {
-        plan_item_ref = payTarget.slice("plan:".length);
-      }
-
-      const targetMeta = paymentTargets.find((t) =>
-        payTarget === "auto" ? false : payTarget === `${t.kind}:${t.id}`
-      );
-      const concepto =
-        (payConcepto || "").trim() ||
-        (targetMeta
-          ? `Abono — ${targetMeta.label}${
-              targetMeta.pieza_fdi ? ` (pieza ${targetMeta.pieza_fdi})` : ""
-            }`
-          : "Pago de tratamiento");
-
-      const payload: Record<string, unknown> = {
-        patient_id: patientId,
-        tipo: "ingreso",
-        concepto,
-        monto,
-        metodo_pago: payMetodo,
-        allocate: true,
-      };
-      if (evolution_entry_id) payload.evolution_entry_id = evolution_entry_id;
-      if (plan_item_ref) payload.plan_item_ref = plan_item_ref;
-      if (targetMeta?.pieza_fdi) payload.pieza_fdi = targetMeta.pieza_fdi;
-
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), 45000);
-      try {
-        await apiFetch("/api/cash/transactions", {
-          method: "POST",
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        });
-      } finally {
-        window.clearTimeout(timeoutId);
-      }
-      setShowPayment(false);
-      setPayMonto("");
-      setPayConcepto("");
-      setPayTarget("auto");
-      setPayInfo("");
-      // Soft refresh — avoid full-page skeleton (felt like a hang)
-      await refreshClinicalMoney();
-    } catch (err: any) {
-      const msg = String(err?.message || "No se pudo registrar el pago");
-      const friendly = /caja/i.test(msg)
-        ? `${msg} Abre Caja o reintenta: se intentará abrir automáticamente.`
-        : msg;
-      setPayError(friendly);
-      setError(friendly);
-    } finally {
-      setPaySaving(false);
     }
   };
 
@@ -702,13 +554,11 @@ const [patient, setPatient] = useState<Patient | null>(null);
     patientForm, setPatientForm, recordForm, setRecordForm,
     patientSaved, recordSaved, planBundle, setPlanBundle, planItems, setPlanItems,
     habitos, odonNotes, setOdonNotes, newEvo, setNewEvo, showEvoForm, setShowEvoForm,
-    showPayment, payMonto, setPayMonto, payConcepto, setPayConcepto, payMetodo, setPayMetodo,
-    payTarget, setPayTarget, paymentTargets, paySaving, payError, payInfo, cashOpen,
     allergyInput, setAllergyInput, fichaTab, setFichaTab, hasOdontogramSnapshot,
     savePatient, saveRecord, toggleConsentimiento, allergyTags, addAllergyTag, removeAllergyTag,
-    addEvolution, registerPayment, deleteEvolution, updateEvolutionEstado, updateEvolutionField,
+    addEvolution, deleteEvolution, updateEvolutionEstado, updateEvolutionField,
     registerPlanItemInEvolution, addItemRow, addPlanFromOdontogram, removeItemRow, updateItem,
-    toggleHabito, openPaymentForm, edad, planTotals, evoTotals, doctorDisplay, estadoColors, consentText,
+    toggleHabito, edad, planTotals, evoTotals, doctorDisplay, estadoColors, consentText,
     applyPatientUpdate: (updated: Patient) => {
       setPatient(updated);
       setPatientForm({

@@ -280,12 +280,12 @@ def test_abono_50_of_400_shows_saldo_350_everywhere(
     assert float(f["plan_saldo"]) == 350.0
 
 
-def test_payment_auto_opens_caja_when_closed(
+def test_payment_requires_open_caja(
     client: TestClient,
     admin_headers: dict[str, str],
     patient: dict,
 ):
-    """Registrar pago must work even if no caja session was opened first."""
+    """Sin caja abierta no se registran cobros (único punto: módulo Caja)."""
     sess = client.get("/api/cash/session", headers=admin_headers)
     assert sess.status_code == 200
     assert sess.json() is None
@@ -302,18 +302,5 @@ def test_payment_auto_opens_caja_when_closed(
             "allocate": True,
         },
     )
-    assert pay.status_code == 201, pay.text
-    assert pay.json()["cash_session_id"]
-
-    opened = client.get("/api/cash/session", headers=admin_headers)
-    assert opened.status_code == 200
-    assert opened.json() is not None
-    assert opened.json()["estado"] == "abierta"
-    assert float(opened.json()["monto_inicial"]) == 0.0
-
-    fin = client.get(
-        f"/api/clinical/{patient['id']}/financial",
-        headers=admin_headers,
-    )
-    assert fin.status_code == 200
-    assert float(fin.json()["pagado_total"]) == 25.0
+    assert pay.status_code == 400, pay.text
+    assert "caja abierta" in pay.json()["detail"].lower()

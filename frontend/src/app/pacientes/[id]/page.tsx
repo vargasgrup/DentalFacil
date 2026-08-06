@@ -120,22 +120,6 @@ export default function FichaClinicaPage() {
           deleteEvolution={f.deleteEvolution}
           updateEvolutionEstado={f.updateEvolutionEstado}
           updateEvolutionField={f.updateEvolutionField}
-          showPayment={f.showPayment}
-          openPaymentForm={f.openPaymentForm}
-          payMonto={f.payMonto}
-          setPayMonto={f.setPayMonto}
-          payConcepto={f.payConcepto}
-          setPayConcepto={f.setPayConcepto}
-          payMetodo={f.payMetodo}
-          setPayMetodo={f.setPayMetodo}
-          payTarget={f.payTarget}
-          setPayTarget={f.setPayTarget}
-          paymentTargets={f.paymentTargets}
-          paySaving={f.paySaving}
-          payError={f.payError}
-          payInfo={f.payInfo}
-          cashOpen={f.cashOpen}
-          registerPayment={f.registerPayment}
           saveRecord={f.saveRecord}
           onNavigate={(path) => router.push(path)}
         />

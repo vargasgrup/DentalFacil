@@ -8,9 +8,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { DocumentActions } from "@/components/DocumentActions";
 import { PacienteFichaLink } from "@/components/PacienteFichaLink";
 import { formatTime } from "@/lib/datetime";
-import { METODO_LABEL } from "./constants";
-import type { CashTransaction } from "./types";
 import { formatMetodoLabel, waReceiptMessage } from "./utils";
+import type { CashTransaction } from "./types";
 
 interface TransactionsTableProps {
   transactions: CashTransaction[];
@@ -18,6 +17,8 @@ interface TransactionsTableProps {
   tipoFilter: "todos" | "ingreso" | "egreso";
   setTipoFilter: (v: "todos" | "ingreso" | "egreso") => void;
   onCobrar: () => void;
+  onVoid?: (tx: CashTransaction) => void;
+  voidingId?: string | null;
 }
 
 export function TransactionsTable({
@@ -26,6 +27,8 @@ export function TransactionsTable({
   tipoFilter,
   setTipoFilter,
   onCobrar,
+  onVoid,
+  voidingId,
 }: TransactionsTableProps) {
   if (transactions.length === 0) {
     return (
@@ -80,60 +83,102 @@ export function TransactionsTable({
               <th className="px-4 py-3 font-medium">Método</th>
               <th className="px-4 py-3 font-medium text-right">Monto</th>
               <th className="px-4 py-3 font-medium">Comprobante</th>
+              <th className="px-4 py-3 font-medium">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {filteredTx.map((t) => (
-              <tr
-                key={t.id}
-                className="border-b border-slate-50 transition-smooth hover:bg-brand-50/30"
-              >
-                <td className="px-4 py-2.5 text-slate-500">{formatTime(t.created_at)}</td>
-                <td className="px-4 py-2.5">
-                  <Badge variant={t.tipo === "ingreso" ? "success" : "danger"}>
-                    {t.tipo}
-                  </Badge>
-                </td>
-                <td className="px-4 py-2.5 text-slate-700">{t.concepto}</td>
-                <td className="px-4 py-2.5">
-                  {t.patient_id && t.patient_nombre ? (
-                    <PacienteFichaLink
-                      patientId={t.patient_id}
-                      className="text-brand-600 hover:underline"
-                    >
-                      {t.patient_nombre}
-                    </PacienteFichaLink>
-                  ) : (
-                    <span className="text-slate-400">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-2.5 text-slate-500">
-                  {METODO_LABEL[t.metodo_pago] || t.metodo_pago}
-                  {t.grupo_pago_id ? (
-                    <span className="ml-1 text-xs text-slate-400">(mixto)</span>
-                  ) : null}
-                </td>
-                <td
-                  className={`px-4 py-2.5 text-right font-medium ${
-                    t.tipo === "ingreso" ? "text-success-600" : "text-danger-500"
+            {filteredTx.map((t) => {
+              const voided = Boolean(t.anulado);
+              return (
+                <tr
+                  key={t.id}
+                  className={`border-b border-slate-50 transition-smooth hover:bg-brand-50/30 ${
+                    voided ? "bg-slate-50 opacity-70" : ""
                   }`}
                 >
-                  {t.tipo === "ingreso" ? "+" : "−"} S/ {t.monto.toFixed(2)}
-                </td>
-                <td className="px-4 py-2.5">
-                  <DocumentActions
-                    label="Comprobante"
-                    documentType="comprobante"
-                    downloadUrl={`/api/documents/comprobante/${t.id}`}
-                    telefono={t.tipo === "ingreso" ? t.patient_telefono : null}
-                    mensaje={t.tipo === "ingreso" ? waReceiptMessage(t) : ""}
-                    hideWhatsApp={t.tipo !== "ingreso" || !t.patient_id}
-                    forceFormat="80mm"
-                    compact
-                  />
-                </td>
-              </tr>
-            ))}
+                  <td className="px-4 py-2.5 text-slate-500">
+                    {formatTime(t.created_at)}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {voided ? (
+                      <Badge variant="neutral">anulado</Badge>
+                    ) : (
+                      <Badge variant={t.tipo === "ingreso" ? "success" : "danger"}>
+                        {t.tipo}
+                      </Badge>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-slate-700">
+                    <span className={voided ? "line-through" : ""}>{t.concepto}</span>
+                    {voided && t.anulacion_motivo ? (
+                      <span className="mt-0.5 block text-help text-slate-500">
+                        Motivo: {t.anulacion_motivo}
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {t.patient_id && t.patient_nombre ? (
+                      <PacienteFichaLink
+                        patientId={t.patient_id}
+                        className="text-brand-600 hover:underline"
+                      >
+                        {t.patient_nombre}
+                      </PacienteFichaLink>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-slate-500">
+                    {formatMetodoLabel(t)}
+                    {t.grupo_pago_id && !voided ? (
+                      <span className="ml-1 text-xs text-slate-400">(mixto)</span>
+                    ) : null}
+                  </td>
+                  <td
+                    className={`px-4 py-2.5 text-right font-medium ${
+                      voided
+                        ? "text-slate-400 line-through"
+                        : t.tipo === "ingreso"
+                          ? "text-success-600"
+                          : "text-danger-500"
+                    }`}
+                  >
+                    {t.tipo === "ingreso" ? "+" : "−"} S/ {t.monto.toFixed(2)}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {!voided && t.tipo === "ingreso" ? (
+                      <DocumentActions
+                        label="Comprobante"
+                        documentType="comprobante"
+                        downloadUrl={`/api/documents/comprobante/${t.id}`}
+                        telefono={t.patient_telefono}
+                        mensaje={waReceiptMessage(t)}
+                        hideWhatsApp={!t.patient_id}
+                        forceFormat="80mm"
+                        compact
+                      />
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {!voided && onVoid ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="text-xs text-danger-600"
+                        loading={voidingId === t.id}
+                        onClick={() => onVoid(t)}
+                      >
+                        Anular
+                      </Button>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

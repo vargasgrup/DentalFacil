@@ -344,6 +344,7 @@ def financial_summary(
         .filter(
             CashTransaction.patient_id == patient_id,
             CashTransaction.tipo == "ingreso",
+            CashTransaction.anulado.is_(False),
         )
         .all()
     )

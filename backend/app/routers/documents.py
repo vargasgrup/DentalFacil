@@ -66,18 +66,25 @@ def download_comprobante(
     tx = db.get(CashTransaction, transaction_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
+    if getattr(tx, "anulado", False):
+        raise HTTPException(
+            status_code=400, detail="No se puede emitir comprobante de un movimiento anulado"
+        )
     patient = db.get(Patient, tx.patient_id) if tx.patient_id else None
     session = db.get(CashSession, tx.cash_session_id)
     operator = db.get(User, session.usuario_id) if session else user
 
-    # Cobro mixto: sumar partes del mismo grupo para el ticket (total + detalle).
+    # Cobro mixto: sumar partes activas del mismo grupo para el ticket
     monto = float(tx.monto)
     metodo = tx.metodo_pago
     grupo_id = getattr(tx, "grupo_pago_id", None)
     if grupo_id:
         parts = (
             db.query(CashTransaction)
-            .filter(CashTransaction.grupo_pago_id == grupo_id)
+            .filter(
+                CashTransaction.grupo_pago_id == grupo_id,
+                CashTransaction.anulado.is_(False),
+            )
             .order_by(CashTransaction.created_at.asc())
             .all()
         )
@@ -93,13 +100,27 @@ def download_comprobante(
         from zoneinfo import ZoneInfo
 
         emitido = emitido.astimezone(ZoneInfo("America/Lima"))
+
+    phone = ""
+    if patient:
+        own = "".join(c for c in (patient.telefono or "") if c.isdigit())
+        tutor = "".join(
+            c for c in (getattr(patient, "telefono_responsable", None) or "") if c.isdigit()
+        )
+        if len(own) >= 9:
+            phone = patient.telefono or ""
+        elif len(tutor) >= 9:
+            phone = getattr(patient, "telefono_responsable", "") or ""
+        else:
+            phone = patient.telefono or getattr(patient, "telefono_responsable", "") or ""
+
     data = {
         "transaction_id": tx.id,
         "serie": serie,
         "patient_nombre": (
             f"{patient.nombres} {patient.apellidos}".strip() if patient else "Clientes - Varios"
         ),
-        "patient_telefono": (patient.telefono if patient else "") or "",
+        "patient_telefono": phone,
         "patient_documento": (patient.numero_documento if patient else "") or "—",
         "patient_direccion": (patient.direccion if patient else "") or "—",
         "concepto": tx.concepto,
@@ -181,7 +202,10 @@ def download_cierre_caja(
     operator = db.get(User, session.usuario_id)
     transactions = (
         db.query(CashTransaction)
-        .filter(CashTransaction.cash_session_id == session_id)
+        .filter(
+            CashTransaction.cash_session_id == session_id,
+            CashTransaction.anulado.is_(False),
+        )
         .all()
     )
     ingresos = sum(float(t.monto) for t in transactions if t.tipo == "ingreso")
@@ -197,6 +221,13 @@ def download_cierre_caja(
         "session_id": session.id,
         "usuario_nombre": operator.nombre if operator else "—",
         "monto_inicial": float(session.monto_inicial),
+        "monto_contado": float(session.monto_contado)
+        if session.monto_contado is not None
+        else total_esperado,
+        "diferencia": float(session.diferencia)
+        if session.diferencia is not None
+        else 0.0,
+        "cierre_notas": session.cierre_notas or "",
         "ingresos": ingresos,
         "egresos": egresos,
         "neto": neto,
@@ -233,7 +264,11 @@ def download_ficha(
     costo_total = sum(float(e.costo) for e in entries)
     transactions = (
         db.query(CashTransaction)
-        .filter(CashTransaction.patient_id == patient_id, CashTransaction.tipo == "ingreso")
+        .filter(
+            CashTransaction.patient_id == patient_id,
+            CashTransaction.tipo == "ingreso",
+            CashTransaction.anulado.is_(False),
+        )
         .all()
     )
     pagado_total = sum(float(t.monto) for t in transactions)

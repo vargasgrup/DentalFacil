@@ -128,6 +128,7 @@ def build_caja_report(db: Session, start: datetime, end: datetime) -> ReportPayl
         .filter(
             CashTransaction.created_at >= start,
             CashTransaction.created_at <= end,
+            CashTransaction.anulado.is_(False),
         )
         .order_by(CashTransaction.created_at.asc())
         .all()
@@ -246,6 +247,7 @@ def build_pacientes_report(
             CashTransaction.created_at >= start,
             CashTransaction.created_at <= end,
             CashTransaction.tipo == "ingreso",
+            CashTransaction.anulado.is_(False),
             CashTransaction.patient_id.isnot(None),
         )
     )
@@ -358,6 +360,7 @@ def build_tratamientos_report(
                 for t in db.query(CashTransaction)
                 .filter(
                     CashTransaction.tipo == "ingreso",
+                    CashTransaction.anulado.is_(False),
                     CashTransaction.created_at >= start,
                     CashTransaction.created_at <= end,
                     CashTransaction.evolution_entry_id.in_(entry_ids),

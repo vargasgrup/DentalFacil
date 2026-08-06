@@ -71,15 +71,16 @@ export default function CajaPage() {
   );
 
   const totals = useMemo(() => {
-    const ingresos = transactions
+    const active = transactions.filter((t) => !t.anulado);
+    const ingresos = active
       .filter((t) => t.tipo === "ingreso")
       .reduce((s, t) => s + t.monto, 0);
-    const egresos = transactions
+    const egresos = active
       .filter((t) => t.tipo === "egreso")
       .reduce((s, t) => s + t.monto, 0);
     const saldo = (session?.monto_inicial || 0) + ingresos - egresos;
     const porMetodo: Record<string, number> = {};
-    for (const t of transactions) {
+    for (const t of active) {
       if (t.tipo !== "ingreso") continue;
       porMetodo[t.metodo_pago] = (porMetodo[t.metodo_pago] || 0) + t.monto;
     }
@@ -166,12 +167,16 @@ export default function CajaPage() {
     }
   };
 
-  const closeCash = async () => {
+  const closeCash = async (payload: { monto_contado: number; notas?: string }) => {
     setSaving(true);
     setError("");
     try {
       const summary = await apiFetch<CloseSummary>("/api/cash/session/close", {
         method: "POST",
+        body: JSON.stringify({
+          monto_contado: payload.monto_contado,
+          notas: payload.notas || null,
+        }),
       });
       setCloseSummary(summary);
       setShowCloseConfirm(false);
@@ -182,6 +187,41 @@ export default function CajaPage() {
       setShowExpense(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "No se pudo cerrar caja");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const voidTransaction = async (tx: CashTransaction) => {
+    if (tx.anulado) return;
+    const motivo = window.prompt(
+      "Motivo de anulación (obligatorio):",
+      "Error de registro"
+    );
+    if (motivo === null) return;
+    const trimmed = motivo.trim();
+    if (trimmed.length < 3) {
+      setError("Indique un motivo de anulación (mín. 3 caracteres).");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await apiFetch(`/api/cash/transactions/${tx.id}/void`, {
+        method: "POST",
+        body: JSON.stringify({ motivo: trimmed }),
+      });
+      if (tx.patient_id && typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("dentalfacil:clinical-money-updated", {
+            detail: { patientId: tx.patient_id },
+          })
+        );
+      }
+      setLastReceipt(null);
+      await loadData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "No se pudo anular el movimiento");
     } finally {
       setSaving(false);
     }
@@ -451,7 +491,7 @@ export default function CajaPage() {
           session={session}
           totals={totals}
           saving={saving}
-          onConfirm={() => void closeCash()}
+          onConfirm={(p) => void closeCash(p)}
           onCancel={() => setShowCloseConfirm(false)}
         />
       )}
@@ -526,6 +566,8 @@ export default function CajaPage() {
               setShowIncome(true);
               setShowExpense(false);
             }}
+            onVoid={(tx) => void voidTransaction(tx)}
+            voidingId={saving ? "busy" : null}
           />
         </div>
       )}

@@ -132,7 +132,7 @@ export function EvaluacionTab({
           Presupuesto clínico. Al <strong className="font-medium text-slate-700">Guardar</strong>,
           cada ítem del plan activo se refleja automáticamente en{" "}
           <strong className="font-medium text-slate-700">Evolución clínica</strong> (costo oficial)
-          y queda disponible en <strong className="font-medium text-slate-700">Registrar pago</strong>.
+          y queda disponible en <strong className="font-medium text-slate-700">Caja → Cobrar</strong>.
           El botón «Evolución» sirve solo si quieres forzar un ítem puntual antes de guardar.
         </p>
         <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -364,7 +364,7 @@ export function EvaluacionTab({
           </div>
         </div>
         <p className="mt-2 text-help text-slate-400">
-          Guardar el plan sincroniza Evolución y habilita destinos en Registrar pago (Caja).
+          Guardar el plan sincroniza Evolución y habilita destinos de abono en Caja.
           Un abono parcial (ej. S/ 100 de S/ 120) actualiza «A cuenta» y deja el saldo
           restante en el mismo ítem para la siguiente cita.
         </p>

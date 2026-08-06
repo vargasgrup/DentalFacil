@@ -23,7 +23,10 @@ test.describe("Caja", () => {
     // Cerrar sesión abierta previa si existe
     const current = await request.get("/api/cash/session", { headers });
     if (current.ok() && (await current.json())) {
-      await request.post("/api/cash/session/close", { headers });
+      await request.post("/api/cash/session/close", {
+        headers,
+        data: { monto_contado: 0, notas: "cleanup E2E" },
+      });
     }
 
     await loginUi(page);
@@ -47,13 +50,18 @@ test.describe("Caja", () => {
     });
     expect(tx.ok()).toBeTruthy();
 
-    const close = await request.post("/api/cash/session/close", { headers });
+    const close = await request.post("/api/cash/session/close", {
+      headers,
+      data: { monto_contado: 75, notas: "E2E arqueo" },
+    });
     expect(close.ok()).toBeTruthy();
     const summary = await close.json();
     expect(Number(summary.monto_inicial)).toBe(50);
     expect(Number(summary.ingresos)).toBe(25);
     expect(Number(summary.neto)).toBe(25);
     expect(Number(summary.total_esperado)).toBe(75);
+    expect(Number(summary.monto_contado)).toBe(75);
+    expect(Number(summary.diferencia)).toBe(0);
 
     await page.reload();
     await expect(page.getByText(/caja|sesión|cerrar|abrir/i).first()).toBeVisible();

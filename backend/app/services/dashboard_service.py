@@ -106,7 +106,10 @@ def build_dashboard_home(db: Session) -> dict[str, Any]:
     if cash:
         txs = (
             db.query(CashTransaction)
-            .filter(CashTransaction.cash_session_id == cash.id)
+            .filter(
+                CashTransaction.cash_session_id == cash.id,
+                CashTransaction.anulado.is_(False),
+            )
             .all()
         )
         for t in txs:
@@ -324,6 +327,7 @@ def build_dashboard_home(db: Session) -> dict[str, Any]:
         db.query(CashTransaction)
         .filter(
             CashTransaction.tipo == "ingreso",
+            CashTransaction.anulado.is_(False),
             CashTransaction.created_at >= week_start_dt,
             CashTransaction.created_at < week_end,
         )
@@ -339,6 +343,7 @@ def build_dashboard_home(db: Session) -> dict[str, Any]:
         db.query(CashTransaction)
         .filter(
             CashTransaction.tipo == "ingreso",
+            CashTransaction.anulado.is_(False),
             CashTransaction.created_at >= prev_week_start_dt,
             CashTransaction.created_at <= prev_week_end_dt,
         )
@@ -476,7 +481,10 @@ def build_dashboard_home(db: Session) -> dict[str, Any]:
 
     recent_cash = (
         db.query(CashTransaction)
-        .filter(CashTransaction.tipo == "ingreso")
+        .filter(
+            CashTransaction.tipo == "ingreso",
+            CashTransaction.anulado.is_(False),
+        )
         .order_by(CashTransaction.created_at.desc())
         .limit(5)
         .all()

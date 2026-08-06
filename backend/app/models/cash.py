@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Numeric, ForeignKey, func
+from sqlalchemy import String, DateTime, Numeric, ForeignKey, func, Integer, Boolean, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -14,6 +14,12 @@ class CashSession(Base):
     usuario_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     monto_inicial: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     monto_final: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    # Unique when set to 1: at most one open session (NULL does not conflict)
+    open_lock: Mapped[int | None] = mapped_column(Integer, unique=True, nullable=True)
+    monto_contado: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    diferencia: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    cierre_notas: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cerrada_por_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     abierta_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), default=datetime.utcnow
     )
@@ -40,6 +46,10 @@ class CashTransaction(Base):
     evolution_entry_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("clinical_evolution_entries.id"), nullable=True
     )
+    anulado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    anulado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    anulado_por_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    anulacion_motivo: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), default=datetime.utcnow
     )

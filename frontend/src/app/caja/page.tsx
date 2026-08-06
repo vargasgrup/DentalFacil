@@ -1,16 +1,15 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { AlertCircle, X } from "lucide-react";
+import { X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { PageContainer } from "@/components/ui/PageContainer";
-import { StatCard } from "@/components/ui/Card";
 import { CashPageHeader } from "@/components/caja/CashPageHeader";
 import { OpenCashPanel } from "@/components/caja/OpenCashPanel";
 import { CloseCashConfirm } from "@/components/caja/CloseCashConfirm";
 import { CloseCashSummary } from "@/components/caja/CloseCashSummary";
 import { CashSessionDashboard } from "@/components/caja/CashSessionDashboard";
-import { CashDebtsPanel } from "@/components/caja/CashDebtsPanel";
+import { CashDebtsModal } from "@/components/caja/CashDebtsModal";
 import { IncomeForm } from "@/components/caja/IncomeForm";
 import { ExpenseForm } from "@/components/caja/ExpenseForm";
 import { TransactionsTable } from "@/components/caja/TransactionsTable";
@@ -63,6 +62,7 @@ export default function CajaPage() {
   const [showOpen, setShowOpen] = useState(false);
   const [showIncome, setShowIncome] = useState(false);
   const [showExpense, setShowExpense] = useState(false);
+  const [showDebts, setShowDebts] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [closeSummary, setCloseSummary] = useState<CloseSummary | null>(null);
   const [lastReceipt, setLastReceipt] = useState<CashTransaction | null>(null);
@@ -621,6 +621,11 @@ export default function CajaPage() {
 
       <CashPageHeader
         session={session}
+        porCobrarCount={debtPacientes}
+        onConsultarPorCobrar={() => {
+          void loadDebts();
+          setShowDebts(true);
+        }}
         onCobrar={() => {
           setShowIncome(true);
           setShowExpense(false);
@@ -652,48 +657,28 @@ export default function CajaPage() {
 
       <div className="space-y-5">
         {!session ? (
-          <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <StatCard
-                icon={<AlertCircle className="h-5 w-5" />}
-                label="Deuda pendiente"
-                value={`S/ ${debtTotal.toFixed(2)}`}
-                subtext={
-                  debtPacientes === 0
-                    ? "Sin saldos por cobrar"
-                    : `${debtPacientes} ${
-                        debtPacientes === 1 ? "paciente" : "pacientes"
-                      } con saldo`
-                }
-                variant="warning"
-              />
-            </div>
-            <OpenCashPanel
-              showOpen={showOpen}
-              montoInicial={montoInicial}
-              setMontoInicial={setMontoInicial}
-              saving={saving}
-              onOpen={openCash}
-              onShowOpen={() => setShowOpen(true)}
-              onCancelOpen={() => setShowOpen(false)}
-            />
-          </>
+          <OpenCashPanel
+            showOpen={showOpen}
+            montoInicial={montoInicial}
+            setMontoInicial={setMontoInicial}
+            saving={saving}
+            onOpen={openCash}
+            onShowOpen={() => setShowOpen(true)}
+            onCancelOpen={() => setShowOpen(false)}
+          />
         ) : (
           <CashSessionDashboard
             session={session}
             totals={sessionTotals}
             barMax={barMax}
-            deudaTotal={debtTotal}
-            deudaPacientes={debtPacientes}
+            porCobrarTotal={debtTotal}
+            porCobrarPacientes={debtPacientes}
+            onConsultarPorCobrar={() => {
+              void loadDebts();
+              setShowDebts(true);
+            }}
           />
         )}
-
-        <CashDebtsPanel
-          debts={debts}
-          loading={debtsLoading}
-          sessionOpen={Boolean(session)}
-          onCobrar={startCobrarFromDebt}
-        />
 
         {session && showIncome && (
           <IncomeForm
@@ -774,6 +759,15 @@ export default function CajaPage() {
           allowVoid={Boolean(session) && period === "sesion"}
         />
       </div>
+
+      <CashDebtsModal
+        open={showDebts}
+        onClose={() => setShowDebts(false)}
+        debts={debts}
+        loading={debtsLoading}
+        sessionOpen={Boolean(session)}
+        onCobrar={startCobrarFromDebt}
+      />
     </PageContainer>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, ArrowDownCircle, ArrowUpCircle, Scale } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, Scale } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Card, StatCard } from "@/components/ui/Card";
 import { formatDateTime } from "@/lib/datetime";
@@ -11,42 +11,33 @@ interface CashSessionDashboardProps {
   session: CashSession;
   totals: SessionTotals;
   barMax: number;
-  deudaTotal?: number;
-  deudaPacientes?: number;
+  /** Optional subtle summary for receivables (not a leading KPI). */
+  porCobrarTotal?: number;
+  porCobrarPacientes?: number;
+  onConsultarPorCobrar?: () => void;
 }
 
 export function CashSessionDashboard({
   session,
   totals,
   barMax,
-  deudaTotal = 0,
-  deudaPacientes = 0,
+  porCobrarTotal = 0,
+  porCobrarPacientes = 0,
+  onConsultarPorCobrar,
 }: CashSessionDashboardProps) {
   return (
     <>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          icon={<AlertCircle className="h-5 w-5" />}
-          label="Deuda pendiente"
-          value={`S/ ${deudaTotal.toFixed(2)}`}
-          subtext={
-            deudaPacientes === 0
-              ? "Sin saldos por cobrar"
-              : `${deudaPacientes} ${
-                  deudaPacientes === 1 ? "paciente" : "pacientes"
-                } con saldo`
-          }
-          variant="warning"
-        />
+      {/* Orden operativo: dinero de la sesión, no cartera de deudas */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
           icon={<ArrowDownCircle className="h-5 w-5" />}
-          label="Ingresos (sesión)"
+          label="Ingresos de sesión"
           value={`S/ ${totals.ingresos.toFixed(2)}`}
           variant="success"
         />
         <StatCard
           icon={<ArrowUpCircle className="h-5 w-5" />}
-          label="Egresos (sesión)"
+          label="Egresos de sesión"
           value={`S/ ${totals.egresos.toFixed(2)}`}
           variant="warning"
         />
@@ -61,8 +52,8 @@ export function CashSessionDashboard({
 
       <Card>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant="success">Abierta</Badge>
               <span className="text-help text-slate-500">
                 {formatDateTime(session.abierta_en)}
@@ -81,6 +72,17 @@ export function CashSessionDashboard({
                 ))}
               </div>
             )}
+            {onConsultarPorCobrar && porCobrarPacientes > 0 ? (
+              <button
+                type="button"
+                onClick={onConsultarPorCobrar}
+                className="mt-2 text-left text-xs text-slate-500 underline-offset-2 transition-smooth hover:text-slate-700 hover:underline"
+              >
+                Cuentas por cobrar: S/ {porCobrarTotal.toFixed(2)} ·{" "}
+                {porCobrarPacientes}{" "}
+                {porCobrarPacientes === 1 ? "paciente" : "pacientes"} — consultar
+              </button>
+            ) : null}
           </div>
           <div className="w-full max-w-xs space-y-2 sm:w-48">
             <div>

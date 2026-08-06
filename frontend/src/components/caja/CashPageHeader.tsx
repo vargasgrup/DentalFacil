@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownCircle, ArrowUpCircle } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, WalletCards } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ModuleHeader } from "@/components/ui/ModuleHeader";
 import type { CashSession } from "./types";
@@ -10,6 +10,8 @@ interface CashPageHeaderProps {
   onCobrar: () => void;
   onEgreso: () => void;
   onCloseConfirm: () => void;
+  onConsultarPorCobrar?: () => void;
+  porCobrarCount?: number;
 }
 
 export function CashPageHeader({
@@ -17,6 +19,8 @@ export function CashPageHeader({
   onCobrar,
   onEgreso,
   onCloseConfirm,
+  onConsultarPorCobrar,
+  porCobrarCount = 0,
 }: CashPageHeaderProps) {
   return (
     <ModuleHeader
@@ -25,29 +29,45 @@ export function CashPageHeader({
         { label: "Caja" },
       ]}
       title="Caja"
-      description="Cobros, deudas pendientes y movimientos (sesión, día, semana, mes o año)."
+      description="Registro de cobros y egresos, control de sesión y consulta del historial por período."
       actions={
-        session ? (
-          <>
+        <>
+          {onConsultarPorCobrar ? (
             <Button
-              variant="primary"
-              onClick={onCobrar}
-              icon={<ArrowDownCircle className="h-4 w-4" />}
+              variant="ghost"
+              onClick={onConsultarPorCobrar}
+              icon={<WalletCards className="h-4 w-4" />}
             >
-              Cobrar
+              Por cobrar
+              {porCobrarCount > 0 ? (
+                <span className="ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-slate-200 px-1.5 text-[11px] font-semibold tabular-nums text-slate-700">
+                  {porCobrarCount}
+                </span>
+              ) : null}
             </Button>
-            <Button
-              variant="secondary"
-              onClick={onEgreso}
-              icon={<ArrowUpCircle className="h-4 w-4" />}
-            >
-              Egreso
-            </Button>
-            <Button variant="danger" onClick={onCloseConfirm}>
-              Cerrar caja
-            </Button>
-          </>
-        ) : undefined
+          ) : null}
+          {session ? (
+            <>
+              <Button
+                variant="primary"
+                onClick={onCobrar}
+                icon={<ArrowDownCircle className="h-4 w-4" />}
+              >
+                Cobrar
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={onEgreso}
+                icon={<ArrowUpCircle className="h-4 w-4" />}
+              >
+                Egreso
+              </Button>
+              <Button variant="danger" onClick={onCloseConfirm}>
+                Cerrar caja
+              </Button>
+            </>
+          ) : null}
+        </>
       }
     />
   );

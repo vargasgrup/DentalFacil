@@ -79,10 +79,16 @@ export function IncomeForm({
     <Card>
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-section-title text-slate-800">Registrar cobro</h3>
+          <h3 className="text-section-title text-slate-800">
+            {lastReceipt ? "Cobro registrado" : "Registrar cobro"}
+          </h3>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              onClose();
+              onClearReceipt();
+              onResetForm();
+            }}
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"
             aria-label="Cerrar"
           >
@@ -90,6 +96,9 @@ export function IncomeForm({
           </button>
         </div>
 
+        {/* Formulario de captura: oculto tras un cobro exitoso (solo comprobante + «Otro cobro»). */}
+        {!lastReceipt && (
+          <>
         <PatientPicker
           value={incomePatient}
           onChange={setIncomePatient}
@@ -376,6 +385,9 @@ export function IncomeForm({
               Cancelar
             </Button>
           </div>
+        </div>
+          </>
+        )}
 
           {lastReceipt && (
             <div className="rounded-lg border border-success-200 bg-success-50/60 p-3">
@@ -405,7 +417,7 @@ export function IncomeForm({
                             : null;
                       if (saldo === null) return "";
                       if (saldo <= 0.009) return " · Tratamiento saldado";
-                      const parts = [`Saldo pendiente: S/ ${saldo.toFixed(2)}`];
+                      const parts = [`Saldo pendiente del ítem: S/ ${saldo.toFixed(2)}`];
                       if (costo !== null && aCuenta !== null) {
                         parts.unshift(
                           `Presupuesto S/ ${costo.toFixed(2)} · A cuenta S/ ${aCuenta.toFixed(2)}`
@@ -415,6 +427,10 @@ export function IncomeForm({
                     })()}
                   </p>
                 )}
+              <p className="mb-2 text-help text-success-800/80">
+                El formulario quedó listo y en blanco. Use «Otro cobro» para la
+                siguiente operación (mismo u otro paciente).
+              </p>
               <DocumentActions
                 key={`receipt-${lastReceipt.id}`}
                 label="Comprobante de pago"
@@ -451,10 +467,20 @@ export function IncomeForm({
                 >
                   Otro cobro
                 </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    onClose();
+                    onClearReceipt();
+                    onResetForm();
+                  }}
+                >
+                  Cerrar
+                </Button>
               </div>
             </div>
           )}
-        </div>
       </form>
     </Card>
   );

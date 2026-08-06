@@ -2,16 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Baby,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  HeartPulse,
-  Shield,
-  UserRound,
-  Users,
-} from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Shield } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { navigateToPacienteFicha } from "@/lib/pacienteRoutes";
 import { PacienteFichaLink } from "@/components/PacienteFichaLink";
@@ -78,23 +69,6 @@ function sanitizeDocumento(tipo: DocTipo, raw: string): string {
     return raw.replace(/[^a-zA-Z0-9\-]/g, "").slice(0, 20).toUpperCase();
   }
   return raw.replace(/[^a-zA-Z0-9]/g, "").slice(0, docMaxLen(tipo)).toUpperCase();
-}
-
-function bandIcon(id: AgeBandId) {
-  switch (id) {
-    case "bebe":
-      return Baby;
-    case "nino":
-      return Users;
-    case "adolescente":
-      return UserRound;
-    case "adulto":
-      return UserRound;
-    case "mayor":
-      return HeartPulse;
-    default:
-      return UserRound;
-  }
 }
 
 export default function NuevoPacientePage() {
@@ -164,8 +138,9 @@ export default function NuevoPacientePage() {
   }, []);
 
   useEffect(() => {
-    // Siempre empezar por Nombres (no por los chips de edad).
-    focusNext(nombresRef.current);
+    // Siempre el foco inicial en Nombres (el selector de edad no lo captura).
+    const t = window.setTimeout(() => focusNext(nombresRef.current), 0);
+    return () => window.clearTimeout(t);
   }, [focusNext]);
 
   const age = useMemo(
@@ -630,8 +605,8 @@ export default function NuevoPacientePage() {
       <div>
         <h1 className="text-page-title text-balance text-slate-800">Nuevo paciente</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Orden: nombres → apellidos → documento → fecha (día, mes, año) → celular
-          WhatsApp. El sexo se asigna solo al reconocer el nombre.
+          Empiece por nombres; documento, fecha y celular WhatsApp siguen en orden.
+          El sexo se infiere del nombre cuando es reconocible.
         </p>
       </div>
 
@@ -652,67 +627,40 @@ export default function NuevoPacientePage() {
           className="space-y-5"
           noValidate
         >
-          {/* Perfil de edad — one click */}
-          <section className="space-y-3">
-            <div className="flex flex-wrap items-end justify-between gap-2">
-              <h2 className="text-section-title text-slate-800">¿Quién se atiende?</h2>
-              {(age !== null || bandTouched) && (
-                <p className="text-help text-slate-500">
-                  {formatAgeLabel(age, ageBand)}
-                  {age !== null ? ` · ${bandMeta.label}` : ""}
-                </p>
-              )}
-            </div>
-            <div
-              className="grid grid-cols-2 gap-2 sm:grid-cols-5"
-              role="radiogroup"
-              aria-label="Perfil de edad del paciente"
-            >
-              {AGE_BANDS.map((band) => {
-                const Icon = bandIcon(band.id);
-                const selected = ageBand === band.id;
-                return (
-                  <button
-                    key={band.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    tabIndex={-1}
-                    onClick={() => {
-                      applyBand(band.id);
-                      focusNext(nombresRef.current);
-                    }}
-                    className={[
-                      "flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left transition-smooth",
-                      selected
-                        ? "border-brand-500 bg-brand-50/80 shadow-sm ring-1 ring-brand-500/30"
-                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
-                    ].join(" ")}
-                  >
-                    <Icon
-                      className={`h-4 w-4 ${selected ? "text-brand-600" : "text-slate-400"}`}
-                      aria-hidden
-                    />
-                    <span
-                      className={`text-sm font-semibold ${selected ? "text-brand-900" : "text-slate-800"}`}
-                    >
-                      {band.label}
-                    </span>
-                    <span className="text-[11px] leading-tight text-slate-500">
-                      {band.shortAges} años
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-help text-slate-500">{bandMeta.hint}</p>
-          </section>
-
-          {/* Identidad */}
+          {/* Identidad — perfil compacto junto al título; foco en Nombres */}
           <section className="space-y-4">
-            <h2 className="text-section-title text-slate-800">Identidad</h2>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <h2 className="text-section-title text-slate-800">Identidad</h2>
+              <div className="flex flex-wrap items-end gap-3">
+                {age !== null && (
+                  <p className="pb-2 text-help text-slate-500">
+                    {formatAgeLabel(age, ageBand)}
+                  </p>
+                )}
+                <label className="block w-[13.5rem] shrink-0">
+                  <span className="mb-1 block text-label text-slate-600">
+                    Quién se atiende
+                  </span>
+                  <select
+                    value={ageBand}
+                    onChange={(e) => applyBand(e.target.value as AgeBandId)}
+                    className={selectClass}
+                    aria-label="Perfil de edad del paciente"
+                  >
+                    {AGE_BANDS.map((band) => (
+                      <option key={band.id} value={band.id}>
+                        {band.label} ({band.shortAges})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+            {bandMeta.needsGuardian && (
+              <p className="text-help text-slate-500">{bandMeta.hint}</p>
+            )}
 
-            {/* 1. Nombre completo */}
+            {/* 1. Nombre completo — foco por defecto al abrir el módulo */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Input
                 ref={nombresRef}
@@ -722,6 +670,7 @@ export default function NuevoPacientePage() {
                 onBlur={() => blurName("nombres")}
                 onKeyDown={(e) => onEnterAdvance(e, apellidosRef.current)}
                 autoComplete="given-name"
+                autoFocus
                 required
                 error={fieldErrors.nombres}
                 placeholder={minor ? "Nombre del niño/a" : "María Elena"}

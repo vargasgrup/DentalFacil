@@ -212,7 +212,7 @@ export function ConfigSettingsShell({
   return (
     <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[272px_minmax(0,1fr)]">
       <nav
-        className="rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-sm lg:sticky lg:top-4"
+        className="rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-sm lg:sticky lg:top-0 lg:z-20"
         aria-label="Secciones de configuración"
       >
         <label className="mb-3.5 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2.5 lg:py-2">

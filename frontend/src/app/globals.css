@@ -68,6 +68,27 @@ body {
   padding-bottom: calc(var(--main-pad-y) + 4rem);
 }
 
+/*
+ * Secondary sticky chrome INSIDE `.app-main` (the real vertical scrollport).
+ * Topbar/sidebar are outside main — always use top:0, never viewport offsets
+ * (top:4rem / Tailwind top-16) which leave a dead gap and look “broken”.
+ * Full-bleed against main horizontal padding so the bar edge-to-edge when stuck.
+ */
+.app-main-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  margin-left: calc(-1 * var(--main-pad-x));
+  margin-right: calc(-1 * var(--main-pad-x));
+  padding-left: var(--main-pad-x);
+  padding-right: var(--main-pad-x);
+  background-color: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  /* Solid underlay so content doesn’t show through while scrolling */
+  box-shadow: 0 1px 0 0 rgb(226 232 240);
+}
+
 @media (min-width: 640px) {
   html[data-density="comfortable"] {
     --main-pad-x: 1.5rem;

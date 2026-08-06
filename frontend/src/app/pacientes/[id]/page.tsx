@@ -34,96 +34,102 @@ export default function FichaClinicaPage() {
   }
 
   return (
-    <PageContainer width="wide" className="space-y-5">
-      <FichaHeader
-        patient={f.patient}
-        onBack={() => router.push("/pacientes")}
-        onPatientUpdated={f.applyPatientUpdate}
-      />
+    <PageContainer width="wide" className="!space-y-0">
+      {/* Header de paciente: puede salir de vista al hacer scroll */}
+      <div className="space-y-4 pb-4">
+        <FichaHeader
+          patient={f.patient}
+          onBack={() => router.push("/pacientes")}
+          onPatientUpdated={f.applyPatientUpdate}
+        />
 
-      {f.error && (
-        <div className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm text-danger-600">
-          {f.error}
-        </div>
-      )}
+        {f.error && (
+          <div className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm text-danger-600">
+            {f.error}
+          </div>
+        )}
+      </div>
 
+      {/* Tabs: sticky en el scrollport de main (ver FichaTabNav / .app-main-sticky) */}
       <FichaTabNav activeTab={f.fichaTab} onTabChange={f.setFichaTab} />
 
-      {f.fichaTab === "historia" && (
-        <HistoriaTab
-          patient={f.patient}
-          patientId={patientId}
-          patientForm={f.patientForm}
-          setPatientForm={f.setPatientForm}
-          recordForm={f.recordForm}
-          setRecordForm={f.setRecordForm}
-          edad={f.edad}
-          allergyTags={f.allergyTags}
-          allergyInput={f.allergyInput}
-          setAllergyInput={f.setAllergyInput}
-          addAllergyTag={f.addAllergyTag}
-          removeAllergyTag={f.removeAllergyTag}
-          habitos={f.habitos}
-          odonNotes={f.odonNotes}
-          setOdonNotes={f.setOdonNotes}
-          toggleHabito={f.toggleHabito}
-          savePatient={f.savePatient}
-          saveRecord={f.saveRecord}
-          patientSaved={f.patientSaved}
-          recordSaved={f.recordSaved}
-          onAgendarCita={() => router.push(`/agenda?patient_id=${patientId}`)}
-        />
-      )}
+      <div className="space-y-5 pt-5">
+        {f.fichaTab === "historia" && (
+          <HistoriaTab
+            patient={f.patient}
+            patientId={patientId}
+            patientForm={f.patientForm}
+            setPatientForm={f.setPatientForm}
+            recordForm={f.recordForm}
+            setRecordForm={f.setRecordForm}
+            edad={f.edad}
+            allergyTags={f.allergyTags}
+            allergyInput={f.allergyInput}
+            setAllergyInput={f.setAllergyInput}
+            addAllergyTag={f.addAllergyTag}
+            removeAllergyTag={f.removeAllergyTag}
+            habitos={f.habitos}
+            odonNotes={f.odonNotes}
+            setOdonNotes={f.setOdonNotes}
+            toggleHabito={f.toggleHabito}
+            savePatient={f.savePatient}
+            saveRecord={f.saveRecord}
+            patientSaved={f.patientSaved}
+            recordSaved={f.recordSaved}
+            onAgendarCita={() => router.push(`/agenda?patient_id=${patientId}`)}
+          />
+        )}
 
-      {f.fichaTab === "evaluacion" && (
-        <EvaluacionTab
-          patient={f.patient}
-          patientId={patientId}
-          record={f.record}
-          recordForm={f.recordForm}
-          setRecordForm={f.setRecordForm}
-          planBundle={f.planBundle}
-          setPlanBundle={f.setPlanBundle}
-          planItems={f.planItems}
-          setPlanItems={f.setPlanItems}
-          planTotals={f.planTotals}
-          hasOdontogramSnapshot={f.hasOdontogramSnapshot}
-          consentText={f.consentText}
-          doctorDisplay={f.doctorDisplay}
-          saveRecord={f.saveRecord}
-          recordSaved={f.recordSaved}
-          toggleConsentimiento={f.toggleConsentimiento}
-          addPlanFromOdontogram={f.addPlanFromOdontogram}
-          addItemRow={f.addItemRow}
-          removeItemRow={f.removeItemRow}
-          updateItem={f.updateItem}
-          registerPlanItemInEvolution={f.registerPlanItemInEvolution}
-        />
-      )}
+        {f.fichaTab === "evaluacion" && (
+          <EvaluacionTab
+            patient={f.patient}
+            patientId={patientId}
+            record={f.record}
+            recordForm={f.recordForm}
+            setRecordForm={f.setRecordForm}
+            planBundle={f.planBundle}
+            setPlanBundle={f.setPlanBundle}
+            planItems={f.planItems}
+            setPlanItems={f.setPlanItems}
+            planTotals={f.planTotals}
+            hasOdontogramSnapshot={f.hasOdontogramSnapshot}
+            consentText={f.consentText}
+            doctorDisplay={f.doctorDisplay}
+            saveRecord={f.saveRecord}
+            recordSaved={f.recordSaved}
+            toggleConsentimiento={f.toggleConsentimiento}
+            addPlanFromOdontogram={f.addPlanFromOdontogram}
+            addItemRow={f.addItemRow}
+            removeItemRow={f.removeItemRow}
+            updateItem={f.updateItem}
+            registerPlanItemInEvolution={f.registerPlanItemInEvolution}
+          />
+        )}
 
-      {f.fichaTab === "seguimiento" && (
-        <SeguimientoTab
-          patient={f.patient}
-          patientId={patientId}
-          record={f.record}
-          planBundle={f.planBundle}
-          evolution={f.evolution}
-          financial={f.financial}
-          payments={f.payments}
-          evoTotals={f.evoTotals}
-          estadoColors={f.estadoColors}
-          showEvoForm={f.showEvoForm}
-          setShowEvoForm={f.setShowEvoForm}
-          newEvo={f.newEvo}
-          setNewEvo={f.setNewEvo}
-          addEvolution={f.addEvolution}
-          deleteEvolution={f.deleteEvolution}
-          updateEvolutionEstado={f.updateEvolutionEstado}
-          updateEvolutionField={f.updateEvolutionField}
-          saveRecord={f.saveRecord}
-          onNavigate={(path) => router.push(path)}
-        />
-      )}
+        {f.fichaTab === "seguimiento" && (
+          <SeguimientoTab
+            patient={f.patient}
+            patientId={patientId}
+            record={f.record}
+            planBundle={f.planBundle}
+            evolution={f.evolution}
+            financial={f.financial}
+            payments={f.payments}
+            evoTotals={f.evoTotals}
+            estadoColors={f.estadoColors}
+            showEvoForm={f.showEvoForm}
+            setShowEvoForm={f.setShowEvoForm}
+            newEvo={f.newEvo}
+            setNewEvo={f.setNewEvo}
+            addEvolution={f.addEvolution}
+            deleteEvolution={f.deleteEvolution}
+            updateEvolutionEstado={f.updateEvolutionEstado}
+            updateEvolutionField={f.updateEvolutionField}
+            saveRecord={f.saveRecord}
+            onNavigate={(path) => router.push(path)}
+          />
+        )}
+      </div>
     </PageContainer>
   );
 }

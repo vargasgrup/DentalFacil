@@ -361,8 +361,12 @@ function AgendaPageInner() {
         }
       />
 
-      {/* Filter bar — only filters on existing data */}
-      <Card padding="sm" className="module-surface-muted flex flex-wrap items-end gap-3 !border-brand-100/70 !shadow-none">
+      {/* Filter bar — sticky en scrollport de main (misma regla que ficha tabs) */}
+      <div className="app-main-sticky py-2" data-sticky-chrome="agenda-filters">
+        <Card
+          padding="sm"
+          className="module-surface-muted flex flex-wrap items-end gap-3 !border-brand-100/70 !shadow-none"
+        >
         <label className="block">
           <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Estado
@@ -403,7 +407,8 @@ function AgendaPageInner() {
             Limpiar filtros
           </button>
         )}
-      </Card>
+        </Card>
+      </div>
 
       {/* New appointment form */}
       {showNew && (

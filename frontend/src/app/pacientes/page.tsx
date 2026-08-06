@@ -275,7 +275,8 @@ export default function PacientesPage() {
         </div>
       )}
 
-      <div className="module-surface-muted flex flex-col gap-3 p-3.5 lg:flex-row lg:items-center">
+      <div className="app-main-sticky py-2" data-sticky-chrome="pacientes-filters">
+        <div className="module-surface-muted flex flex-col gap-3 p-3.5 lg:flex-row lg:items-center">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
@@ -315,6 +316,7 @@ export default function PacientesPage() {
               ))}
             </select>
           </label>
+        </div>
         </div>
       </div>
 

@@ -17,8 +17,8 @@ RUN chmod +x start.sh \
     && mkdir -p /app/app/assets/uploads /app/uploads/tooth_media /data
 
 ENV PORT=8001
-# Shared multi-user DEMO: lock Admin email/password. Override with DEMO_MODE=false to unlock.
-ENV DEMO_MODE=true
+# DEMO shared-login lock OFF (set DEMO_MODE=true only for multi-user demos).
+ENV DEMO_MODE=false
 EXPOSE 8001
 
 CMD ["./start.sh"]

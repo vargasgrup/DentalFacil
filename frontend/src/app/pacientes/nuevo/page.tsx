@@ -43,6 +43,7 @@ import {
   isMinor,
   needsDocumentNumber,
 } from "@/lib/patientAge";
+import { inferSexoFromNombres } from "@/lib/nameGender";
 
 interface Patient {
   id: string;
@@ -112,6 +113,8 @@ export default function NuevoPacientePage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [ageBand, setAgeBand] = useState<AgeBandId>("adulto");
   const [bandTouched, setBandTouched] = useState(false);
+  /** When true, user overrode sexo — stop auto-guess from name. */
+  const [sexoManual, setSexoManual] = useState(false);
 
   const [form, setForm] = useState({
     nombres: "",
@@ -306,9 +309,40 @@ export default function NuevoPacientePage() {
     set("telefono_responsable", normalizePeruvianMobile(raw));
   };
 
+  const applySexoFromName = useCallback(
+    (nombres: string, force = false) => {
+      if (sexoManual && !force) return;
+      const guessed = inferSexoFromNombres(nombres);
+      if (!guessed) return;
+      setForm((prev) => {
+        if (prev.sexo === guessed) return prev;
+        if (sexoManual && !force) return prev;
+        // Keep user's manual X / other; only fill empty or auto M/F
+        if (prev.sexo === "X") return prev;
+        if (prev.sexo && sexoManual) return prev;
+        return { ...prev, sexo: guessed };
+      });
+    },
+    [sexoManual]
+  );
+
+  const onNombresChange = (raw: string) => {
+    set("nombres", raw);
+    setError("");
+    applySexoFromName(raw);
+  };
+
   const blurName = (field: "nombres" | "apellidos" | "nombre_responsable") => {
     const v = form[field];
-    if (v.trim()) set(field, titleCaseName(v));
+    if (!v.trim()) return;
+    const titled = titleCaseName(v);
+    set(field, titled);
+    if (field === "nombres") applySexoFromName(titled);
+  };
+
+  const onSexoChange = (value: string) => {
+    setSexoManual(true);
+    set("sexo", value);
   };
 
   const documentFormatOk = (): boolean => {
@@ -603,17 +637,26 @@ export default function NuevoPacientePage() {
           {/* Identidad */}
           <section className="space-y-4">
             <h2 className="text-section-title text-slate-800">Identidad</h2>
+
+            {/* 1. Nombre completo */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Input
                 ref={nombresRef}
                 label="Nombres *"
                 value={form.nombres}
-                onChange={(e) => set("nombres", e.target.value)}
+                onChange={(e) => onNombresChange(e.target.value)}
                 onBlur={() => blurName("nombres")}
                 autoComplete="given-name"
                 required
                 error={fieldErrors.nombres}
                 placeholder={minor ? "Nombre del niño/a" : "María Elena"}
+                hint={
+                  form.sexo === "F"
+                    ? "Sexo sugerido: Femenino (puede cambiarlo)"
+                    : form.sexo === "M"
+                      ? "Sexo sugerido: Masculino (puede cambiarlo)"
+                      : "Al escribir el nombre se sugiere el sexo"
+                }
               />
               <Input
                 label="Apellidos *"
@@ -627,31 +670,9 @@ export default function NuevoPacientePage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Input
-                label={minor ? "Fecha de nacimiento *" : "Fecha de nacimiento"}
-                type="date"
-                value={form.fecha_nacimiento}
-                onChange={(e) => set("fecha_nacimiento", e.target.value)}
-                autoComplete="bday"
-                max={new Date().toISOString().slice(0, 10)}
-                error={fieldErrors.fecha_nacimiento}
-                hint={age !== null ? formatAgeLabel(age, ageBand) : "Calcula la edad al instante"}
-              />
+            {/* 2. Documento (tipo + número) justo bajo nombres */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className="block">
-                <span className="mb-1 block text-label text-slate-700">Sexo</span>
-                <select
-                  value={form.sexo}
-                  onChange={(e) => set("sexo", e.target.value)}
-                  className={selectClass}
-                >
-                  <option value="">— Opcional —</option>
-                  <option value="F">Femenino</option>
-                  <option value="M">Masculino</option>
-                  <option value="X">Otro / no especifica</option>
-                </select>
-              </label>
-              <label className="block sm:pt-0">
                 <span className="mb-1 block text-label text-slate-700">Tipo documento</span>
                 <select
                   value={form.tipo_documento}
@@ -666,68 +687,130 @@ export default function NuevoPacientePage() {
                   <option value="OTRO">Otro</option>
                 </select>
               </label>
+
+              {needsDocumentNumber(form.tipo_documento) ? (
+                <div>
+                  <Input
+                    ref={docRef}
+                    label={`N° ${docTipoLabel(form.tipo_documento)} *`}
+                    value={form.numero_documento}
+                    onChange={(e) => onDocumentoChange(e.target.value)}
+                    inputMode={form.tipo_documento === "DNI" ? "numeric" : "text"}
+                    pattern={form.tipo_documento === "DNI" ? "\\d{8}" : undefined}
+                    maxLength={docMaxLen(form.tipo_documento)}
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder={form.tipo_documento === "DNI" ? "12345678" : "Número"}
+                    error={fieldErrors.numero_documento}
+                    hint={docStatus === "checking" ? "Verificando…" : docHint}
+                    trailing={docTrailing}
+                    success={docOk}
+                    aria-invalid={!!fieldErrors.numero_documento || docStatus === "dup"}
+                  />
+                  {docStatus === "ok" && (
+                    <p className="mt-1 flex items-center gap-1 text-help text-success-600">
+                      <Check className="h-3.5 w-3.5" aria-hidden />
+                      Documento disponible
+                    </p>
+                  )}
+                  {docStatus === "dup" && dupPatient && (
+                    <p className="mt-1 text-help text-danger-600">
+                      Ya registrado: {dupPatient.nombres} {dupPatient.apellidos} (
+                      {formatFichaLabel(dupPatient.numero_ficha)}).{" "}
+                      <PacienteFichaLink
+                        patientId={dupPatient.id}
+                        className="font-medium text-brand-600 underline-offset-2 hover:underline"
+                      >
+                        Abrir ficha
+                      </PacienteFichaLink>
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-3 text-sm text-slate-600">
+                  <p className="font-medium text-slate-800">
+                    {docTipoLabel(form.tipo_documento)}
+                  </p>
+                  <p className="mt-0.5 text-help text-slate-500">
+                    Sin número obligatorio. Puede completarlo después en la ficha.
+                  </p>
+                  {form.tipo_documento === "EN_TRAMITE" && (
+                    <div className="mt-3">
+                      <Input
+                        label="N° provisional (opcional)"
+                        value={form.numero_documento}
+                        onChange={(e) => onDocumentoChange(e.target.value)}
+                        autoComplete="off"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {needsDocumentNumber(form.tipo_documento) ? (
-              <div>
-                <Input
-                  ref={docRef}
-                  label={`N° ${docTipoLabel(form.tipo_documento)} *`}
-                  value={form.numero_documento}
-                  onChange={(e) => onDocumentoChange(e.target.value)}
-                  inputMode={form.tipo_documento === "DNI" ? "numeric" : "text"}
-                  pattern={form.tipo_documento === "DNI" ? "\\d{8}" : undefined}
-                  maxLength={docMaxLen(form.tipo_documento)}
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder={form.tipo_documento === "DNI" ? "12345678" : "Número"}
-                  error={fieldErrors.numero_documento}
-                  hint={docStatus === "checking" ? "Verificando…" : docHint}
-                  trailing={docTrailing}
-                  success={docOk}
-                  aria-invalid={!!fieldErrors.numero_documento || docStatus === "dup"}
-                />
-                {docStatus === "ok" && (
-                  <p className="mt-1 flex items-center gap-1 text-help text-success-600">
-                    <Check className="h-3.5 w-3.5" aria-hidden />
-                    Documento disponible
-                  </p>
-                )}
-                {docStatus === "dup" && dupPatient && (
-                  <p className="mt-1 text-help text-danger-600">
-                    Ya registrado: {dupPatient.nombres} {dupPatient.apellidos} (
-                    {formatFichaLabel(dupPatient.numero_ficha)}).{" "}
-                    <PacienteFichaLink
-                      patientId={dupPatient.id}
-                      className="font-medium text-brand-600 underline-offset-2 hover:underline"
-                    >
-                      Abrir ficha
-                    </PacienteFichaLink>
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-3 text-sm text-slate-600">
-                <p className="font-medium text-slate-800">
-                  {docTipoLabel(form.tipo_documento)}
+            {/* 3. Fecha de nacimiento + sexo */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Input
+                label={minor ? "Fecha de nacimiento *" : "Fecha de nacimiento"}
+                type="date"
+                value={form.fecha_nacimiento}
+                onChange={(e) => set("fecha_nacimiento", e.target.value)}
+                autoComplete="bday"
+                max={new Date().toISOString().slice(0, 10)}
+                error={fieldErrors.fecha_nacimiento}
+                hint={
+                  age !== null ? formatAgeLabel(age, ageBand) : "Calcula la edad al instante"
+                }
+              />
+              <label className="block">
+                <span className="mb-1 block text-label text-slate-700">Sexo</span>
+                <select
+                  value={form.sexo}
+                  onChange={(e) => onSexoChange(e.target.value)}
+                  className={selectClass}
+                  aria-describedby="sexo-hint"
+                >
+                  <option value="">— Opcional —</option>
+                  <option value="F">Femenino</option>
+                  <option value="M">Masculino</option>
+                  <option value="X">Otro / no especifica</option>
+                </select>
+                <p id="sexo-hint" className="mt-1 text-help text-slate-500">
+                  {sexoManual
+                    ? "Definido manualmente"
+                    : form.sexo
+                      ? "Detectado por el nombre (editable)"
+                      : "Se completa solo al reconocer el nombre"}
                 </p>
-                <p className="mt-0.5 text-help text-slate-500">
-                  Puede abrir la ficha sin número. Si después obtiene documento, edítelo en la
-                  ficha clínica.
-                </p>
-                {form.tipo_documento === "EN_TRAMITE" && (
-                  <div className="mt-3">
-                    <Input
-                      label="N° provisional (opcional)"
-                      value={form.numero_documento}
-                      onChange={(e) => onDocumentoChange(e.target.value)}
-                      autoComplete="off"
-                      hint="Cualquier referencia interna o número temporal"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
+              </label>
+            </div>
+
+            {/* 4. Celular — canal WhatsApp de documentos */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 sm:p-4">
+              <Input
+                ref={telRef}
+                label={
+                  minor
+                    ? "Celular del paciente (WhatsApp)"
+                    : "Celular del paciente * (WhatsApp)"
+                }
+                value={form.telefono}
+                onChange={(e) => onTelefonoChange(e.target.value)}
+                inputMode="numeric"
+                pattern="9\\d{8}"
+                maxLength={PHONE_LENGTH}
+                autoComplete="tel-national"
+                placeholder="987654321"
+                error={fieldErrors.telefono}
+                hint={
+                  minor
+                    ? "Comprobantes y documentos se envían por WhatsApp. Si no tiene, use el del apoderado."
+                    : "Comprobantes, tiques y reportes se envían a este número por WhatsApp"
+                }
+                trailing={`${form.telefono.length}/${PHONE_LENGTH}`}
+                success={validatePeruvianMobile(form.telefono)}
+              />
+            </div>
           </section>
 
           {/* Apoderado — minors or optional support */}
@@ -751,7 +834,7 @@ export default function NuevoPacientePage() {
                   </h2>
                   <p className="mt-0.5 text-help text-slate-500">
                     {minor
-                      ? "Contacto principal para citas y WhatsApp. Un par de datos bastan."
+                      ? "Si el menor no tiene celular, los envíos por WhatsApp usan el del apoderado."
                       : "Útil en adultos mayores o pacientes que dependen de un familiar."}
                   </p>
                 </div>
@@ -790,7 +873,7 @@ export default function NuevoPacientePage() {
                   maxLength={PHONE_LENGTH}
                   placeholder="987654321"
                   error={fieldErrors.telefono_responsable}
-                  hint="9 dígitos, empieza en 9"
+                  hint="9 dígitos, empieza en 9 · WhatsApp de respaldo"
                   trailing={`${form.telefono_responsable.length}/${PHONE_LENGTH}`}
                   success={validatePeruvianMobile(form.telefono_responsable)}
                 />
@@ -818,53 +901,23 @@ export default function NuevoPacientePage() {
             </button>
           )}
 
-          {/* Contacto */}
+          {/* 5. Alergias y resto */}
           <section className="space-y-4">
-            <h2 className="text-section-title text-slate-800">Contacto</h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input
-                ref={telRef}
-                label={
-                  minor
-                    ? "Celular del paciente (opcional)"
-                    : "Celular del paciente *"
-                }
-                value={form.telefono}
-                onChange={(e) => onTelefonoChange(e.target.value)}
-                inputMode="numeric"
-                pattern="9\\d{8}"
-                maxLength={PHONE_LENGTH}
-                autoComplete="tel-national"
-                placeholder="987654321"
-                error={fieldErrors.telefono}
-                hint={
-                  minor
-                    ? "Si no tiene, usamos el del apoderado"
-                    : "9 dígitos, empieza en 9"
-                }
-                trailing={`${form.telefono.length}/${PHONE_LENGTH}`}
-                success={validatePeruvianMobile(form.telefono)}
+            <h2 className="text-section-title text-slate-800">Salud y atención</h2>
+            <label className="block">
+              <span className="mb-1 block text-label text-slate-700">
+                Alergias <span className="font-normal text-slate-500">(recomendado)</span>
+              </span>
+              <textarea
+                value={form.alergias}
+                onChange={(e) => set("alergias", e.target.value)}
+                rows={2}
+                className={selectClass}
+                placeholder="Penicilina, látex… o escriba Ninguna"
               />
-              <label className="block">
-                <span className="mb-1 block text-label text-slate-700">
-                  Alergias <span className="font-normal text-slate-500">(recomendado)</span>
-                </span>
-                <textarea
-                  value={form.alergias}
-                  onChange={(e) => set("alergias", e.target.value)}
-                  rows={2}
-                  className={selectClass}
-                  placeholder="Penicilina, látex… o escriba Ninguna"
-                />
-              </label>
-            </div>
-          </section>
-
-          {/* Especialidad */}
-          <section className="space-y-3">
-            <h2 className="text-section-title text-slate-800">Especialidad de atención</h2>
+            </label>
             <p className="text-sm text-slate-500">
-              Ayuda a filtrar el listado (ortodoncia, pediatría, etc.).
+              Especialidad — ayuda a filtrar el listado (ortodoncia, pediatría, etc.).
             </p>
             <SpecialtySelect
               label="Especialidad"

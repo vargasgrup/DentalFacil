@@ -29,6 +29,9 @@ interface StatCardProps {
   value: string;
   subtext?: string;
   variant?: "default" | "success" | "warning" | "info";
+  /** Makes the whole card clickable (e.g. open a detail panel). */
+  onClick?: () => void;
+  className?: string;
 }
 
 const statColors = {
@@ -38,10 +41,40 @@ const statColors = {
   info: "bg-info-50 text-info-600",
 };
 
-export function StatCard({ icon, label, value, subtext, variant = "default" }: StatCardProps) {
+export function StatCard({
+  icon,
+  label,
+  value,
+  subtext,
+  variant = "default",
+  onClick,
+  className = "",
+}: StatCardProps) {
+  const interactive = Boolean(onClick);
   return (
-    <Card className="flex items-center gap-4">
-      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${statColors[variant]}`}>
+    <Card
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={
+        interactive
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
+      className={`flex items-center gap-4 ${
+        interactive
+          ? "cursor-pointer hover:border-brand-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+          : ""
+      } ${className}`}
+    >
+      <div
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${statColors[variant]}`}
+      >
         {icon}
       </div>
       <div className="min-w-0">

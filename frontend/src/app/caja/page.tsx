@@ -77,6 +77,7 @@ export default function CajaPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [debts, setDebts] = useState<DebtsOverview | null>(null);
   const [debtsLoading, setDebtsLoading] = useState(false);
+  const [filterPatient, setFilterPatient] = useState<PickedPatient | null>(null);
 
   const [montoInicial, setMontoInicial] = useState("50");
   const [incomeConcepto, setIncomeConcepto] = useState("");
@@ -123,9 +124,30 @@ export default function CajaPage() {
   );
 
   const filteredTx = useMemo(() => {
-    if (tipoFilter === "todos") return historyTx;
-    return historyTx.filter((t) => t.tipo === tipoFilter);
-  }, [historyTx, tipoFilter]);
+    let rows = historyTx;
+    if (filterPatient?.id) {
+      rows = rows.filter((t) => t.patient_id === filterPatient.id);
+    }
+    if (tipoFilter !== "todos") {
+      rows = rows.filter((t) => t.tipo === tipoFilter);
+    }
+    return rows;
+  }, [historyTx, tipoFilter, filterPatient]);
+
+  /** Totals for the visible mov. grid (honor type + patient filters). */
+  const visiblePeriodTotals = useMemo(() => {
+    const active = filteredTx.filter((t) => !t.anulado);
+    const ingresos = active
+      .filter((t) => t.tipo === "ingreso")
+      .reduce((s, t) => s + t.monto, 0);
+    const egresos = active
+      .filter((t) => t.tipo === "egreso")
+      .reduce((s, t) => s + t.monto, 0);
+    if (!filterPatient && tipoFilter === "todos") {
+      return { ingresos: periodIngresos, egresos: periodEgresos };
+    }
+    return { ingresos, egresos };
+  }, [filteredTx, filterPatient, tipoFilter, periodIngresos, periodEgresos]);
 
   const loadDebts = useCallback(async () => {
     setDebtsLoading(true);
@@ -743,9 +765,11 @@ export default function CajaPage() {
             setPeriod(p);
           }}
           sessionOpen={Boolean(session)}
-          periodIngresos={periodIngresos}
-          periodEgresos={periodEgresos}
+          periodIngresos={visiblePeriodTotals.ingresos}
+          periodEgresos={visiblePeriodTotals.egresos}
           periodLoading={historyLoading}
+          filterPatient={filterPatient}
+          setFilterPatient={setFilterPatient}
           onCobrar={() => {
             if (!session) {
               setError("Abra la caja para registrar un cobro.");

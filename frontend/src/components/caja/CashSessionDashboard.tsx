@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownCircle, ArrowUpCircle, Scale } from "lucide-react";
+import { AlertCircle, ArrowDownCircle, ArrowUpCircle, Scale } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Card, StatCard } from "@/components/ui/Card";
 import { formatDateTime } from "@/lib/datetime";
@@ -11,7 +11,6 @@ interface CashSessionDashboardProps {
   session: CashSession;
   totals: SessionTotals;
   barMax: number;
-  /** Optional subtle summary for receivables (not a leading KPI). */
   porCobrarTotal?: number;
   porCobrarPacientes?: number;
   onConsultarPorCobrar?: () => void;
@@ -27,8 +26,8 @@ export function CashSessionDashboard({
 }: CashSessionDashboardProps) {
   return (
     <>
-      {/* Orden operativo: dinero de la sesión, no cartera de deudas */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* Operación primero; cartera por cobrar al final como resumen accionable */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={<ArrowDownCircle className="h-5 w-5" />}
           label="Ingresos de sesión"
@@ -47,6 +46,20 @@ export function CashSessionDashboard({
           value={`S/ ${totals.saldo.toFixed(2)}`}
           subtext={`Inicial: S/ ${session.monto_inicial.toFixed(2)}`}
           variant="info"
+        />
+        <StatCard
+          icon={<AlertCircle className="h-5 w-5" />}
+          label="Por cobrar"
+          value={`S/ ${porCobrarTotal.toFixed(2)}`}
+          subtext={
+            porCobrarPacientes === 0
+              ? "Sin saldos pendientes · ver detalle"
+              : `${porCobrarPacientes} ${
+                  porCobrarPacientes === 1 ? "paciente" : "pacientes"
+                } · tocar para filtrar`
+          }
+          variant="warning"
+          onClick={onConsultarPorCobrar}
         />
       </div>
 
@@ -72,17 +85,6 @@ export function CashSessionDashboard({
                 ))}
               </div>
             )}
-            {onConsultarPorCobrar && porCobrarPacientes > 0 ? (
-              <button
-                type="button"
-                onClick={onConsultarPorCobrar}
-                className="mt-2 text-left text-xs text-slate-500 underline-offset-2 transition-smooth hover:text-slate-700 hover:underline"
-              >
-                Cuentas por cobrar: S/ {porCobrarTotal.toFixed(2)} ·{" "}
-                {porCobrarPacientes}{" "}
-                {porCobrarPacientes === 1 ? "paciente" : "pacientes"} — consultar
-              </button>
-            ) : null}
           </div>
           <div className="w-full max-w-xs space-y-2 sm:w-48">
             <div>

@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DocumentActions } from "@/components/DocumentActions";
 import { PacienteFichaLink } from "@/components/PacienteFichaLink";
+import { PatientPicker, type PickedPatient } from "@/components/PatientPicker";
 import { formatDateTime, formatTime } from "@/lib/datetime";
 import type { CashPeriod, CashTransaction } from "./types";
 import { formatMetodoLabel, waReceiptMessage } from "./utils";
@@ -30,6 +31,8 @@ interface TransactionsTableProps {
   periodIngresos: number;
   periodEgresos: number;
   periodLoading?: boolean;
+  filterPatient: PickedPatient | null;
+  setFilterPatient: (p: PickedPatient | null) => void;
   onCobrar: () => void;
   onVoid?: (tx: CashTransaction) => void;
   voidingId?: string | null;
@@ -47,6 +50,8 @@ export function TransactionsTable({
   periodIngresos,
   periodEgresos,
   periodLoading,
+  filterPatient,
+  setFilterPatient,
   onCobrar,
   onVoid,
   voidingId,
@@ -59,9 +64,11 @@ export function TransactionsTable({
       <div className="space-y-3 border-b border-slate-200 px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 className="text-sm font-semibold text-slate-800">Movimientos de caja</h3>
+            <h3 className="text-sm font-semibold text-slate-800">
+              Movimientos de caja
+            </h3>
             <p className="text-help text-slate-500">
-              Historial consolidado de ingresos y egresos
+              Historial por período, tipo y paciente
             </p>
           </div>
           <div className="flex flex-wrap gap-3 text-xs tabular-nums">
@@ -73,12 +80,22 @@ export function TransactionsTable({
             </span>
             <span className="text-slate-700">
               Neto{" "}
-              <strong>
-                S/ {(periodIngresos - periodEgresos).toFixed(2)}
-              </strong>
+              <strong>S/ {(periodIngresos - periodEgresos).toFixed(2)}</strong>
             </span>
           </div>
         </div>
+
+        <div className="max-w-md">
+          <PatientPicker
+            value={filterPatient}
+            onChange={setFilterPatient}
+            compact
+            label=""
+            placeholder="Filtrar movimientos: nombre, DNI o ficha…"
+            className="w-full"
+          />
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap rounded-lg bg-slate-100 p-0.5">
             {PERIODS.map((p) => {
@@ -139,15 +156,24 @@ export function TransactionsTable({
       ) : empty ? (
         <EmptyState
           icon={<Wallet className="h-7 w-7" />}
-          title="Sin movimientos en este período"
+          title={
+            filterPatient
+              ? "Sin movimientos de este paciente en el período"
+              : "Sin movimientos en este período"
+          }
           description={
-            sessionOpen
-              ? "Pulse Cobrar para registrar el primer pago del período seleccionado."
-              : "Abra la caja o cambie el período (hoy, semana, mes…)."
+            filterPatient
+              ? "Pruebe otro período o quite el filtro de paciente."
+              : sessionOpen
+                ? "Pulse Cobrar para registrar el primer pago del período seleccionado."
+                : "Abra la caja o cambie el período (hoy, semana, mes…)."
           }
           action={
-            sessionOpen ? (
-              <Button onClick={onCobrar} icon={<ArrowDownCircle className="h-4 w-4" />}>
+            sessionOpen && !filterPatient ? (
+              <Button
+                onClick={onCobrar}
+                icon={<ArrowDownCircle className="h-4 w-4" />}
+              >
                 Cobrar
               </Button>
             ) : undefined
@@ -171,8 +197,7 @@ export function TransactionsTable({
             <tbody>
               {filteredTx.map((t) => {
                 const voided = Boolean(t.anulado);
-                const sameDay =
-                  period === "sesion" || period === "hoy";
+                const sameDay = period === "sesion" || period === "hoy";
                 return (
                   <tr
                     key={t.id}
@@ -189,13 +214,17 @@ export function TransactionsTable({
                       {voided ? (
                         <Badge variant="neutral">anulado</Badge>
                       ) : (
-                        <Badge variant={t.tipo === "ingreso" ? "success" : "danger"}>
+                        <Badge
+                          variant={t.tipo === "ingreso" ? "success" : "danger"}
+                        >
                           {t.tipo}
                         </Badge>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-slate-700">
-                      <span className={voided ? "line-through" : ""}>{t.concepto}</span>
+                      <span className={voided ? "line-through" : ""}>
+                        {t.concepto}
+                      </span>
                       {voided && t.anulacion_motivo ? (
                         <span className="mt-0.5 block text-help text-slate-500">
                           Motivo: {t.anulacion_motivo}
@@ -217,7 +246,9 @@ export function TransactionsTable({
                     <td className="px-4 py-2.5 text-slate-500">
                       {formatMetodoLabel(t)}
                       {t.grupo_pago_id && !voided ? (
-                        <span className="ml-1 text-xs text-slate-400">(mixto)</span>
+                        <span className="ml-1 text-xs text-slate-400">
+                          (mixto)
+                        </span>
                       ) : null}
                     </td>
                     <td
@@ -271,6 +302,9 @@ export function TransactionsTable({
             <p className="border-t border-slate-100 px-4 py-2 text-help text-slate-500">
               {filteredTx.length} de {transactions.length} movimiento
               {transactions.length === 1 ? "" : "s"} en el período
+              {filterPatient
+                ? ` · filtrado: ${filterPatient.nombres} ${filterPatient.apellidos}`.trim()
+                : ""}
             </p>
           )}
         </div>

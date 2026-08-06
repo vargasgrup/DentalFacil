@@ -126,19 +126,13 @@ class Settings(BaseSettings):
     @field_validator("DEMO_MODE", mode="before")
     @classmethod
     def _parse_demo_mode(cls, v: object) -> object:
-        # Also honor NKDENTALSOFT_DEMO without duplicating settings fields
-        env_alias = (os.environ.get("NKDENTALSOFT_DEMO") or "").strip().lower()
-        if env_alias in {"1", "true", "yes", "on"}:
-            return True
-        if env_alias in {"0", "false", "no", "off"}:
-            return False
-        if isinstance(v, str):
-            return v.strip().lower() in {"1", "true", "yes", "on"}
-        return v
+        # DEMO desactivado por pedido del producto (2026-08).
+        # Para reactivar demos multi-usuario: quitar este return False y usar DEMO_MODE=true.
+        return False
 
     @property
     def demo_mode(self) -> bool:
-        return bool(self.DEMO_MODE)
+        return False
 
     @property
     def is_production(self) -> bool:

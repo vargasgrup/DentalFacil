@@ -22,7 +22,8 @@ DEMO_ADMIN_CREDENTIALS_DETAIL = (
 
 
 def is_demo_mode() -> bool:
-    return bool(getattr(settings, "demo_mode", False) or settings.DEMO_MODE)
+    # Always honor settings (DEMO currently forced off in config.py).
+    return bool(settings.demo_mode)
 
 
 def is_admin_user(user: User | None) -> bool:

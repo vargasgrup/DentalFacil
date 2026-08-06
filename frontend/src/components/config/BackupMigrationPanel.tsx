@@ -1,3 +1,11 @@
+/**
+ * Configuración → Respaldo y Migración (solo ADMIN).
+ *
+ * REGLA UNIVERSAL: el módulo mueve datos de clínica (pacientes, historia,
+ * finanzas, agenda, medios, usuarios). La restauración NO revierte la UI ni
+ * la versión del software instalado (merge clínico en destino).
+ * Ver docs/BACKUP_RESTORE.md
+ */
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
@@ -75,6 +83,7 @@ const triggeredLabel: Record<string, string> = {
 };
 
 export function BackupMigrationPanel() {
+  // Policy: clinical data only — see BACKUP_RESTORE.md / module rule
   const [settings, setSettings] = useState<BackupSettings | null>(null);
   const [history, setHistory] = useState<BackupRow[]>([]);
   const [loading, setLoading] = useState(true);

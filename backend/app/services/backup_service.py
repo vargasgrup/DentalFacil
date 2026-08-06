@@ -1,4 +1,20 @@
-"""Consistent SQLite backup + restore packages (zip with DB + uploads)."""
+"""Consistent SQLite backup + restore packages (zip with DB + uploads).
+
+REGLA UNIVERSAL del módulo Respaldo y Migración
+------------------------------------------------
+Backup y restore migran **datos de la clínica**, no el software:
+
+  SI  → pacientes, historia, finanzas, agenda, medios, usuarios, clinic_settings
+  NO  → UI estática, binarios, alembic_version, backup_settings/history destino
+
+Restore SIEMPRE via merge clínico (`merge_clinical_keep_app_schema`).
+Prohibido full-file replace de clinica.db como camino principal en instalaciones
+existentes (revierte la versión efectiva del producto).
+
+Fuente de tablas: CLINICAL_DATA_TABLES / SYSTEM_TABLES_NEVER_RESTORE
+  (app.sqlite_restore). Doc: docs/BACKUP_RESTORE.md
+  Regla agente: .cursor/rules/backup-restore-clinical-data.mdc
+"""
 
 from __future__ import annotations
 

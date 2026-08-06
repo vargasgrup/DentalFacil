@@ -1,0 +1,68 @@
+---
+description: Respaldo y restauración — solo datos clínicos; nunca revierte UI/software
+alwaysApply: true
+---
+
+# Backup / Restore — regla universal (N&K DentalSoft)
+
+Esta regla aplica a **todo** cambio en el módulo Respaldo y Migración (`backup`, `sqlite_restore`, panel Config, APIs `/api/backup/*`, wizard bootstrap, docs).
+
+## Objetivo
+
+Migrar y restaurar **solo datos de la clínica**, nunca la versión del software, la interfaz ni el comportamiento de módulos de la instalación destino.
+
+## Restauración (obligatorio)
+
+1. **Siempre** fusión clínica (`merge_clinical_keep_app_schema` / `merge_clinical_sqlite_into_live`).
+2. **Prohibido** reemplazar el archivo `clinica.db` en caliente como camino principal de restore cuando ya existe una instalación (`os.replace` / full-file overwrite). Eso revierte `alembic_version` y da la sensación de “bajar de versión” (UI y funciones).
+3. **Sí migrar / restaurar**: pacientes, historia clínica, evolución, odontograma, periodontograma, medios, citas, caja/finanzas, documentos generados, usuarios y credenciales, `clinic_settings` (identidad del centro), archivos bajo `uploads/` (tooth_media, complementary_tests, historical_documents, clinic_uploads).
+4. **Nunca restaurar desde el backup sobre destino**:
+   - `alembic_version` (esquema del software instalado)
+   - `backup_settings`, `backup_history`
+   - `revoked_tokens` (se limpia; re-login)
+   - UI estática (`frontend/out`, tree web empaquetado), binarios del instalador, scripts LAN, config de packaging
+5. Tras merge: sanear esquema de la **versión instalada** (`run_migrations` / `ensure_*_schema`). Bump `token_version` de usuarios.
+6. Zips **legacy 1.0** deben aplicarse con la **misma** política de merge (no exception “full replace for old packages”).
+7. Si el lock de Windows impide escribir: staging de **merge clínico** (`.pending_clinical`), no full-replace preferente.
+
+## Generación de backup
+
+- El ZIP puede seguir conteniendo snapshot SQLite + medios (integridad SHA-256).
+- El `manifest` debe declarar `package_kind: clinical_data`, `restore_mode: merge_clinical_keep_app_schema` y listas de tablas.
+- El backup **no** incluye el frontend ni el binario del producto como entregable de “migración de sistema”.
+
+## UI y copy
+
+- Textos del panel Config y del wizard: “datos de pacientes / finanzas / usuarios”, **no** “reemplazar toda la instalación” ni “restaurar el software”.
+- Confirmación destructiva sigue siendo escribir `CONFIRMAR`.
+
+## Código de referencia (no reinventar)
+
+| Pieza | Ubicación |
+|--------|-----------|
+| Tablas clínicas / excluidas | `backend/app/sqlite_restore.py` → `CLINICAL_DATA_TABLES`, `SYSTEM_TABLES_NEVER_RESTORE` |
+| Merge + pending | `merge_clinical_sqlite_into_live`, `stage_pending_clinical_merge` |
+| API restore | `backend/app/services/backup_service.py` → `restore_backup` |
+| Router | `backend/app/routers/backup.py` |
+| UI | `frontend/src/components/config/BackupMigrationPanel.tsx` |
+| Doc producto | `docs/BACKUP_RESTORE.md` |
+
+## Checklist antes de merge de código
+
+- [ ] Restore no usa full-file replace como path feliz.
+- [ ] No se copian paths de UI empaquetada.
+- [ ] Tests de backup verdes (`tests/test_backup.py`), incluyendo preservación de `backup_settings` destino.
+- [ ] Si se agregan tablas clínicas nuevas, actualizar `CLINICAL_DATA_TABLES` y el manifest.
+
+## Anti-ejemplos
+
+```python
+# ❌ BAD — revierte instalación
+os.replace(backup_db_path, live_db_path)
+
+# ✅ GOOD
+merge_clinical_sqlite_into_live(source_db=snap, dest_db=live)
+_heal_schema_after_restore()  # esquema = software instalado
+```
+
+Ver también: `docs/BACKUP_RESTORE.md`.

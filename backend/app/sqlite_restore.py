@@ -1,4 +1,13 @@
-"""Staged SQLite restore + clinical data merge (safe at engine boot)."""
+"""Staged SQLite restore + clinical data merge (safe at engine boot).
+
+REGLA UNIVERSAL (módulo Backup / Restore):
+  - Se migran/restauran SOLO datos de clínica (pacientes, clínica, finanzas,
+    agenda, medios, usuarios).
+  - NUNCA se revierte la instalación destino: UI, binarios, esquema de producto
+    (alembic_version), ni backup_settings/history del destino.
+  - Path correcto: merge_clinical_sqlite_into_live — no os.replace del .db vivo.
+  Ver: docs/BACKUP_RESTORE.md y .cursor/rules/backup-restore-clinical-data.mdc
+"""
 
 from __future__ import annotations
 
@@ -13,6 +22,7 @@ from app.paths import resolve_sqlite_file
 
 logger = logging.getLogger("dentalfacil.sqlite_restore")
 
+# ── Política de datos clínicos (única fuente de verdad de tablas) ─────────
 # Operational clinic data (patients, finances, clinical charting, users).
 # Never wholesale-replaces live schema / alembic / backup module tables.
 CLINICAL_DATA_TABLES: tuple[str, ...] = (

@@ -1,4 +1,8 @@
-"""Backup & restore API (ADMIN). Bootstrap restore allowed when user_count=0."""
+"""Backup & restore API (ADMIN). Bootstrap restore allowed when user_count=0.
+
+REGLA UNIVERSAL: restaurar/migrar datos clínicos únicamente; no software ni UI.
+Ver docs/BACKUP_RESTORE.md y .cursor/rules/backup-restore-clinical-data.mdc
+"""
 
 from __future__ import annotations
 

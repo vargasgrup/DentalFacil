@@ -722,9 +722,9 @@ export default function NuevoPacientePage() {
               />
             </div>
 
-            {/* 2. Documento (tipo + número) justo bajo nombres */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <label className="block">
+            {/* 2. Tipo documento + N° + Fecha en una sola fila (sm+) */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <label className="block min-w-0">
                 <span className="mb-1 block text-label text-slate-700">Tipo documento</span>
                 <select
                   ref={tipoDocRef}
@@ -742,7 +742,7 @@ export default function NuevoPacientePage() {
               </label>
 
               {needsDocumentNumber(form.tipo_documento) ? (
-                <div>
+                <div className="min-w-0">
                   <Input
                     ref={docRef}
                     label={`N° ${docTipoLabel(form.tipo_documento)} *`}
@@ -781,46 +781,46 @@ export default function NuevoPacientePage() {
                   )}
                 </div>
               ) : (
-                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-3 text-sm text-slate-600">
-                  <p className="font-medium text-slate-800">
+                <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-600">
+                  <p className="text-label text-slate-700">
                     {docTipoLabel(form.tipo_documento)}
                   </p>
-                  <p className="mt-0.5 text-help text-slate-500">
-                    Sin número obligatorio. Puede completarlo después en la ficha.
-                  </p>
+                  <p className="mt-0.5 text-help text-slate-500">Sin número obligatorio</p>
                   {form.tipo_documento === "EN_TRAMITE" && (
-                    <div className="mt-3">
+                    <div className="mt-2">
                       <Input
-                        label="N° provisional (opcional)"
+                        label="N° provisional"
                         value={form.numero_documento}
                         onChange={(e) => onDocumentoChange(e.target.value)}
+                        onKeyDown={(e) => onEnterAdvance(e, fechaNacRef.current)}
                         autoComplete="off"
                       />
                     </div>
                   )}
                 </div>
               )}
+
+              <div className="min-w-0">
+                <Input
+                  ref={fechaNacRef}
+                  label={minor ? "Fecha de nacimiento *" : "Fecha de nacimiento"}
+                  type="date"
+                  value={form.fecha_nacimiento}
+                  onChange={(e) => onFechaNacimientoChange(e.target.value)}
+                  onKeyDown={onFechaNacimientoKeyDown}
+                  autoComplete="bday"
+                  max={new Date().toISOString().slice(0, 10)}
+                  error={fieldErrors.fecha_nacimiento}
+                  hint={
+                    age !== null
+                      ? formatAgeLabel(age, ageBand)
+                      : "Día, mes y año"
+                  }
+                />
+              </div>
             </div>
 
-            {/* 3. Fecha (día → mes → año, sin saltos de foco) → luego WhatsApp */}
-            <Input
-              ref={fechaNacRef}
-              label={minor ? "Fecha de nacimiento *" : "Fecha de nacimiento"}
-              type="date"
-              value={form.fecha_nacimiento}
-              onChange={(e) => onFechaNacimientoChange(e.target.value)}
-              onKeyDown={onFechaNacimientoKeyDown}
-              autoComplete="bday"
-              max={new Date().toISOString().slice(0, 10)}
-              error={fieldErrors.fecha_nacimiento}
-              hint={
-                age !== null
-                  ? `${formatAgeLabel(age, ageBand)} · Enter al terminar para ir al celular`
-                  : "Complete día, mes y año. Enter al finalizar avanza al WhatsApp"
-              }
-            />
-
-            {/* 4. Celular — canal WhatsApp de documentos */}
+            {/* 3. Celular — canal WhatsApp de documentos */}
             <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 sm:p-4">
               <Input
                 ref={telRef}

@@ -42,12 +42,13 @@ from app.services.pdf_helpers import (
 # Fallback logo path (perfil puede apuntar a uploads/clinic-logo.*)
 _DEFAULT_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "logo-md.png"
 
-# Ticket térmico: ancho fijo 80mm. La altura se calcula al contenido
-# (evita página de 400mm que Chrome escala al imprimir en 80×200 y achica todo).
+# Ticket 80mm (térmica + matricial Epson TM-U220A / M188A):
+# - Ancho fijo 80mm; altura al contenido.
+# - Tipografía Courier en comprobantes (ver ticket_comprobante.py).
+# Star TSP / 80mm: ~3–4 mm no imprimibles a cada lado.
+# Impact TM-U220: prefiere margen lateral ≥5 mm y pie un poco mayor.
 TICKET_WIDTH = 80 * mm
-# Star TSP / 80mm roll: ~3–4 mm unprintable each side; keep content inside.
-# (L, R, T, B) — top tight to avoid empty band; sides protect Cant./líneas.
-TICKET_MARGINS_COMPROBANTE = (5 * mm, 5 * mm, 1.5 * mm, 3 * mm)
+TICKET_MARGINS_COMPROBANTE = (5 * mm, 5 * mm, 2 * mm, 4 * mm)
 PAGE_A5 = A5
 PAGE_A4 = A4
 

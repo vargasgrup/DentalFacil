@@ -1,9 +1,13 @@
 """
-Ticket / comprobante de pago estilo boleta térmica 80mm.
+Ticket / comprobante de pago estilo boleta 80mm.
 
-Diseño inspirado en boletas de venta electrónicas peruanas (logo, serie,
-cliente, ítems, totales, monto en letras, hash, QR), sin pretender ser
-comprobante tributario SUNAT.
+Diseño multi-impresora:
+  - Térmicas 80mm (Star, Epson TM-T series, etc.)
+  - Matriciales / impact Epson TM-U220A (M188A) y afines
+
+Tipografía: Courier / Courier-Bold (ReportLab built-in). Son monoespace con trazo
+grueso y counters abiertos; al rasterizar en ~9–16 pines o drivers termicos
+siguen legibles. Evitar grises y dash finos en 80mm (se pierden en impact).
 """
 
 from __future__ import annotations
@@ -40,6 +44,16 @@ from app.services.pdf_helpers import (
 )
 
 _DEFAULT_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "logo-md.png"
+
+# ── Tipografía de ticket 80mm (termico + matricial TM-U220) ────────────────
+# Courier es el estandar de facto en recibos POS/impact: contadores abiertos,
+# peso de trazo alto, monoespace (columnas alineadas), Unicode Latin-1/ñ.
+# Helvetica a tamaños < 8pt se “come” al imprimir en TM-U220A (9 pines).
+TICKET_FONT = "Courier"
+TICKET_FONT_BOLD = "Courier-Bold"
+# Negro puro: drivers impact no reproducen gris medium de forma fiable
+TICKET_BLACK = colors.black
+TICKET_INK = colors.HexColor("#000000")
 
 _ONES = (
     "",
@@ -198,11 +212,12 @@ def build_qr_payload(data: dict[str, Any]) -> str:
 
 
 def _qr_image(payload: str, size_mm: float = 28) -> RLImage:
+    # ERROR_CORRECT_H: mejor recuperación en impresión ruidosa (matricial/térmico sucio)
     qr = qrcode.QRCode(
         version=None,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=6,
-        border=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=8,
+        border=2,
     )
     qr.add_data(payload)
     qr.make(fit=True)
@@ -217,7 +232,7 @@ def _qr_image(payload: str, size_mm: float = 28) -> RLImage:
 
 
 def _logo(width_mm: float = 24) -> RLImage | None:
-    """Logo del centro en ticket térmico, centrado; recorta padding blanco."""
+    """Logo del centro en ticket, centrado; recorta padding blanco."""
     profile = get_clinic_profile()
     max_pt = min(MAX_LOGO_PT, width_mm * mm)
     img = logo_image(
@@ -249,54 +264,69 @@ def _p_html(text: str, style: ParagraphStyle) -> Paragraph:
 
 
 def _styles(fmt: str) -> dict[str, ParagraphStyle]:
+    """
+    Estilos por formato.
+
+    80mm: Courier + tamaños mínimos ~8–11 pt (legible en TM-U220A y térmicas).
+    A5/A4: Helvetica de lectura en hoja A (documentos oficina).
+    """
     if fmt == "80mm":
-        title_sz, body_sz, small_sz, tiny_sz = 9, 7.5, 6.5, 5.5
-        after = 2.8
-        lead_extra = 3.8
+        # Mínimos impresos (pt): título 11, cuerpo 9.5, secundaria 8.5, pie 8
+        title_sz, body_sz, small_sz, tiny_sz = 11, 9.5, 8.5, 8
+        after = 2.2
+        lead_extra = 4.2  # aire entre líneas: impact no “pica” bien el interlineado bajo
+        font_r, font_b = TICKET_FONT, TICKET_FONT_BOLD
+        mute = TICKET_INK  # sin gris: el impact lo desvanece o lo hace ilegible
     elif fmt == "A5":
         title_sz, body_sz, small_sz, tiny_sz = 12, 9, 8, 7
         after = 2.0
         lead_extra = 3.0
+        font_r, font_b = "Helvetica", "Helvetica-Bold"
+        mute = colors.HexColor("#334155")
     else:
         title_sz, body_sz, small_sz, tiny_sz = 14, 10, 9, 8
         after = 2.0
         lead_extra = 3.0
+        font_r, font_b = "Helvetica", "Helvetica-Bold"
+        mute = colors.HexColor("#334155")
 
     return {
         "center_bold": ParagraphStyle(
             "c_bold",
-            fontName="Helvetica-Bold",
+            fontName=font_b,
             fontSize=title_sz,
             alignment=1,
             leading=title_sz + lead_extra,
             spaceBefore=0,
             spaceAfter=after,
+            textColor=TICKET_INK if fmt == "80mm" else colors.black,
             wordWrap="CJK",
         ),
         "center": ParagraphStyle(
             "c_norm",
-            fontName="Helvetica",
+            fontName=font_r,
             fontSize=small_sz,
             alignment=1,
             leading=small_sz + lead_extra,
             spaceBefore=0,
             spaceAfter=after,
+            textColor=TICKET_INK if fmt == "80mm" else colors.black,
             wordWrap="CJK",
         ),
         "center_small": ParagraphStyle(
             "c_small",
-            fontName="Helvetica",
+            fontName=font_r,
             fontSize=tiny_sz,
             alignment=1,
             leading=tiny_sz + lead_extra,
-            textColor=colors.HexColor("#334155"),
+            textColor=mute,
             spaceBefore=0,
             spaceAfter=after,
             wordWrap="CJK",
         ),
         "left": ParagraphStyle(
             "l_norm",
-            fontName="Helvetica",
+            fontName=font_r,
             fontSize=body_sz,
             alignment=0,
             leading=body_sz + lead_extra,
@@ -304,11 +334,12 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             spaceAfter=after,
             leftIndent=0,
             firstLineIndent=0,
+            textColor=TICKET_INK if fmt == "80mm" else colors.black,
             wordWrap="CJK",
         ),
         "left_bold": ParagraphStyle(
             "l_bold",
-            fontName="Helvetica-Bold",
+            fontName=font_b,
             fontSize=body_sz,
             alignment=0,
             leading=body_sz + lead_extra,
@@ -316,37 +347,40 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             spaceAfter=after,
             leftIndent=0,
             firstLineIndent=0,
+            textColor=TICKET_INK if fmt == "80mm" else colors.black,
             wordWrap="CJK",
         ),
         "tiny": ParagraphStyle(
             "tiny",
-            fontName="Helvetica",
+            fontName=font_r,
             fontSize=tiny_sz,
             alignment=1,
             leading=tiny_sz + lead_extra,
-            textColor=colors.HexColor("#64748b"),
+            textColor=mute,
             spaceAfter=after,
             wordWrap="CJK",
         ),
         "total": ParagraphStyle(
             "total",
-            fontName="Helvetica-Bold",
-            fontSize=body_sz + 1.5,
+            fontName=font_b,
+            fontSize=body_sz + 1.5 if fmt != "80mm" else 11.5,
             alignment=0,
-            leading=body_sz + lead_extra + 1,
+            leading=(body_sz + 1.5 if fmt != "80mm" else 11.5) + lead_extra,
             spaceAfter=after + 1,
+            textColor=TICKET_INK if fmt == "80mm" else colors.black,
             wordWrap="CJK",
         ),
     }
 
 
 def _line(content_w: float, *, tight: bool = False) -> HRFlowable:
-    before = 1.6 if tight else 3
-    after = 1.6 if tight else 3
+    """Línea sólida gruesa: visible en matricial (dash fino se pierde)."""
+    before = 2.0 if tight else 3.2
+    after = 2.0 if tight else 3.2
     return HRFlowable(
         width=content_w,
-        thickness=0.6,
-        color=colors.black,
+        thickness=1.1 if tight else 0.8,
+        color=TICKET_BLACK,
         spaceBefore=before,
         spaceAfter=after,
         hAlign="LEFT",
@@ -354,15 +388,17 @@ def _line(content_w: float, *, tight: bool = False) -> HRFlowable:
 
 
 def _dash(content_w: float, *, tight: bool = False) -> HRFlowable:
-    before = 1.2 if tight else 2
-    after = 1.2 if tight else 2
+    """Separador de secciones: en 80mm también sólido (no guiones)."""
+    before = 1.6 if tight else 2.2
+    after = 1.6 if tight else 2.2
     return HRFlowable(
         width=content_w,
-        thickness=0.4,
-        color=colors.HexColor("#94a3b8"),
+        thickness=0.9 if tight else 0.5,
+        color=TICKET_BLACK if tight else colors.HexColor("#334155"),
         spaceBefore=before,
         spaceAfter=after,
-        dash=(1, 1.5),
+        # No dash en 80mm: patrones (1,1.5) se desvanecen en TM-U220A
+        dash=None if tight else (1, 1.5),
         hAlign="LEFT",
     )
 
@@ -408,8 +444,7 @@ def build_comprobante_story(
     logo = _logo(logo_size_mm_for_ticket(fmt))
     if logo:
         story.append(logo)
-        # Separacion logo -> nombre (aire visible en rollo 80mm)
-        story.append(Spacer(1, 3.6 * mm if tight else 4 * mm))
+        story.append(Spacer(1, 2.8 * mm if tight else 4 * mm))
     story.append(_p(profile.nombre_publico.upper(), styles["center_bold"]))
     if profile.ruc:
         story.append(_p(f"RUC {profile.ruc}", styles["center"]))
@@ -424,12 +459,12 @@ def build_comprobante_story(
             dir_txt += f" · COP {profile.cop_registro}"
         story.append(_p(dir_txt, styles["center_small"]))
 
-    story.append(Spacer(1, 2.0 * mm if tight else 2.5 * mm))
+    story.append(Spacer(1, 1.6 * mm if tight else 2.5 * mm))
     story.append(_line(content_w, tight=tight))
-    story.append(Spacer(1, 1.4 * mm if tight else 1.8 * mm))
+    story.append(Spacer(1, 1.2 * mm if tight else 1.8 * mm))
     story.append(_p("COMPROBANTE DE PAGO", styles["center_bold"]))
     story.append(_p(serie, styles["center_bold"]))
-    story.append(Spacer(1, 1.2 * mm if tight else 1.5 * mm))
+    story.append(Spacer(1, 1.0 * mm if tight else 1.5 * mm))
     story.append(_dash(content_w, tight=tight))
 
     story.append(
@@ -451,18 +486,20 @@ def build_comprobante_story(
 
     story.append(_dash(content_w, tight=tight))
 
-    # --- Ítems: mismas columnas y sangría que «F. Emisión» (sin desborde izquierdo) ---
-    header_fs = 6.5 if fmt == "80mm" else 8
-    body_fs = 7 if fmt == "80mm" else 9
+    # --- Ítems ---
+    # 80mm: tipografía + tamaño mínimo legible en impact (nunca < 8 pt)
+    header_fs = 8.5 if fmt == "80mm" else 8
+    body_fs = 9.5 if fmt == "80mm" else 9
+    font_r = TICKET_FONT if fmt == "80mm" else "Helvetica"
+    font_b = TICKET_FONT_BOLD if fmt == "80mm" else "Helvetica-Bold"
     if fmt == "80mm":
-        # Anchos fijos en ~70 mm útiles (80 − 2×5). Cant. centrado con texto plano.
-        col_cant = 9 * mm
-        col_pu = 14 * mm
-        col_tot = 14 * mm
+        col_cant = 10 * mm
+        col_pu = 15 * mm
+        col_tot = 15 * mm
         col_desc = content_w - col_cant - col_pu - col_tot
         if col_desc < 18 * mm:
-            col_pu = 12 * mm
-            col_tot = 12 * mm
+            col_pu = 13 * mm
+            col_tot = 13 * mm
             col_desc = content_w - col_cant - col_pu - col_tot
     else:
         col_cant = content_w * 0.12
@@ -470,42 +507,45 @@ def build_comprobante_story(
         col_pu = content_w * 0.22
         col_tot = content_w * 0.22
 
-    # Normalizar para que la suma sea exactamente content_w (evita overflow ReportLab)
     col_widths = [col_cant, col_desc, col_pu, col_tot]
     drift = content_w - sum(col_widths)
     col_widths[1] += drift
 
+    lead_row = body_fs + 3.5 if fmt == "80mm" else body_fs + 2
     hdr_desc = ParagraphStyle(
         "tick_hdr_d",
-        fontName="Helvetica-Bold",
+        fontName=font_b,
         fontSize=header_fs,
-        leading=header_fs + 1,
+        leading=header_fs + 2,
         alignment=0,
+        textColor=TICKET_INK,
     )
     hdr_right = ParagraphStyle(
         "tick_hdr_r",
-        fontName="Helvetica-Bold",
+        fontName=font_b,
         fontSize=header_fs,
-        leading=header_fs + 1,
+        leading=header_fs + 2,
         alignment=2,
+        textColor=TICKET_INK,
     )
     body_left = ParagraphStyle(
         "tick_body",
-        fontName="Helvetica",
+        fontName=font_r,
         fontSize=body_fs,
-        leading=body_fs + 2,
+        leading=lead_row,
         wordWrap="CJK",
         alignment=0,
+        textColor=TICKET_INK,
     )
     body_right = ParagraphStyle(
         "tick_num",
-        fontName="Helvetica",
+        fontName=font_b if fmt == "80mm" else font_r,
         fontSize=body_fs,
-        leading=body_fs + 2,
+        leading=lead_row,
         alignment=2,
+        textColor=TICKET_INK,
     )
 
-    # Cant. como str (no Paragraph): ReportLab centra mejor en la celda
     item_rows = [
         [
             "Cant.",
@@ -521,22 +561,23 @@ def build_comprobante_story(
         ],
     ]
     items_table = Table(item_rows, colWidths=col_widths, hAlign="LEFT")
-    pad = 1.5
+    pad = 2.0 if tight else 1.5
     items_table.setStyle(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("FONTNAME", (0, 0), (0, 0), "Helvetica-Bold"),
-                ("FONTNAME", (0, 1), (0, -1), "Helvetica"),
+                ("FONTNAME", (0, 0), (0, 0), font_b),
+                ("FONTNAME", (0, 1), (0, -1), font_r),
                 ("FONTSIZE", (0, 0), (0, -1), header_fs if fmt == "80mm" else body_fs),
+                ("TEXTCOLOR", (0, 0), (-1, -1), TICKET_INK),
                 ("ALIGN", (0, 0), (0, -1), "CENTER"),
                 ("ALIGN", (1, 0), (1, -1), "LEFT"),
                 ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
                 ("LEFTPADDING", (0, 0), (-1, -1), pad),
                 ("RIGHTPADDING", (0, 0), (-1, -1), pad),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-                ("LINEBELOW", (0, 0), (-1, 0), 0.4, colors.black),
+                ("TOPPADDING", (0, 0), (-1, -1), 2.5 if tight else 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5 if tight else 2),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.9 if tight else 0.4, TICKET_BLACK),
             ]
         )
     )
@@ -551,18 +592,18 @@ def build_comprobante_story(
         )
     )
     story.append(_p(f"Son: {monto_en_letras(monto)}", styles["left"]))
-    story.append(Spacer(1, 1 * mm))
+    story.append(Spacer(1, 1.2 * mm))
     story.append(_p_html("<b>Condición de pago:</b> Contado", styles["left"]))
     story.append(_p_html("<b>Pagos:</b>", styles["left"]))
     story.append(
-        _p(f"• {metodo} — {format_price_plain(monto)}", styles["left"])
+        _p(f"* {metodo} — {format_price_plain(monto)}", styles["left"])
     )
 
     t_costo = data.get("tratamiento_costo")
     t_ac = data.get("tratamiento_a_cuenta")
     t_saldo = data.get("tratamiento_saldo")
     if t_costo is not None and t_ac is not None and t_saldo is not None:
-        story.append(Spacer(1, 1 * mm))
+        story.append(Spacer(1, 1.2 * mm))
         story.append(_p_html("<b>Estado del tratamiento:</b>", styles["left"]))
         story.append(
             _p(f"Costo: {format_price_plain(float(t_costo))}", styles["left"])
@@ -585,13 +626,14 @@ def build_comprobante_story(
     story.append(_p_html(f"<b>Atendido por:</b> {_esc(vendedor)}", styles["left"]))
 
     story.append(_dash(content_w, tight=tight))
-    story.append(_p("Código hash:", styles["left"]))
+    story.append(_p("Código hash:", styles["left_bold"] if tight else styles["left"]))
     story.append(_p(codigo_hash, styles["center_small"]))
-    story.append(Spacer(1, 1.5 * mm))
+    story.append(Spacer(1, 1.8 * mm))
 
-    qr_size = 16 if fmt == "80mm" else 34
+    # QR más grande en 80mm: impact necesita módulos más anchos
+    qr_size = 22 if fmt == "80mm" else 34
     story.append(_qr_image(qr_payload, size_mm=qr_size))
-    story.append(Spacer(1, 1 * mm))
+    story.append(Spacer(1, 1.4 * mm))
 
     story.append(
         _p(
@@ -600,5 +642,9 @@ def build_comprobante_story(
         )
     )
     story.append(_p("¡Gracias por su preferencia!", styles["center_small"]))
+    # Pie de corte para rollo / matricial (aire al final)
+    if tight:
+        story.append(Spacer(1, 3 * mm))
+        story.append(_line(content_w, tight=True))
 
     return story

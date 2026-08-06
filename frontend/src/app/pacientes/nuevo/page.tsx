@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   Baby,
@@ -99,10 +99,14 @@ function bandIcon(id: AgeBandId) {
 export default function NuevoPacientePage() {
   const router = useRouter();
   const nombresRef = useRef<HTMLInputElement>(null);
+  const apellidosRef = useRef<HTMLInputElement>(null);
+  const tipoDocRef = useRef<HTMLSelectElement>(null);
   const docRef = useRef<HTMLInputElement>(null);
   const fechaNacRef = useRef<HTMLInputElement>(null);
+  const sexoRef = useRef<HTMLSelectElement>(null);
   const telRef = useRef<HTMLInputElement>(null);
   const tutorTelRef = useRef<HTMLInputElement>(null);
+  const alergiasRef = useRef<HTMLTextAreaElement>(null);
 
   const [busy, setBusy] = useState(false);
   const submittingRef = useRef(false);
@@ -143,9 +147,26 @@ export default function NuevoPacientePage() {
     saldo_inicial_migracion: "0",
   });
 
-  useEffect(() => {
-    nombresRef.current?.focus();
+  /** Focus the next field in natural registration order. */
+  const focusNext = useCallback((el: HTMLElement | null | undefined) => {
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.focus();
+      if (el instanceof HTMLInputElement && el.type !== "date") {
+        const len = el.value.length;
+        try {
+          el.setSelectionRange(len, len);
+        } catch {
+          /* some input types don't support selection */
+        }
+      }
+    });
   }, []);
+
+  useEffect(() => {
+    // Siempre empezar por Nombres (no por los chips de edad).
+    focusNext(nombresRef.current);
+  }, [focusNext]);
 
   const age = useMemo(
     () => calcAgeYears(form.fecha_nacimiento || null),
@@ -277,13 +298,13 @@ export default function NuevoPacientePage() {
     const next = sanitizeDocumento(form.tipo_documento, raw);
     set("numero_documento", next);
     setError("");
-    // Tras completar el DNI, avanzar al siguiente campo natural: fecha de nacimiento.
-    if (
-      form.tipo_documento === "DNI" &&
-      next.length === DNI_LENGTH &&
-      prevLen < DNI_LENGTH
-    ) {
-      requestAnimationFrame(() => fechaNacRef.current?.focus());
+    // Cadena: documento completo → fecha de nacimiento → sexo → celular
+    const complete =
+      form.tipo_documento === "DNI"
+        ? next.length === DNI_LENGTH && prevLen < DNI_LENGTH
+        : next.length >= 4 && prevLen < 4;
+    if (complete && needsDocumentNumber(form.tipo_documento)) {
+      focusNext(fechaNacRef.current);
     }
   };
 
@@ -297,16 +318,33 @@ export default function NuevoPacientePage() {
     setDocStatus("idle");
     setDupPatient(null);
     if (needsDocumentNumber(tipo)) {
-      requestAnimationFrame(() => docRef.current?.focus());
+      focusNext(docRef.current);
+    } else {
+      focusNext(fechaNacRef.current);
     }
   };
 
   const onTelefonoChange = (raw: string) => {
-    set("telefono", normalizePeruvianMobile(raw));
+    const prevLen = form.telefono.length;
+    const next = normalizePeruvianMobile(raw);
+    set("telefono", next);
+    if (next.length === PHONE_LENGTH && prevLen < PHONE_LENGTH) {
+      focusNext(alergiasRef.current);
+    }
   };
 
   const onTutorTelChange = (raw: string) => {
     set("telefono_responsable", normalizePeruvianMobile(raw));
+  };
+
+  /** Enter avanza al siguiente campo del flujo principal. */
+  const onEnterAdvance = (
+    e: KeyboardEvent,
+    next: HTMLElement | null | undefined
+  ) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    focusNext(next);
   };
 
   const applySexoFromName = useCallback(
@@ -343,6 +381,7 @@ export default function NuevoPacientePage() {
   const onSexoChange = (value: string) => {
     setSexoManual(true);
     set("sexo", value);
+    focusNext(telRef.current);
   };
 
   const documentFormatOk = (): boolean => {
@@ -560,8 +599,8 @@ export default function NuevoPacientePage() {
       <div>
         <h1 className="text-page-title text-balance text-slate-800">Nuevo paciente</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Elija el perfil de edad y complete solo lo esencial. El resto se puede
-          completar después en la ficha.
+          Complete en orden: nombres → apellidos → documento → nacimiento → sexo →
+          celular WhatsApp. Enter o al completar un campo avanza al siguiente.
         </p>
       </div>
 
@@ -607,7 +646,11 @@ export default function NuevoPacientePage() {
                     type="button"
                     role="radio"
                     aria-checked={selected}
-                    onClick={() => applyBand(band.id)}
+                    tabIndex={-1}
+                    onClick={() => {
+                      applyBand(band.id);
+                      focusNext(nombresRef.current);
+                    }}
                     className={[
                       "flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left transition-smooth",
                       selected
@@ -646,6 +689,7 @@ export default function NuevoPacientePage() {
                 value={form.nombres}
                 onChange={(e) => onNombresChange(e.target.value)}
                 onBlur={() => blurName("nombres")}
+                onKeyDown={(e) => onEnterAdvance(e, apellidosRef.current)}
                 autoComplete="given-name"
                 required
                 error={fieldErrors.nombres}
@@ -655,14 +699,23 @@ export default function NuevoPacientePage() {
                     ? "Sexo sugerido: Femenino (puede cambiarlo)"
                     : form.sexo === "M"
                       ? "Sexo sugerido: Masculino (puede cambiarlo)"
-                      : "Al escribir el nombre se sugiere el sexo"
+                      : "Al escribir el nombre se sugiere el sexo · Enter avanza"
                 }
               />
               <Input
+                ref={apellidosRef}
                 label="Apellidos *"
                 value={form.apellidos}
                 onChange={(e) => set("apellidos", e.target.value)}
                 onBlur={() => blurName("apellidos")}
+                onKeyDown={(e) =>
+                  onEnterAdvance(
+                    e,
+                    needsDocumentNumber(form.tipo_documento)
+                      ? docRef.current
+                      : tipoDocRef.current
+                  )
+                }
                 autoComplete="family-name"
                 required
                 error={fieldErrors.apellidos}
@@ -675,6 +728,7 @@ export default function NuevoPacientePage() {
               <label className="block">
                 <span className="mb-1 block text-label text-slate-700">Tipo documento</span>
                 <select
+                  ref={tipoDocRef}
                   value={form.tipo_documento}
                   onChange={(e) => onTipoChange(e.target.value as DocTipo)}
                   className={selectClass}
@@ -695,6 +749,7 @@ export default function NuevoPacientePage() {
                     label={`N° ${docTipoLabel(form.tipo_documento)} *`}
                     value={form.numero_documento}
                     onChange={(e) => onDocumentoChange(e.target.value)}
+                    onKeyDown={(e) => onEnterAdvance(e, fechaNacRef.current)}
                     inputMode={form.tipo_documento === "DNI" ? "numeric" : "text"}
                     pattern={form.tipo_documento === "DNI" ? "\\d{8}" : undefined}
                     maxLength={docMaxLen(form.tipo_documento)}
@@ -755,7 +810,13 @@ export default function NuevoPacientePage() {
                 label={minor ? "Fecha de nacimiento *" : "Fecha de nacimiento"}
                 type="date"
                 value={form.fecha_nacimiento}
-                onChange={(e) => set("fecha_nacimiento", e.target.value)}
+                onChange={(e) => {
+                  set("fecha_nacimiento", e.target.value);
+                  if (e.target.value) {
+                    focusNext(sexoRef.current);
+                  }
+                }}
+                onKeyDown={(e) => onEnterAdvance(e, sexoRef.current)}
                 autoComplete="bday"
                 max={new Date().toISOString().slice(0, 10)}
                 error={fieldErrors.fecha_nacimiento}
@@ -766,8 +827,15 @@ export default function NuevoPacientePage() {
               <label className="block">
                 <span className="mb-1 block text-label text-slate-700">Sexo</span>
                 <select
+                  ref={sexoRef}
                   value={form.sexo}
                   onChange={(e) => onSexoChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      focusNext(telRef.current);
+                    }
+                  }}
                   className={selectClass}
                   aria-describedby="sexo-hint"
                 >
@@ -797,6 +865,7 @@ export default function NuevoPacientePage() {
                 }
                 value={form.telefono}
                 onChange={(e) => onTelefonoChange(e.target.value)}
+                onKeyDown={(e) => onEnterAdvance(e, alergiasRef.current)}
                 inputMode="numeric"
                 pattern="9\\d{8}"
                 maxLength={PHONE_LENGTH}
@@ -910,6 +979,7 @@ export default function NuevoPacientePage() {
                 Alergias <span className="font-normal text-slate-500">(recomendado)</span>
               </span>
               <textarea
+                ref={alergiasRef}
                 value={form.alergias}
                 onChange={(e) => set("alergias", e.target.value)}
                 rows={2}

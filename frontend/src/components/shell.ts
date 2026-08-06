@@ -17,8 +17,7 @@ export const SHELL_TOPBAR_CLASS = [
 ].join(" ");
 
 /**
- * Sticky chrome inside PageContainer layout=scroll (`.app-page-scroll`).
- * For true pin-outside-scroll (ficha tabs), use PageContainer layout="split".
+ * Sticky chrome relative to `main.app-main` scrollport (filters on lists).
  */
 export const APP_MAIN_STICKY_CLASS = "app-main-sticky";
 

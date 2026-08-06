@@ -22,9 +22,8 @@ const RAIL_SURFACE =
 
 /**
  * Shell: rail EN FLUJO + viewport altura fija.
- * El documento (html/body) NUNCA hace scroll en sesión app: solo regiones
- * internas (`.app-page-scroll` o cuerpo de ficha). Así el topbar no “comparte”
- * scroll con el contenido.
+ * html/body no scrollean. Solo `main.app-main` hace scroll vertical
+ * (contenido de cada página fluye sin un segundo overflow anidado).
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { demoMode } = useAuth();
@@ -232,11 +231,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             usuario y la contraseña del Administrador son inmodificables.
           </div>
         )}
-        <main className="app-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {/* Fuerza que la página ocupe toda la altura disponible del main */}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            {children}
-          </div>
+        <main className="app-main min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
+          {children}
         </main>
         <MobileBottomNav />
       </div>

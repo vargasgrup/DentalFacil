@@ -73,33 +73,27 @@ html.nk-app-shell body {
 }
 
 /* Layout de contenido principal (AppShell)
- * Main no scrollea: altura fija. Un solo scroll vertical en `.app-page-scroll`
- * (PageContainer), igual en ficha, listas y configuracion.
+ * Un solo scroll vertical en `main.app-main` (bajo el topbar).
+ * PageContainer / ficha NO deben crear otro overflow-y.
  */
 .app-main {
   padding-left: var(--main-pad-x);
   padding-right: var(--main-pad-x);
   padding-top: var(--main-pad-y);
-  padding-bottom: 0;
-}
-
-/* Unico scrollport de paginas bajo el topbar. */
-.app-page-scroll {
   padding-bottom: calc(var(--main-pad-y) + 4rem);
   -webkit-overflow-scrolling: touch;
-  /* Solo muestra barra cuando el contenido desborda (no “siempre visible”). */
-  scrollbar-gutter: auto;
+  overscroll-behavior: contain;
 }
 
 @media (min-width: 768px) {
-  .app-page-scroll {
+  .app-main {
     padding-bottom: var(--main-pad-y);
   }
 }
 
 /*
- * Sticky opcional para filtros de listas (pacientes/agenda).
- * No usar en ficha: la ficha es flujo de documento (un scroll, sin pin).
+ * Sticky opcional para filtros de listas (pacientes/agenda),
+ * relativo al scroll de `main.app-main`.
  */
 .app-main-sticky {
   position: sticky;

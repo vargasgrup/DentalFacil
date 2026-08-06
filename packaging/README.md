@@ -9,6 +9,26 @@ Actualizada **2026-07-27** tras verificación en clínica de la conexión LAN.
 
 ---
 
+## Carpeta / unidad de instalación y Windows «Aplicaciones»
+
+Los instaladores Server y Client (NSIS):
+
+1. Muestran la **página de carpeta de destino** antes de copiar archivos (`MUI_PAGE_DIRECTORY`).
+2. Permiten elegir **otra unidad o ruta** (p. ej. `D:\NKDentalSoft\Server`).
+3. Recuerdan la última ruta con `InstallDirRegKey` (reinstalaciones).
+4. Registran la app en  
+   `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\…`  
+   para que aparezcan en **Configuración → Aplicaciones → Aplicaciones instaladas** (Windows 11) y se puedan desinstalar con limpieza de archivos/accesos/claves de registro del producto.
+
+| Producto | Clave Uninstall |
+|----------|-----------------|
+| Server | `…\Uninstall\NKDentalSoftServer` |
+| Client | `…\Uninstall\NKDentalSoftClient` |
+
+Datos clínicos del Server (`%ProgramData%\NKDentalSoft\data` y config) se conservan al desinstalar por la UI de Windows. Limpieza total: `NKDentalSoft-Clean-All-x64.exe`.
+
+---
+
 ## Arquitectura de despliegue (clínica)
 
 | Rol | Artefacto | Qué es |

@@ -49,7 +49,7 @@ export interface SidebarContextValue {
   setOpen: (v: boolean) => void;
   openSidebar: () => void;
   closeSidebar: () => void;
-  /** Clase de padding del área de contenido (md+) */
+  /** @deprecated Layout ya no usa padding-left; rail en flujo. */
   contentOffsetClass: string;
   /** Ancho del rail fijo cuando no es floating superpuesto */
   railWidthClass: string;
@@ -88,12 +88,11 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   const openSidebar = useCallback(() => setOpen(true), []);
   const closeSidebar = useCallback(() => setOpen(false), []);
 
+  // Rail ahora es flex in-flow: sin padding artificial (evita el hueco vertical).
   const contentOffsetClass = useMemo(() => {
-    if (!hydrated) return "md:pl-64";
-    if (mode === "collapsed") return "md:pl-[4.5rem]";
-    if (mode === "floating") return "md:pl-0";
-    return "md:pl-64";
-  }, [mode, hydrated]);
+    void hydrated;
+    return "";
+  }, [hydrated]);
 
   const railWidthClass =
     mode === "collapsed" ? "w-[4.5rem]" : "w-64";

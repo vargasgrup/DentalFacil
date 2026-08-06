@@ -17,6 +17,14 @@ import {
 import { useAuth } from "@/lib/auth";
 import { useSidebar } from "./SidebarContext";
 
+const RAIL_SURFACE =
+  "border-r border-slate-300/90 bg-gradient-to-b from-slate-200 via-slate-100 to-slate-50";
+
+/**
+ * Shell: rail de navegación EN FLUJO (no fixed + padding).
+ * Así el menú llena de arriba a abajo y el contenido pega al borde sin
+ * el hueco vertical que producía md:pl-64 + sidebar fixed desincronizados.
+ */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { demoMode } = useAuth();
   const {
@@ -26,7 +34,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     open,
     openSidebar,
     closeSidebar,
-    contentOffsetClass,
     isIconRail,
     isFloatingOverlay,
   } = useSidebar();
@@ -40,17 +47,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [open]);
 
+  const docked = mode === "expanded" || mode === "collapsed";
   const railWidth =
     mode === "collapsed" ? SHELL_SIDEBAR_COLLAPSED_WIDTH : SHELL_SIDEBAR_WIDTH;
 
   return (
-    <div className="flex min-h-dvh bg-surface-muted">
+    <div className="flex h-dvh min-h-0 w-full bg-surface-muted">
       <MaintenanceAlert />
 
-      {/* Desktop rail: expanded o collapsed */}
-      {(mode === "expanded" || mode === "collapsed") && (
+      {/* Desktop rail — in-flow, altura completa del viewport */}
+      {docked && (
         <aside
-          className={`relative fixed left-0 top-0 z-30 hidden h-dvh overflow-visible ${railWidth} flex-col border-r border-slate-400/80 bg-gradient-to-b from-slate-200 via-slate-100 to-slate-50 shadow-[10px_0_32px_-12px_rgba(15,23,42,0.38)] transition-[width] duration-[var(--motion-duration,180ms)] ease-smooth md:flex`}
+          className={`nk-shell-rail relative z-30 hidden h-full min-h-0 shrink-0 flex-col overflow-visible ${railWidth} ${RAIL_SURFACE} shadow-[4px_0_24px_-12px_rgba(15,23,42,0.28)] transition-[width] duration-[var(--motion-duration,180ms)] ease-smooth md:flex`}
           aria-label="Barra de navegación"
           data-sidebar-mode={mode}
         >
@@ -76,10 +84,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )}
             </Link>
           </div>
-          <div className="relative flex min-h-0 flex-1 flex-col">
+
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <Sidebar collapsed={isIconRail} />
           </div>
-          {/* Pastilla en el bisel, centro vertical — colapsar / expandir */}
+
           <SidebarEdgeToggle
             collapsed={isIconRail}
             onToggle={() =>
@@ -89,9 +98,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
       )}
 
-      {/* Floating: botón para reabrir overlay */}
+      {/* Floating: atajo para reabrir el overlay */}
       {mode === "floating" && !open && (
-        <div className="fixed left-2 top-[4.75rem] z-30 hidden md:block">
+        <div className="fixed left-2 top-[4.75rem] z-40 hidden md:block">
           <button
             type="button"
             onClick={openSidebar}
@@ -113,7 +122,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             aria-hidden
           />
           <aside
-            className="fixed left-0 top-0 z-50 flex h-dvh w-[min(18.5rem,88vw)] flex-col border-r border-slate-400/80 bg-gradient-to-b from-slate-200 via-slate-100 to-slate-50 shadow-2xl md:hidden"
+            className={`fixed left-0 top-0 z-50 flex h-dvh w-[min(18.5rem,88vw)] flex-col ${RAIL_SURFACE} shadow-2xl md:hidden`}
             role="dialog"
             aria-modal="true"
             aria-label="Menú de navegación"
@@ -152,7 +161,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             aria-hidden
           />
           <aside
-            className="fixed left-0 top-0 z-50 hidden h-dvh w-64 flex-col border-r border-slate-400/80 bg-gradient-to-b from-slate-200 via-slate-100 to-slate-50 shadow-2xl md:flex"
+            className={`fixed left-0 top-0 z-50 hidden h-dvh w-64 flex-col ${RAIL_SURFACE} shadow-2xl md:flex`}
             role="dialog"
             aria-modal="true"
             aria-label="Navegación flotante"
@@ -193,9 +202,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </>
       )}
 
-      <div
-        className={`flex min-w-0 flex-1 flex-col transition-[padding] duration-[var(--motion-duration,180ms)] ease-smooth ${contentOffsetClass}`}
-      >
+      {/* Columna de trabajo: arranca justo al borde del rail */}
+      <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface-muted">
         <Topbar
           onMenuClick={openSidebar}
           onSidebarModeClick={cycleMode}
@@ -204,13 +212,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {demoMode && (
           <div
             role="status"
-            className="border-b border-amber-200/90 bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-950 sm:text-sm"
+            className="shrink-0 border-b border-amber-200/90 bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-950 sm:text-sm"
           >
             Versión DEMO — varios usuarios comparten el mismo acceso Admin; el
             usuario y la contraseña del Administrador son inmodificables.
           </div>
         )}
-        <main className="app-main min-w-0 flex-1 pb-24 md:pb-6">{children}</main>
+        <main className="app-main min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pb-24 md:pb-6">
+          {children}
+        </main>
         <MobileBottomNav />
       </div>
     </div>

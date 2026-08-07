@@ -1,10 +1,8 @@
-# Stop N&K DentalSoft Server before overwrite/upgrade installs.
-# Free TCP 8001 so a stale process cannot keep serving a dead UI.
-#
-# IMPORTANT: Invoke via `powershell -File ...` (child process). Do not call with
-# the call operator `&` from another script that must continue afterward.
-# ASCII-only file: Windows PowerShell 5.1 misparses UTF-8 without BOM.
+# Hard-stop Server before overwrite install / upgrade.
+# ALWAYS pass -InstallDir to the real clinic path (default Program Files is only a fallback).
+# ASCII-only for Windows PowerShell 5.1.
 param(
+  [string]$InstallDir = "",
   [int]$WaitSeconds = 45,
   [int]$Port = 8001,
   [switch]$SkipWritableCheck,
@@ -15,8 +13,42 @@ $ErrorActionPreference = "Continue"
 $svcName = "NKDentalSoftServer"
 $procName = "nkdentalsoft-server"
 $taskName = "NKDentalSoft Server"
-$installDir = Join-Path $env:ProgramFiles "NKDentalSoft\Server"
+
+function Resolve-InstallDir([string]$Hint) {
+  $candidates = @()
+  if ($Hint) { $candidates += $Hint.Trim().Trim('"').TrimEnd('\') }
+  foreach ($root in @("HKLM:\Software\NKDentalSoft\Server", "HKLM:\Software\WOW6432Node\NKDentalSoft\Server")) {
+    try {
+      $v = (Get-ItemProperty -Path $root -Name "InstallDir" -ErrorAction SilentlyContinue).InstallDir
+      if ($v) { $candidates += [string]$v }
+    } catch {}
+  }
+  try {
+    $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    if ($task) {
+      foreach ($a in @($task.Actions)) {
+        $exePath = [string]$a.Execute
+        if ($exePath -and (Test-Path -LiteralPath $exePath)) {
+          $candidates += (Split-Path -Parent $exePath)
+        }
+      }
+    }
+  } catch {}
+  $candidates += (Join-Path $env:ProgramFiles "NKDentalSoft\Server")
+  $candidates += (Join-Path ${env:ProgramFiles(x86)} "NKDentalSoft\Server")
+  foreach ($c in $candidates) {
+    if (-not $c) { continue }
+    $p = $c.Trim().Trim('"').TrimEnd('\')
+    $exe = Join-Path $p "nkdentalsoft-server.exe"
+    if (Test-Path -LiteralPath $exe) { return $p }
+  }
+  if ($Hint) { return $Hint.Trim().Trim('"').TrimEnd('\') }
+  return (Join-Path $env:ProgramFiles "NKDentalSoft\Server")
+}
+
+$installDir = Resolve-InstallDir -Hint $InstallDir
 $installExe = Join-Path $installDir "nkdentalsoft-server.exe"
+Write-Host ("[upgrade] InstallDir=" + $installDir)
 
 function Stop-PortListeners {
   param([int]$ListenPort)
@@ -42,10 +74,10 @@ function Stop-PortListeners {
 }
 
 function Stop-NkProcesses {
-  Write-Host "[upgrade] Ending $procName.exe ..."
+  Write-Host "[upgrade] Ending $procName.exe (all paths)..."
   Get-Process -Name $procName -ErrorAction SilentlyContinue | ForEach-Object {
     try {
-      Write-Host "[upgrade] Stop-Process PID $($_.Id)"
+      Write-Host ("[upgrade] Stop-Process PID " + $_.Id + " Path=" + $_.Path)
       Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
     } catch {
       Write-Host "[upgrade] process kill note: $($_.Exception.Message)"
@@ -99,7 +131,7 @@ if (Test-Path -LiteralPath $installExe) {
   try {
     & $installExe stop 2>$null | Out-Null
   } catch {
-    # ignore - exe may not support SCM stop in desktop mode
+    # ignore
   }
 }
 
@@ -143,7 +175,7 @@ if (-not $SkipWritableCheck -and (Test-Path -LiteralPath $installExe)) {
     try {
       Move-Item -LiteralPath $installExe -Destination $bak -Force
       $ok = $true
-      Write-Host "[upgrade] Rename OK - installer can write a new EXE"
+      Write-Host ("[upgrade] Rename OK -> " + $bak)
     } catch {
       Write-Host "[upgrade] Rename failed: $($_.Exception.Message)"
     }

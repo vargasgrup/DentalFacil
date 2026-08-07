@@ -10,8 +10,8 @@
 
 !define PRODUCT_NAME "N&K DentalSoft Server"
 !define PRODUCT_PUBLISHER "N&K Systems"
-!define PRODUCT_VERSION "4.0.0"
-!define PRODUCT_VERSION_NUM "4.0.0.0"
+!define PRODUCT_VERSION "4.0.1"
+!define PRODUCT_VERSION_NUM "4.0.1.0"
 !define PRODUCT_REG_ROOT "Software\NKDentalSoft\Server"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\NKDentalSoftServer"
 
@@ -39,9 +39,9 @@ VIAddVersionKey /LANG=0 "LegalCopyright" "© N&K Systems"
 !define MUI_UNABORTWARNING
 
 !define MUI_WELCOMEPAGE_TITLE "Bienvenido a ${PRODUCT_NAME}"
-!define MUI_WELCOMEPAGE_TEXT "Este asistente instalará el servidor N&K DentalSoft en el equipo.$\r$\n$\r$\nEn el siguiente paso podrá elegir la unidad y la carpeta de instalación (por ejemplo C:\Program Files\… o D:\NKDentalSoft\Server).$\r$\n$\r$\nSe recomienda cerrar N&K DentalSoft antes de continuar."
+!define MUI_WELCOMEPAGE_TEXT "Este asistente instalará o actualizará el servidor N&K DentalSoft.$\r$\n$\r$\nActualización sobre una instalación previa:$\r$\n• Se detiene el servidor en ejecución.$\r$\n• Se reemplaza completamente el programa (UI + EXE).$\r$\n• Los datos de pacientes se conservan en ProgramData.$\r$\n$\r$\nElija la misma carpeta de la instalación actual (p. ej. E:\Server).$\r$\nCierre N&K DentalSoft antes de continuar."
 
-!define MUI_DIRECTORYPAGE_TEXT_TOP "Seleccione la carpeta de instalación.$\r$\n$\r$\n• Para instalar en otra unidad, escriba o examine una ruta (ej. D:\NKDentalSoft\Server).$\r$\n• Debe disponer de espacio libre y permisos de administrador.$\r$\n• En actualizaciones, se usará por defecto la última carpeta instalada."
+!define MUI_DIRECTORYPAGE_TEXT_TOP "Seleccione la carpeta de instalación o actualización.$\r$\n$\r$\n• Debe ser la carpeta donde ya está el Server (ej. E:\Server o C:\Program Files\NKDentalSoft\Server).$\r$\n• En actualizaciones, se reutiliza por defecto la última carpeta instalada.$\r$\n• No elija otra unidad distinta si ya hay un Server activo, o coexisterán dos copias."
 !define MUI_DIRECTORYPAGE_TEXT_DESTINATION "Unidad y carpeta de destino"
 
 !define MUI_FINISHPAGE_RUN "$INSTDIR\Open-UI.bat"
@@ -74,13 +74,14 @@ Function StopRunningServer
   SetOutPath "$PLUGINSDIR"
   File "scripts\stop_for_upgrade.ps1"
   File "scripts\rename_locked_exe.ps1"
-  ; AllowRename: if the EXE stays locked, move it aside so File can write a new one
-  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\stop_for_upgrade.ps1" -WaitSeconds 45 -AllowRename'
+  File "scripts\prepare_overwrite_install.ps1"
+  ; CRITICAL: pass $INSTDIR (E:\Server, D:\..., or Program Files) — never hardcode Program Files only
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\stop_for_upgrade.ps1" -InstallDir "$INSTDIR" -WaitSeconds 45 -AllowRename'
   Pop $0
   DetailPrint "stop_for_upgrade exit=$0"
   ${If} $0 == 2
     MessageBox MB_ICONEXCLAMATION|MB_RETRYCANCEL \
-      "No se pudo liberar nkdentalsoft-server.exe.$\r$\n$\r$\n1) Cierre la ventana de N&K DentalSoft$\r$\n2) En el Administrador de tareas finalice 'nkdentalsoft-server.exe'$\r$\n3) Pulse Reintentar$\r$\n$\r$\nO ejecute como Administrador:$\r$\n$INSTDIR\scripts\stop_for_upgrade.ps1" \
+      "No se pudo liberar nkdentalsoft-server.exe.$\r$\n$\r$\n1) Cierre la ventana de N&K DentalSoft$\r$\n2) En el Administrador de tareas finalice 'nkdentalsoft-server.exe'$\r$\n3) Pulse Reintentar$\r$\n$\r$\nO ejecute como Administrador:$\r$\n$INSTDIR\scripts\stop_for_upgrade.ps1 -InstallDir `"$INSTDIR`"" \
       IDRETRY retry_stop IDCANCEL abort_stop
     abort_stop:
       Abort "Instalacion cancelada: el servidor sigue en uso."
@@ -90,12 +91,20 @@ Function StopRunningServer
   Sleep 2000
 FunctionEnd
 
+Function PrepareCleanTree
+  DetailPrint "Purgando arbol de producto (web/_internal/exe) para actualizacion limpia..."
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\prepare_overwrite_install.ps1" -InstallDir "$INSTDIR" -ClearWebViewCache'
+  Pop $0
+  DetailPrint "prepare_overwrite_install exit=$0"
+FunctionEnd
+
 Section "Install"
   ${If} ${RunningX64}
     SetRegView 64
   ${EndIf}
 
   Call StopRunningServer
+  Call PrepareCleanTree
 
   SetOverwrite on
   SetOutPath "$INSTDIR"
@@ -104,6 +113,7 @@ Section "Install"
   IfErrors 0 files_ok
     DetailPrint "Reintento de copia tras liberar archivos..."
     Call StopRunningServer
+    Call PrepareCleanTree
     Sleep 3000
     ClearErrors
     File /r "dist\nkdentalsoft-server\*.*"
@@ -114,6 +124,7 @@ Section "Install"
       Pop $0
       DetailPrint "rename_locked_exe exit=$0"
       Sleep 2000
+      Call PrepareCleanTree
       ClearErrors
       File /r "dist\nkdentalsoft-server\*.*"
       IfErrors 0 files_ok
@@ -129,6 +140,7 @@ Section "Install"
   SetOutPath "$INSTDIR\scripts"
   File "scripts\stop_for_upgrade.ps1"
   File "scripts\rename_locked_exe.ps1"
+  File "scripts\prepare_overwrite_install.ps1"
   File "scripts\post_install_healthcheck.ps1"
   File "scripts\enable_clinic_hotspot.ps1"
   File /nonfatal "scripts\*.*"
@@ -206,14 +218,21 @@ Section "Install"
   File /nonfatal "assets\icons\256x256.png"
 
   Sleep 2000
-  nsExec::ExecToLog 'powershell -ExecutionPolicy Bypass -File "$INSTDIR\scripts\post_install_healthcheck.ps1"'
+  nsExec::ExecToLog 'powershell -ExecutionPolicy Bypass -File "$INSTDIR\scripts\post_install_healthcheck.ps1" -InstallDir "$INSTDIR"'
 
   ; ── Registro Windows «Aplicaciones» (Configuración → Aplicaciones) ──
   WriteRegStr HKLM "${PRODUCT_REG_ROOT}" "InstallDir" "$INSTDIR"
   WriteRegStr HKLM "${PRODUCT_REG_ROOT}" "Version" "${PRODUCT_VERSION}"
-
   WriteRegStr HKLM "${UNINST_KEY}" "DisplayName" "${PRODUCT_NAME}"
   WriteRegStr HKLM "${UNINST_KEY}" "DisplayVersion" "${PRODUCT_VERSION}"
+  ; Optional BUILD_ID from payload (support verification after upgrade)
+  IfFileExists "$INSTDIR\BUILD_ID" 0 skip_build_id
+    FileOpen $R8 "$INSTDIR\BUILD_ID" r
+    FileRead $R8 $R7
+    FileClose $R8
+    WriteRegStr HKLM "${PRODUCT_REG_ROOT}" "BuildId" "$R7"
+    WriteRegStr HKLM "${UNINST_KEY}" "DisplayVersion" "${PRODUCT_VERSION} ($R7)"
+  skip_build_id:
   WriteRegStr HKLM "${UNINST_KEY}" "Publisher" "${PRODUCT_PUBLISHER}"
   WriteRegStr HKLM "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKLM "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\assets\icons\icon.ico"
@@ -253,7 +272,7 @@ Section "Uninstall"
   ${EndIf}
 
   DetailPrint "Deteniendo servidor y liberando archivos..."
-  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\stop_for_upgrade.ps1"'
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\stop_for_upgrade.ps1" -InstallDir "$INSTDIR"'
   nsExec::ExecToLog '"$INSTDIR\nkdentalsoft-server.exe" stop'
   nsExec::ExecToLog '"$INSTDIR\nkdentalsoft-server.exe" remove'
   nsExec::ExecToLog 'schtasks /Delete /TN "NKDentalSoft Server" /F'

@@ -139,11 +139,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_serv
 4. En **Configuración**: copiar la **URL actual** para Clients (IP Ethernet preferida).
 5. Atajos: **Reparar red LAN**, **Activar Hotspot clinica** (enciende Mobile Hotspot por API WinRT, deja SSID/clave/URL en pantalla y en `%ProgramData%\NKDentalSoft\HOTSPOT.txt`; la ventana ya no se cierra sola).
 
-Upgrade: el NSIS detiene/mata `nkdentalsoft-server.exe` antes de sobrescribir. Si falla el archivo en uso:
+### Actualización sobre una instalación previa (in-place)
+
+El Setup **es el actualizador**. No hay un “hotfix” aparte: generar un instalador nuevo y ejecutarlo en la PC Server **como Administrador**.
+
+Flujo 4.0.1+ (obligatorio para que los cambios de UI/código se vean):
+
+1. **Detiene** todos los `nkdentalsoft-server.exe` y libera el puerto **8001** (en la carpeta real: `E:\Server`, `D:\…` o Program Files — se pasa `-InstallDir`).
+2. **Purga** el árbol de producto (`web/`, `_internal/`, EXE, residuos `*.old_*`). **No toca** `%ProgramData%\NKDentalSoft` (pacientes, `.env`, medios).
+3. **Copia limpia** del onedir del build actual (incluye `BUILD_ID`).
+4. **Re-registra** la tarea programada apuntando a **esa** carpeta e inicia el Server.
+5. Limpia caché local de pywebview cuando es posible.
+6. Healthcheck verifica UI + `BUILD_ID` (`/api/system/ui-root`).
+
+Reglas de clínica:
+
+- Elija **la misma carpeta** ya instalada (p. ej. `E:\Server`). Si elige otra, conviven **dos** Servers y el acceso/atajos pueden abrir el viejo.
+- Cierre la ventana de N&K DentalSoft antes del Setup.
+- Tras actualizar, compruebe `http://127.0.0.1:8001/api/system/ui-root` → `build_id` nuevo.
+
+Si un upgrade falla por archivo en uso:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "C:\Program Files\NKDentalSoft\Server\scripts\stop_for_upgrade.ps1"
+powershell -ExecutionPolicy Bypass -File "E:\Server\scripts\stop_for_upgrade.ps1" -InstallDir "E:\Server" -AllowRename
 ```
+
+(Sustituya por la ruta real en el equipo.)
 
 ---
 

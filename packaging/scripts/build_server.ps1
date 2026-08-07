@@ -149,6 +149,11 @@ if (-not (Test-Path $InternalWeb)) {
     Copy-Item $WebSrc $InternalDest -Recurse -Force
 }
 
+Write-Host "==> Writing BUILD_ID (upgrade identity)"
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "packaging\scripts\write_build_id.ps1") `
+    -ServerDistDir $DistServer `
+    -FrontendOutDir $WebSrc
+
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 if (-not $SkipNsis) {

@@ -101,8 +101,22 @@ def _meipass_dir() -> Path | None:
     return Path(raw).resolve() if raw else None
 
 
+def _read_build_id(root: Path | None) -> str | None:
+    if not root:
+        return None
+    for p in (root / "BUILD_ID", root / "web" / "BUILD_ID"):
+        try:
+            if p.is_file():
+                text = p.read_text(encoding="utf-8", errors="ignore").strip()
+                if text:
+                    return text.splitlines()[0].strip()
+        except OSError:
+            continue
+    return None
+
+
 def ensure_web_dir_beside_exe() -> None:
-    """Mirror packaged UI beside the exe; refresh on upgrade when MEIPASS is newer."""
+    """Mirror packaged UI beside the exe; force replace when BUILD_ID differs (upgrades)."""
     global _mirror_attempted
     if _mirror_attempted:
         return
@@ -116,7 +130,14 @@ def ensure_web_dir_beside_exe() -> None:
     if not (src / "index.html").is_file():
         return
 
+    src_id = _read_build_id(src) or _read_build_id(meipass)
+    dest_id = _read_build_id(dest) or _read_build_id(install)
     need_sync = not (dest / "index.html").is_file()
+    if not need_sync and src_id and dest_id and src_id != dest_id:
+        need_sync = True
+        logger.info("UI BUILD_ID mismatch src=%s dest=%s — forcing mirror", src_id, dest_id)
+    if not need_sync and src_id and not dest_id:
+        need_sync = True
     if not need_sync:
         try:
             src_mtime = (src / "index.html").stat().st_mtime
@@ -137,7 +158,12 @@ def ensure_web_dir_beside_exe() -> None:
         if dest.exists():
             shutil.rmtree(dest, ignore_errors=True)
         shutil.copytree(src, dest)
-        logger.info("mirrored UI to %s", dest)
+        # Ensure BUILD_ID sits at install root too
+        bid = src / "BUILD_ID"
+        if bid.is_file():
+            shutil.copy2(bid, install / "BUILD_ID")
+            shutil.copy2(bid, dest / "BUILD_ID")
+        logger.info("mirrored UI to %s (build_id=%s)", dest, src_id or "n/a")
     except OSError as exc:
         logger.warning("could not mirror web/: %s", exc)
 
@@ -348,12 +374,19 @@ def mount_frontend_static(app: FastAPI) -> Path | None:
     @app.get("/api/system/ui-root")
     def ui_root_info():
         current = resolve_ui_root(force=False)
+        install = _install_dir()
+        meipass = _meipass_dir()
         return {
             "ui_root": str(current) if current else None,
             "index": bool(current and (current / "index.html").is_file()),
-            "install_dir": str(_install_dir()) if _install_dir() else None,
-            "meipass": str(_meipass_dir()) if _meipass_dir() else None,
+            "install_dir": str(install) if install else None,
+            "meipass": str(meipass) if meipass else None,
             "frozen": bool(getattr(sys, "frozen", False)),
+            "build_id": _read_build_id(current)
+            or _read_build_id(install)
+            or _read_build_id(meipass),
+            "build_id_install": _read_build_id(install),
+            "build_id_meipass": _read_build_id(meipass),
         }
 
     if root is None:

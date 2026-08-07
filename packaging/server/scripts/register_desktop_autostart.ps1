@@ -70,7 +70,7 @@ if (Test-Path -LiteralPath $stopScript) {
   Write-Boot "[desktop] Stopping previous instance (child process, SkipWritableCheck)..."
   $code = Run-Hidden -FilePath $psExe -ArgumentList @(
     "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $stopScript,
-    "-Port", "8001", "-SkipWritableCheck"
+    "-InstallDir", $InstallDir, "-Port", "8001", "-SkipWritableCheck"
   ) -Seconds 90
   Write-Boot ("[desktop] stop_for_upgrade exit=" + $code)
 } else {

@@ -1,105 +1,144 @@
 # Register clinic desktop autostart (Scheduled Task) and remove zombie Win32 service.
 # Requires Administrator. Invoked by the NSIS installer and repair_startup.cmd.
+# ASCII-only for Windows PowerShell 5.1.
 param(
   [string]$InstallDir = $(Join-Path ${env:ProgramFiles} "NKDentalSoft\Server")
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
+$ProgressPreference = "SilentlyContinue"
+
+$InstallDir = [string]$InstallDir
+$InstallDir = $InstallDir.Trim().Trim('"').TrimEnd('\')
+
 $exe = Join-Path $InstallDir "nkdentalsoft-server.exe"
 $stopScript = Join-Path $InstallDir "scripts\stop_for_upgrade.ps1"
-$logDir = Join-Path $env:SystemDrive "ProgramData\NKDentalSoft\logs"
+$logDir = Join-Path $env:ProgramData "NKDentalSoft\logs"
+if (-not $env:ProgramData) {
+  $logDir = Join-Path $env:SystemDrive "ProgramData\NKDentalSoft\logs"
+}
 $bootLog = Join-Path $logDir "install_autostart.log"
 
 function Write-Boot([string]$Message) {
   $line = "{0} {1}" -f (Get-Date -Format "o"), $Message
   Write-Host $line
   try {
-    if (-not (Test-Path $logDir)) {
+    if (-not (Test-Path -LiteralPath $logDir)) {
       New-Item -ItemType Directory -Path $logDir -Force | Out-Null
     }
-    Add-Content -Path $bootLog -Value $line -Encoding UTF8
+    Add-Content -LiteralPath $bootLog -Value $line -Encoding UTF8
   } catch {}
 }
 
-if (-not (Test-Path $exe)) {
-  throw "Server exe not found: $exe"
+try {
+  if (-not (Test-Path -LiteralPath $logDir)) {
+    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+  }
+  Set-Content -LiteralPath $bootLog -Value ("NKDentalSoft install_autostart " + (Get-Date -Format "o")) -Encoding UTF8
+} catch {}
+
+Write-Boot ("[desktop] InstallDir=" + $InstallDir)
+try {
+  $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+} catch { $isAdmin = $false }
+Write-Boot ("[desktop] Admin=" + $isAdmin + " User=" + $env:USERNAME)
+
+if (-not (Test-Path -LiteralPath $exe)) {
+  Write-Boot ("[desktop] ERROR missing exe: " + $exe)
+  throw ("Server exe not found: " + $exe)
 }
 
-Write-Boot "[desktop] InstallDir=$InstallDir"
+function Run-Hidden {
+  param([string]$FilePath, [string[]]$ArgumentList, [int]$Seconds = 60)
+  try {
+    $p = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -WindowStyle Hidden -PassThru -ErrorAction Stop
+    if (-not $p.WaitForExit($Seconds * 1000)) {
+      try { $p.Kill() } catch {}
+      return 124
+    }
+    return $p.ExitCode
+  } catch {
+    Write-Boot ("[desktop] Run-Hidden fail " + $FilePath + " :: " + $_.Exception.Message)
+    return 1
+  }
+}
 
-# CRITICAL: run stop_for_upgrade in a *child* powershell.exe.
-# Calling it with & and its internal `exit` would terminate THIS script early
-# (or propagate exit 2 when Defender locks the fresh EXE) and skip Start-Process.
-if (Test-Path $stopScript) {
+$psExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+if (-not (Test-Path -LiteralPath $psExe)) { $psExe = "powershell.exe" }
+
+if (Test-Path -LiteralPath $stopScript) {
   Write-Boot "[desktop] Stopping previous instance (child process, SkipWritableCheck)..."
-  $stop = Start-Process -FilePath "powershell.exe" -ArgumentList @(
-    "-NoProfile",
-    "-ExecutionPolicy", "Bypass",
-    "-File", $stopScript,
-    "-Port", "8001",
-    "-SkipWritableCheck"
-  ) -Wait -PassThru -WindowStyle Hidden
-  Write-Boot "[desktop] stop_for_upgrade exit=$($stop.ExitCode)"
+  $code = Run-Hidden -FilePath $psExe -ArgumentList @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $stopScript,
+    "-Port", "8001", "-SkipWritableCheck"
+  ) -Seconds 90
+  Write-Boot ("[desktop] stop_for_upgrade exit=" + $code)
 } else {
-  Write-Boot "[desktop] stop_for_upgrade.ps1 missing — killing by name only"
+  Write-Boot "[desktop] stop_for_upgrade.ps1 missing - kill by name only"
   Get-Process -Name "nkdentalsoft-server" -ErrorAction SilentlyContinue |
     Stop-Process -Force -ErrorAction SilentlyContinue
-  cmd /c "taskkill /F /IM nkdentalsoft-server.exe /T >nul 2>&1"
+  Run-Hidden -FilePath "cmd.exe" -ArgumentList @("/c", "taskkill /F /IM nkdentalsoft-server.exe /T") -Seconds 15 | Out-Null
 }
 
 try { & $exe stop 2>$null } catch {}
 try { & $exe remove 2>$null } catch {}
-sc.exe stop NKDentalSoftServer 2>$null | Out-Null
-sc.exe delete NKDentalSoftServer 2>$null | Out-Null
+Run-Hidden -FilePath "sc.exe" -ArgumentList @("stop", "NKDentalSoftServer") -Seconds 10 | Out-Null
+Run-Hidden -FilePath "sc.exe" -ArgumentList @("delete", "NKDentalSoftServer") -Seconds 10 | Out-Null
 
-# Remove loose modules that shadowed the embedded PYZ
 @(
   (Join-Path $InstallDir "server_entry.py"),
   (Join-Path $InstallDir "_internal\server_entry.py"),
   (Join-Path $InstallDir "windows_service.py"),
   (Join-Path $InstallDir "_internal\windows_service.py")
 ) | ForEach-Object {
-  if (Test-Path $_) {
-    Remove-Item $_ -Force -ErrorAction SilentlyContinue
-    Write-Boot "[desktop] Removed shadow module $_"
+  if (Test-Path -LiteralPath $_) {
+    Remove-Item -LiteralPath $_ -Force -ErrorAction SilentlyContinue
+    Write-Boot ("[desktop] Removed shadow module " + $_)
   }
 }
 
 Start-Sleep -Seconds 2
 
 $taskName = "NKDentalSoft Server"
-Write-Boot "[desktop] Registering Scheduled Task '$taskName' (ONLOGON)..."
-schtasks.exe /Delete /TN $taskName /F 2>$null | Out-Null
+Write-Boot ("[desktop] Registering Scheduled Task '" + $taskName + "' (ONLOGON)...")
+Run-Hidden -FilePath "schtasks.exe" -ArgumentList @("/Delete", "/TN", $taskName, "/F") -Seconds 15 | Out-Null
 
-# Run as current interactive user at logon — HIGHEST so firewall rules can be applied
-$tr = "`"$exe`" --foreground"
-schtasks.exe /Create /TN $taskName /TR $tr /SC ONLOGON /RL HIGHEST /F
-if ($LASTEXITCODE -ne 0) {
-  Write-Boot "[desktop] WARNING: schtasks HIGHEST failed — trying LIMITED"
-  schtasks.exe /Create /TN $taskName /TR $tr /SC ONLOGON /RL LIMITED /F
+$tr = '"' + $exe + '" --foreground'
+$taskOk = $false
+$code = Run-Hidden -FilePath "schtasks.exe" -ArgumentList @(
+  "/Create", "/TN", $taskName, "/TR", $tr, "/SC", "ONLOGON", "/RL", "HIGHEST", "/F", "/IT"
+) -Seconds 20
+if ($code -ne 0) {
+  Write-Boot ("[desktop] WARNING: schtasks HIGHEST exit=" + $code + " - trying LIMITED")
+  $code = Run-Hidden -FilePath "schtasks.exe" -ArgumentList @(
+    "/Create", "/TN", $taskName, "/TR", $tr, "/SC", "ONLOGON", "/RL", "LIMITED", "/F", "/IT"
+  ) -Seconds 20
 }
-if ($LASTEXITCODE -ne 0) {
-  Write-Boot "[desktop] WARNING: schtasks create failed exit=$LASTEXITCODE (continuing with Start-Process)"
+if ($code -ne 0) {
+  Write-Boot ("[desktop] WARNING: schtasks create failed exit=" + $code)
 } else {
+  $taskOk = $true
   Write-Boot "[desktop] Scheduled Task registered"
 }
 
-# Always run aggressive LAN firewall (elevated installer context)
 $repairLan = Join-Path $InstallDir "scripts\repair_lan.ps1"
-if (Test-Path $repairLan) {
+if (Test-Path -LiteralPath $repairLan) {
   Write-Boot "[desktop] repair_lan.ps1 (with ServerExe)..."
-  $lan = Start-Process -FilePath "powershell.exe" -ArgumentList @(
+  $code = Run-Hidden -FilePath $psExe -ArgumentList @(
     "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $repairLan,
     "-ServerExe", $exe, "-Quiet"
-  ) -Wait -PassThru -WindowStyle Hidden
-  Write-Boot "[desktop] repair_lan exit=$($lan.ExitCode)"
+  ) -Seconds 90
+  Write-Boot ("[desktop] repair_lan exit=" + $code)
 }
 
 function Test-PortOpen([int]$Port = 8001) {
   try {
     $tcp = New-Object System.Net.Sockets.TcpClient
-    $tcp.Connect("127.0.0.1", $Port)
-    $tcp.Close()
+    $iar = $tcp.BeginConnect("127.0.0.1", $Port, $null, $null)
+    $ok = $iar.AsyncWaitHandle.WaitOne(800, $false)
+    if (-not $ok) { try { $tcp.Close() } catch {}; return $false }
+    try { $tcp.EndConnect($iar) } catch { try { $tcp.Close() } catch {}; return $false }
+    try { $tcp.Close() } catch {}
     return $true
   } catch {
     return $false
@@ -112,34 +151,43 @@ function Start-ServerHidden {
   Start-Process -FilePath $exe -ArgumentList "--foreground" -WorkingDirectory $InstallDir -WindowStyle Hidden
 }
 
-# Start now (up to 2 attempts — AV first-scan can delay first launch)
+# First post-install start: AV first-scan can take 60-90s on a fresh EXE
 $ok = $false
-for ($attempt = 1; $attempt -le 2; $attempt++) {
+for ($attempt = 1; $attempt -le 3; $attempt++) {
   if (Test-PortOpen) {
-    Write-Boot "[desktop] Port 8001 already listening (attempt $attempt)"
+    Write-Boot ("[desktop] Port 8001 already listening (attempt " + $attempt + ")")
     $ok = $true
     break
   }
   Start-ServerHidden
-  # Match desktop waiter (~30s); first post-install launch can be slow under Defender
-  for ($i = 1; $i -le 60; $i++) {
+  for ($i = 1; $i -le 90; $i++) {
     if (Test-PortOpen) {
-      Write-Boot "[desktop] Port 8001 open after $($i * 0.5)s (attempt $attempt)"
+      Write-Boot ("[desktop] Port 8001 open after " + $i + "s (attempt " + $attempt + ")")
       $ok = $true
       break
     }
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Seconds 1
   }
   if ($ok) { break }
-  Write-Boot "[desktop] Attempt $attempt timed out — retrying"
-  cmd /c "taskkill /F /IM nkdentalsoft-server.exe /T >nul 2>&1"
-  Start-Sleep -Seconds 2
+  Write-Boot ("[desktop] Attempt " + $attempt + " timed out - retrying")
+  Run-Hidden -FilePath "cmd.exe" -ArgumentList @("/c", "taskkill /F /IM nkdentalsoft-server.exe /T") -Seconds 15 | Out-Null
+  Start-Sleep -Seconds 3
 }
 
-if (-not $ok) {
-  $hint = "See $bootLog and $env:SystemDrive\ProgramData\NKDentalSoft\logs\startup.log"
-  throw "Server did not open TCP 8001 after install start. $hint"
+if ($ok) {
+  Write-Boot "[desktop] OK - http://127.0.0.1:8001/ is listening"
+  exit 0
 }
 
-Write-Boot "[desktop] OK — http://127.0.0.1:8001/ is listening"
-exit 0
+$alive = Get-Process -Name "nkdentalsoft-server" -ErrorAction SilentlyContinue
+if ($taskOk -and $alive) {
+  Write-Boot "[desktop] PARTIAL OK - task registered, process running, port not open yet"
+  exit 0
+}
+if ($taskOk) {
+  Write-Boot "[desktop] PARTIAL OK - task registered; use Open-UI.bat or next logon"
+  exit 0
+}
+
+Write-Boot ("[desktop] FAILED - see " + $bootLog + " and " + (Join-Path $logDir "startup.log"))
+throw "Server did not open TCP 8001 after install start. See install_autostart.log"

@@ -163,20 +163,24 @@ Section "Install"
   Delete "$INSTDIR\_internal\windows_service.py"
 
   ; Desktop-first: remove legacy Win32 service (zombie Session-0) and register Scheduled Task
+  ; PowerShell 64-bit explícito (evita SysWOW64 roto en algunos PC)
+  StrCpy $R9 "$WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
+  IfFileExists $R9 +2 0
+    StrCpy $R9 "powershell.exe"
   DetailPrint "Configurando arranque de escritorio (sin servicio Windows zombie)..."
-  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\register_desktop_autostart.ps1" -InstallDir "$INSTDIR"'
+  nsExec::ExecToLog '"$R9" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\register_desktop_autostart.ps1" -InstallDir "$INSTDIR"'
   Pop $0
   DetailPrint "register_desktop_autostart exit=$0"
   ${If} $0 != 0
     DetailPrint "Reintento de arranque (antivirus / primer escaneo del EXE)..."
-    Sleep 4000
-    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\register_desktop_autostart.ps1" -InstallDir "$INSTDIR"'
+    Sleep 6000
+    nsExec::ExecToLog '"$R9" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\register_desktop_autostart.ps1" -InstallDir "$INSTDIR"'
     Pop $0
     DetailPrint "register_desktop_autostart retry exit=$0"
   ${EndIf}
   ${If} $0 != 0
     MessageBox MB_ICONEXCLAMATION \
-      "El servidor no arranco automaticamente.$\r$\n$\r$\nEjecute como Administrador:$\r$\n$INSTDIR\scripts\repair_startup.cmd$\r$\n$\r$\nDetalle: $COMMONPROGRAMDATA\NKDentalSoft\logs\install_autostart.log"
+      "El servidor quedo instalado, pero el arranque automatico fallo.$\r$\n$\r$\n1) Acepte UAC y ejecute como Administrador:$\r$\n$INSTDIR\scripts\repair_startup.cmd$\r$\n$\r$\n2) O use el acceso directo 'N&K DentalSoft' del Escritorio.$\r$\n$\r$\nLog: $PROGRAMDATA\NKDentalSoft\logs\install_autostart.log"
   ${EndIf}
 
   ; Desktop = open UI (what clinic staff expect)

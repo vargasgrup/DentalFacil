@@ -164,17 +164,22 @@ export function openWhatsAppChat(
 
 /** Descarga un Blob PDF en el cliente (sin persistir en el servidor). */
 export function downloadPdfBlob(blob: Blob, fileName: string): void {
-  const pdf =
-    blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" });
-  const url = URL.createObjectURL(pdf);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`;
-  a.rel = "noopener";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  // Fire-and-forget wrapper so legacy callers keep working; desktop uses multi-strategy save.
+  void import("./downloadBlob").then(({ downloadPdfBlobAsync }) =>
+    downloadPdfBlobAsync(blob, fileName)
+  );
+}
+
+/** Prefer this async API when you need success/failure feedback. */
+export async function downloadPdfBlobAsync(
+  blob: Blob,
+  fileName: string
+): Promise<{ ok: boolean; error?: string }> {
+  const { downloadPdfBlobAsync: save } = await import("./downloadBlob");
+  const res = await save(blob, fileName);
+  return res.ok
+    ? { ok: true }
+    : { ok: false, error: "error" in res ? res.error : "Error al descargar" };
 }
 
 /** Intenta copiar el PDF al portapapeles desde un Blob (sigue en RAM; sin Guardar como). */

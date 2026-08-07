@@ -19,6 +19,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { apiFetch, apiFetchBlob, ApiError, getToken, getApiBase } from "@/lib/api";
+import { downloadBlob } from "@/lib/downloadBlob";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/Input";
@@ -292,12 +293,10 @@ export function BackupMigrationPanel() {
   const downloadRow = async (row: BackupRow) => {
     try {
       const blob = await apiFetchBlob(`/api/backup/${row.id}/download`);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = row.filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      const result = await downloadBlob(blob, row.filename || "backup.zip");
+      if (!result.ok) {
+        setErr(result.error || "Error al descargar");
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error al descargar");
     }

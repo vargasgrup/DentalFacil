@@ -13,6 +13,7 @@ import {
 import { Button } from "./ui/Button";
 import { isValidPhone } from "@/lib/whatsapp";
 import { apiFetch, getToken } from "@/lib/api";
+import { downloadBlob } from "@/lib/downloadBlob";
 import { documentSender } from "@/lib/documentSender";
 import {
   getSavedPrintFormat,
@@ -100,9 +101,19 @@ async function fetchPdfBlob(url: string): Promise<{ blob: Blob; filename: string
       "El comprobante generado está incompleto. Cierre y vuelva a abrir la vista previa."
     );
   }
-  const filename =
-    resp.headers.get("Content-Disposition")?.split('filename="')[1]?.replace('"', "") ||
-    "documento.pdf";
+  let filename = "documento.pdf";
+  const cd = resp.headers.get("Content-Disposition") || "";
+  const quoted = cd.match(/filename\*?=(?:UTF-8''|")?([^";\n]+)/i);
+  if (quoted?.[1]) {
+    try {
+      filename = decodeURIComponent(quoted[1].replace(/"/g, "").trim());
+    } catch {
+      filename = quoted[1].replace(/"/g, "").trim() || filename;
+    }
+  }
+  if (!filename.toLowerCase().endsWith(".pdf") && blob.type.includes("pdf")) {
+    filename = `${filename}.pdf`;
+  }
   return { blob, filename };
 }
 
@@ -241,14 +252,16 @@ export function DocumentActions({
     try {
       await prepareFetch();
       const { blob, filename } = await fetchPdfBlob(fullUrl);
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
+      const result = await downloadBlob(blob, filename || `${label || "documento"}.pdf`);
+      if (!result.ok) {
+        setSendHint(result.error || "Error al descargar el documento");
+      } else if (result.cancelled) {
+        setSendHint(null);
+      } else if (result.path) {
+        setSendHint(`Guardado: ${result.path}`);
+      } else if (result.method === "open" || result.method === "anchor+open") {
+        setSendHint("Documento abierto. Use Guardar como… si el diálogo no apareció.");
+      }
     } catch {
       setSendHint("Error al descargar el documento");
     } finally {

@@ -17,6 +17,7 @@ import { ModuleHeader } from "@/components/ui/ModuleHeader";
 import { Input } from "@/components/Input";
 import { DocumentActions } from "@/components/DocumentActions";
 import { apiFetch, getToken } from "@/lib/api";
+import { downloadBlob } from "@/lib/downloadBlob";
 import { useAppRefresh } from "@/hooks/useAppRefresh";
 
 type ReportType = "caja" | "pacientes" | "tratamientos";
@@ -183,13 +184,11 @@ export default function ReportesPage() {
         if (!r.ok) throw new Error("Error CSV");
         return r.blob();
       })
-      .then((blob) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `reporte_${type}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
+      .then(async (blob) => {
+        const result = await downloadBlob(blob, `reporte_${type}.csv`);
+        if (!result.ok) {
+          throw new Error(result.error || "Error al descargar CSV");
+        }
       })
       .catch(() => alert("Error al descargar CSV"));
   };

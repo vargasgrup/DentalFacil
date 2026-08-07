@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { apiFetch, apiFetchBlob, apiUpload, ApiError, buildMediaSrc } from "@/lib/api";
+import { downloadBlob } from "@/lib/downloadBlob";
 import { afterNativeFileDialog, recoverClinicMainPaint } from "@/lib/desktopViewport";
 import { formatDateTime } from "@/lib/datetime";
 import { Button } from "@/components/ui/Button";
@@ -306,16 +307,15 @@ export function DocumentosHistoricos({
     setLoadingId(item.id);
     try {
       const blob = await apiFetchBlob(item.url);
-      const href = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = href;
-      a.download = item.filename || "documento";
-      a.click();
-      URL.revokeObjectURL(href);
+      const result = await downloadBlob(blob, item.filename || "documento");
+      if (!result.ok) {
+        setError(result.error || "No se pudo descargar el documento.");
+      }
     } catch {
       setError("No se pudo descargar el documento.");
     } finally {
       setLoadingId(null);
+      recoverClinicMainPaint();
     }
   };
 

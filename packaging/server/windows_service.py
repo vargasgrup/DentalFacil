@@ -428,6 +428,83 @@ def run_clinic_webview(url: str) -> int:
 
     icon = _resolve_brand_icon()
 
+    class ClinicDesktopApi:
+        """
+        JS bridge for saves the WebView cannot do with <a download blob:>.
+        Frontend: window.pywebview.api.save_file(filename, base64_content)
+        """
+
+        def save_file(self, filename: str, content_b64: str) -> dict:
+            import base64
+            import re
+
+            try:
+                raw_name = (filename or "documento").strip() or "documento"
+                safe = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", raw_name)[:180]
+                if not safe:
+                    safe = "documento"
+                try:
+                    data = base64.b64decode(content_b64, validate=False)
+                except Exception as exc:  # noqa: BLE001
+                    return {"ok": False, "error": f"contenido inválido: {exc}"}
+
+                windows = getattr(webview, "windows", None) or []
+                win = windows[0] if windows else None
+                path: str | None = None
+                if win is not None and hasattr(win, "create_file_dialog"):
+                    try:
+                        # pywebview SAVE_DIALOG
+                        save_flag = getattr(webview, "SAVE_DIALOG", 10)
+                        file_types = ("All files (*.*)",)
+                        lower = safe.lower()
+                        if lower.endswith(".pdf"):
+                            file_types = ("PDF (*.pdf)", "All files (*.*)")
+                        elif lower.endswith(".csv"):
+                            file_types = ("CSV (*.csv)", "All files (*.*)")
+                        elif lower.endswith(".zip"):
+                            file_types = ("ZIP (*.zip)", "All files (*.*)")
+                        result = win.create_file_dialog(
+                            save_flag,
+                            directory="",
+                            allow_multiple=False,
+                            save_filename=safe,
+                            file_types=file_types,
+                        )
+                        if not result:
+                            return {"ok": False, "cancelled": True}
+                        if isinstance(result, (list, tuple)):
+                            path = str(result[0]) if result else None
+                        else:
+                            path = str(result)
+                    except Exception as exc:  # noqa: BLE001
+                        try:
+                            from server_entry import log
+
+                            log(f"desktop save dialog failed: {exc}")
+                        except Exception:
+                            pass
+                        path = None
+
+                if not path:
+                    # Fallback: user Downloads (still better than silent no-op)
+                    downloads = Path.home() / "Downloads"
+                    try:
+                        downloads.mkdir(parents=True, exist_ok=True)
+                    except OSError:
+                        downloads = Path.home()
+                    path = str(downloads / safe)
+
+                dest = Path(path)
+                if dest.is_dir():
+                    dest = dest / safe
+                try:
+                    dest.write_bytes(data)
+                except OSError as exc:
+                    return {"ok": False, "error": f"no se pudo escribir: {exc}"}
+                return {"ok": True, "path": str(dest)}
+            except Exception as exc:  # noqa: BLE001
+                return {"ok": False, "error": str(exc)}
+
     def _go_fullscreen(win: object) -> None:
         """Fill the monitor: prefer maximize (taskbar visible), else true fullscreen."""
         for meth in ("maximize", "toggle_fullscreen"):
@@ -439,6 +516,7 @@ def run_clinic_webview(url: str) -> int:
                 except Exception:
                     continue
 
+    api = ClinicDesktopApi()
     try:
         window = webview.create_window(
             "N&K DentalSoft",
@@ -449,6 +527,7 @@ def run_clinic_webview(url: str) -> int:
             text_select=True,
             confirm_close=False,
             maximized=True,
+            js_api=api,
         )
     except TypeError:
         try:
@@ -459,9 +538,15 @@ def run_clinic_webview(url: str) -> int:
                 height=1080,
                 min_size=(960, 640),
                 fullscreen=True,
+                js_api=api,
             )
         except TypeError:
-            window = webview.create_window("N&K DentalSoft", url, width=1360, height=900)
+            try:
+                window = webview.create_window(
+                    "N&K DentalSoft", url, width=1360, height=900, js_api=api
+                )
+            except TypeError:
+                window = webview.create_window("N&K DentalSoft", url, width=1360, height=900)
 
     try:
         # Ensure maximized/fullscreen even if create_window ignored the flag
@@ -472,12 +557,28 @@ def run_clinic_webview(url: str) -> int:
     except Exception:
         pass
 
-    start_kwargs: dict = {}
+    start_kwargs: dict = {"private_mode": False}
     if icon and icon.is_file():
-        start_kwargs["private_mode"] = False
+        # branded icon when supported by backend
+        try:
+            start_kwargs["icon"] = str(icon)
+        except Exception:
+            pass
     try:
-        webview.start(**start_kwargs) if start_kwargs else webview.start()
+        webview.start(**start_kwargs)
         return 0
+    except TypeError:
+        try:
+            webview.start(private_mode=False)
+            return 0
+        except Exception as exc:
+            try:
+                from server_entry import log
+
+                log(f"webview failed: {exc}")
+            except Exception:
+                pass
+            return 1
     except Exception as exc:
         try:
             from server_entry import log

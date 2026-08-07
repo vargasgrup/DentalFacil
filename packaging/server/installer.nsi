@@ -180,7 +180,7 @@ Section "Install"
   ${EndIf}
   ${If} $0 != 0
     MessageBox MB_ICONEXCLAMATION \
-      "El servidor quedo instalado, pero el arranque automatico fallo.$\r$\n$\r$\n1) Acepte UAC y ejecute como Administrador:$\r$\n$INSTDIR\scripts\repair_startup.cmd$\r$\n$\r$\n2) O use el acceso directo 'N&K DentalSoft' del Escritorio.$\r$\n$\r$\nLog: $PROGRAMDATA\NKDentalSoft\logs\install_autostart.log"
+      "El servidor quedo instalado, pero el arranque automatico fallo.$\r$\n$\r$\n1) Acepte UAC y ejecute como Administrador:$\r$\n$INSTDIR\scripts\repair_startup.cmd$\r$\n$\r$\n2) O use el acceso directo 'N&K DentalSoft' del Escritorio.$\r$\n$\r$\nLog: $COMMONPROGRAMDATA\NKDentalSoft\logs\install_autostart.log"
   ${EndIf}
 
   ; Desktop = open UI (what clinic staff expect)

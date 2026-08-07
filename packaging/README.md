@@ -198,13 +198,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_clie
 
 ---
 
-## Limpiar / desinstalar por completo (antes de reinstalar)
-
-Si Client no conecta tras un upgrade o conviven restos de varias instalaciones, use el **limpiador total**.
+## Limpieza / desinstalador total (zero residue)
 
 | Artefacto | Ruta |
 |-----------|------|
 | EXE (recomendado) | `dist\NKDentalSoft-Clean-All-x64.exe` |
+| Alias ES | `dist\NKDentalSoft-Desinstalador-Total-x64.exe` |
 | BAT | `dist\Limpiar-Instalaciones-NKDentalSoft.bat` o `packaging\Limpiar-Instalaciones-NKDentalSoft.bat` |
 | Log | Escritorio `\NKDentalSoft-limpia.log` |
 
@@ -212,12 +211,20 @@ Si Client no conecta tras un upgrade o conviven restos de varias instalaciones, 
 powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_cleaner.ps1
 ```
 
+**Qué borra (todo):** Server + Client en rutas por defecto y custom (p. ej. `D:\NKDentalSoft`), `%ProgramData%\NKDentalSoft` (incluye base de datos), perfiles de todos los usuarios, atajos, firewall, servicios/tareas, Prefetch, claves `Uninstall` (Apps Windows 11) y `HKLM\Software\NKDentalSoft`. Archivos bloqueados se programan para borrar al reiniciar.
+
 **Uso (como Administrador):**
 
-1. Ejecutar `NKDentalSoft-Clean-All-x64.exe` y confirmar.
-2. Revisar `NKDentalSoft-limpia.log` en el Escritorio (debe decir `SUCCESS`).
-3. Si quedan restos: reiniciar el PC y volver a ejecutar el limpiador.
-4. Instalar `NKDentalSoft-Server-Setup-x64.exe`, arrancar Server, copiar URL/IP.
+1. Ejecutar `NKDentalSoft-Desinstalador-Total-x64.exe` (o `Clean-All`) y confirmar **dos veces**.
+2. Revisar `NKDentalSoft-limpia.log` en el Escritorio (`SUCCESS: ZERO residue`).
+3. Si quedan restos: reiniciar el PC y volver a ejecutar el desinstalador.
+4. Instalar de nuevo Server y Client.
+
+---
+
+## Limpiar / desinstalar por completo (antes de reinstalar)
+
+Si Client no conecta tras un upgrade o conviven restos de varias instalaciones, use el **limpiador total** (sección anterior).
 5. Instalar `NKDentalSoft-Client-Setup-x64.exe` y pegar esa URL.
 
 **Borra por completo:** `Program Files\NKDentalSoft`, `%ProgramData%\NKDentalSoft` (incluye SQLite), `%LocalAppData%\NKDentalSoft`, atajos, firewall, servicio/tarea y claves Uninstall.

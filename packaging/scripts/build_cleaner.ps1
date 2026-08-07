@@ -78,6 +78,10 @@ try {
 $exe = Join-Path $outDir "NKDentalSoft-Clean-All-x64.exe"
 if (-not (Test-Path -LiteralPath $exe)) { throw "Cleaner EXE missing: $exe" }
 
+# Alias with clearer Spanish product name for clinic staff
+$alias = Join-Path $outDir "NKDentalSoft-Desinstalador-Total-x64.exe"
+Copy-Item -LiteralPath $exe -Destination $alias -Force
+
 $sign = Join-Path $here "sign_windows_exe.ps1"
 if (Test-Path -LiteralPath $sign) {
   try {
@@ -85,7 +89,13 @@ if (Test-Path -LiteralPath $sign) {
   } catch {
     Write-Host ("[sign] skipped: " + $_.Exception.Message)
   }
+  try {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $sign -Path $alias
+  } catch {
+    Write-Host ("[sign] alias skipped: " + $_.Exception.Message)
+  }
 }
 
 Write-Host ("OK Cleaner: " + $exe)
-Get-Item $exe, $distBatPath | Format-Table Name, Length, LastWriteTime
+Write-Host ("OK Alias:    " + $alias)
+Get-Item $exe, $alias, $distBatPath | Format-Table Name, Length, LastWriteTime

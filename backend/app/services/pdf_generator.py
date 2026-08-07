@@ -42,15 +42,13 @@ from app.services.pdf_helpers import (
 # Fallback logo path (perfil puede apuntar a uploads/clinic-logo.*)
 _DEFAULT_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "logo-md.png"
 
-# Ticket 80mm (térmica + matricial Epson TM-U220A / M188A):
+# Ticket 80mm (térmica + matricial Epson TM-U220A / M188A / Star TSP):
 # - Ancho fijo 80mm; altura al contenido.
-# - Tipografía Courier en comprobantes (ver ticket_comprobante.py).
-# Márgenes laterales mínimos de software: el cabezal térmico/impact ya tiene
-# zona no imprimible (~2–3 mm). Márgenes PDF de 5 mm ×2 dejaban el ticket
-# “flotando” con bandas blancas enormes y texto demasiado compacto.
+# - Márgenes laterales ≥5 mm: zona no imprimible típica de Star TSP / Epson (~3–6 mm).
+#   Márgenes <4 mm recortaban P.Unit/Total al borde derecho del papel.
 TICKET_WIDTH = 80 * mm
-# (left, right, top, bottom) — ~75 mm de texto útil en 80 mm de papel
-TICKET_MARGINS_COMPROBANTE = (2.2 * mm, 2.2 * mm, 1.8 * mm, 3.0 * mm)
+# (left, right, top, bottom) — ~70 mm de texto útil, contenido completo en preview/print
+TICKET_MARGINS_COMPROBANTE = (5.0 * mm, 5.0 * mm, 2.0 * mm, 3.5 * mm)
 PAGE_A5 = A5
 PAGE_A4 = A4
 

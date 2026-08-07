@@ -1,8 +1,9 @@
 /**
- * Impresión fiel de PDF.
+ * Impresión fiel de PDF con panel de trabajo propio (modo escritorio).
  *
- * - 80mm: PDF nativo (sin encabezados/pies del navegador: fecha, título, URL).
- * - A4/A5: raster (pdf.js → imagen) con @page del MediaBox.
+ * - Raster (pdf.js → imagen) con @page del MediaBox.
+ * - En WebView2/pywebview el diálogo nativo de Windows al cerrar (X)
+ *   a veces cierra TODA la app: el panel N&K permite Cerrar sin matar el host.
  */
 
 const PT_TO_MM = 25.4 / 72;
@@ -151,93 +152,193 @@ function buildPrintHtml(
 </html>`;
 }
 
-function printHtmlInHiddenIframe(html: string): Promise<void> {
-  return new Promise((resolve, reject) => {
+/**
+ * Panel de impresión N&K: vista previa + Imprimir / Cerrar.
+ * Cerrar solo quita el panel (no llama a window.close del shell).
+ */
+function openClinicPrintWorkbench(
+  html: string,
+  options?: { title?: string }
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof document === "undefined") {
+      resolve();
+      return;
+    }
+
+    const existing = document.getElementById("nk-print-workbench");
+    if (existing) existing.remove();
+
+    const backdrop = document.createElement("div");
+    backdrop.id = "nk-print-workbench";
+    backdrop.setAttribute("role", "dialog");
+    backdrop.setAttribute("aria-modal", "true");
+    backdrop.setAttribute("aria-label", options?.title || "Imprimir documento");
+    backdrop.style.cssText = [
+      "position:fixed",
+      "inset:0",
+      "z-index:2147483000",
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
+      "padding:12px",
+      "background:rgba(15,23,42,0.55)",
+      "font-family:Segoe UI,system-ui,sans-serif",
+    ].join(";");
+
+    const panel = document.createElement("div");
+    panel.style.cssText = [
+      "display:flex",
+      "flex-direction:column",
+      "width:min(960px,100%)",
+      "height:min(90vh,900px)",
+      "background:#fff",
+      "border-radius:14px",
+      "box-shadow:0 25px 50px -12px rgba(15,23,42,0.35)",
+      "overflow:hidden",
+    ].join(";");
+
+    const header = document.createElement("div");
+    header.style.cssText =
+      "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc;";
+
+    const titleEl = document.createElement("div");
+    titleEl.innerHTML = `<p style="margin:0;font-size:14px;font-weight:700;color:#0f172a">${escapeHtml(
+      options?.title || "Imprimir documento"
+    )}</p><p style="margin:2px 0 0;font-size:12px;color:#64748b">Vista previa · Imprima o cierre sin salir del sistema</p>`;
+
+    const closeHeader = document.createElement("button");
+    closeHeader.type = "button";
+    closeHeader.setAttribute("aria-label", "Cerrar panel de impresión");
+    closeHeader.textContent = "×";
+    closeHeader.style.cssText =
+      "width:36px;height:36px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;font-size:22px;line-height:1;color:#475569;cursor:pointer";
+
+    header.appendChild(titleEl);
+    header.appendChild(closeHeader);
+
+    const body = document.createElement("div");
+    body.style.cssText =
+      "flex:1;min-height:0;background:#e2e8f0;display:flex;padding:12px";
+
     const iframe = document.createElement("iframe");
-    iframe.setAttribute("title", " ");
-    iframe.setAttribute("aria-hidden", "true");
+    iframe.title = "Vista previa de impresión";
     iframe.style.cssText =
-      "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;border:0;pointer-events:none;z-index:-1;";
-    document.body.appendChild(iframe);
+      "flex:1;width:100%;height:100%;border:0;border-radius:8px;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,0.12)";
 
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const blobUrl = URL.createObjectURL(blob);
+    body.appendChild(iframe);
 
-    let cleaned = false;
-    const cleanup = () => {
-      if (cleaned) return;
-      cleaned = true;
+    const footer = document.createElement("div");
+    footer.style.cssText =
+      "display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid #e2e8f0;background:#fff";
+
+    const hint = document.createElement("p");
+    hint.style.cssText =
+      "margin:0;margin-right:auto;font-size:12px;color:#64748b;max-width:28rem";
+    hint.textContent =
+      "Cerrar solo cierra este panel. Imprimir abre el diálogo de la impresora.";
+
+    const btnCancel = document.createElement("button");
+    btnCancel.type = "button";
+    btnCancel.textContent = "Cancelar";
+    btnCancel.style.cssText =
+      "padding:9px 14px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;color:#334155;font-size:13px;font-weight:600;cursor:pointer";
+
+    const btnClose = document.createElement("button");
+    btnClose.type = "button";
+    btnClose.textContent = "Cerrar";
+    btnClose.style.cssText =
+      "padding:9px 14px;border-radius:10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#0f172a;font-size:13px;font-weight:600;cursor:pointer";
+
+    const btnPrint = document.createElement("button");
+    btnPrint.type = "button";
+    btnPrint.textContent = "Imprimir";
+    btnPrint.style.cssText =
+      "padding:9px 18px;border-radius:10px;border:0;background:#2563eb;color:#fff;font-size:13px;font-weight:700;cursor:pointer";
+
+    footer.appendChild(hint);
+    footer.appendChild(btnCancel);
+    footer.appendChild(btnClose);
+    footer.appendChild(btnPrint);
+
+    panel.appendChild(header);
+    panel.appendChild(body);
+    panel.appendChild(footer);
+    backdrop.appendChild(panel);
+    document.body.appendChild(backdrop);
+
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
       try {
-        URL.revokeObjectURL(blobUrl);
-        iframe.remove();
+        backdrop.remove();
       } catch {
         /* ignore */
       }
       resolve();
     };
 
-    const triggerPrint = () => {
+    const doPrint = () => {
       const win = iframe.contentWindow;
-      if (!win) {
-        cleanup();
-        reject(new Error("No se pudo preparar la impresión"));
-        return;
-      }
+      if (!win) return;
       try {
         win.focus();
-        const onAfter = () => cleanup();
-        win.addEventListener("afterprint", onAfter);
-        setTimeout(() => {
-          win.removeEventListener("afterprint", onAfter);
-          cleanup();
-        }, 90_000);
         win.print();
-      } catch (err) {
-        cleanup();
-        reject(err instanceof Error ? err : new Error("Error al imprimir"));
+      } catch {
+        /* ignore */
       }
     };
 
+    btnPrint.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      doPrint();
+    });
+    btnCancel.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      finish();
+    });
+    btnClose.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      finish();
+    });
+    closeHeader.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      finish();
+    });
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) finish();
+    });
+    // Escape cierra solo el panel
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        document.removeEventListener("keydown", onKey, true);
+        finish();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const blobUrl = URL.createObjectURL(blob);
     iframe.addEventListener(
       "load",
       () => {
-        const doc = iframe.contentDocument;
-        const waitImages = () => {
-          const imgs = doc ? Array.from(doc.images) : [];
-          if (imgs.length === 0) {
-            setTimeout(triggerPrint, 250);
-            return;
-          }
-          let left = imgs.length;
-          const tick = () => {
-            left -= 1;
-            if (left <= 0) setTimeout(triggerPrint, 250);
-          };
-          imgs.forEach((img) => {
-            if (img.complete) tick();
-            else {
-              img.addEventListener("load", tick, { once: true });
-              img.addEventListener("error", tick, { once: true });
-            }
-          });
-          setTimeout(() => {
-            if (left > 0) triggerPrint();
-          }, 8_000);
-        };
-        waitImages();
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
       },
       { once: true }
     );
-
     iframe.src = blobUrl;
   });
 }
 
 /**
- * Imprime un PDF (Blob).
- * Ticket 80mm y A4/A5 usan raster con @page = MediaBox (margin 0).
- * Evita que el diálogo de Windows/Star “encaje” el ticket en papel largo
- * dejando una banda blanca superior y cortando el margen izquierdo.
+ * Imprime un PDF (Blob) vía panel de trabajo interno (Imprimir / Cerrar).
  */
 export async function printPdfBlob(
   blob: Blob,
@@ -251,15 +352,14 @@ export async function printPdfBlob(
 
   const html = buildPrintHtml(pages, {
     ...options,
-    // Título vacío → sin texto útil en encabezados del navegador si están activos
     title: options?.title ? options.title : "\u00a0",
   });
-  await printHtmlInHiddenIframe(html);
+  await openClinicPrintWorkbench(html, { title: options?.title || "Imprimir" });
 }
 
 export function resetPrintFormatPrefsIfNeeded(): void {
   if (typeof window === "undefined") return;
-  const FLAG = "ds_print_pipeline_v7";
+  const FLAG = "ds_print_pipeline_v8";
   if (localStorage.getItem(FLAG) === "1") return;
   localStorage.removeItem("pdf_format_pref");
   localStorage.setItem(FLAG, "1");

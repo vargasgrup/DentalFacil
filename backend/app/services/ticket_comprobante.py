@@ -262,10 +262,10 @@ def _p_html(text: str, style: ParagraphStyle) -> Paragraph:
     return Paragraph(text, style)
 
 
-# Separadores 80mm: mismo grosor y siempre el 100 % del marco (no HRFlowable
-# con width absoluto — en ReportLab puede quedar más corto que la tabla).
-_SEP_THICK = 0.9
-_SEP_GAP_PT = 1.4  # padding vertical del renglón-regla
+# Separadores: en ticket 80mm se evitan reglas dibujadas (matricial lento y
+# cortes en térmicas). Los bloques se delimitan con títulos en negrita + espacio.
+def _block_space(*, tight: bool) -> Spacer:
+    return Spacer(1, 2.2 * mm if tight else 3.5 * mm)
 
 
 def _styles(fmt: str) -> dict[str, ParagraphStyle]:
@@ -277,14 +277,13 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
     A5/A4: Helvetica de lectura en hoja A (documentos oficina).
     """
     if fmt == "80mm":
-        # Mínimos impresos (pt): título 11, cuerpo 9.5, secundaria 8.5, pie 8
-        title_sz, body_sz, small_sz, tiny_sz = 11, 9.5, 8.5, 8
-        # Interlineado compacto: body ~11 pt; spaceAfter mínimo entre renglones
+        # Body 9 pt: más columnas numéricas caben en el marco útil ~71 mm
+        title_sz, body_sz, small_sz, tiny_sz = 10.5, 9, 8, 7.5
         after = 0.6
-        lead_extra = 1.5
-        field_after = 0.4  # F. Emisión / Cliente / Pagos… aún más ceñido
+        lead_extra = 1.4
+        field_after = 0.4
         font_r, font_b = TICKET_FONT, TICKET_FONT_BOLD
-        mute = TICKET_INK  # sin gris: el impact lo desvanece o lo hace ilegible
+        mute = TICKET_INK
     elif fmt == "A5":
         title_sz, body_sz, small_sz, tiny_sz = 12, 9, 8, 7
         after = 2.0
@@ -311,6 +310,17 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             leading=title_sz + lead_extra,
             spaceBefore=0,
             spaceAfter=after + (0.8 if fmt == "80mm" else 0),
+            textColor=TICKET_INK if fmt == "80mm" else colors.black,
+            wordWrap="CJK",
+        ),
+        "section_title": ParagraphStyle(
+            "sec_title",
+            fontName=font_b,
+            fontSize=body_sz if fmt == "80mm" else body_sz + 1,
+            alignment=0 if fmt == "80mm" else 1,
+            leading=(body_sz if fmt == "80mm" else body_sz + 1) + lead_extra,
+            spaceBefore=1.2 if fmt == "80mm" else 2,
+            spaceAfter=1.0 if fmt == "80mm" else 2,
             textColor=TICKET_INK if fmt == "80mm" else colors.black,
             wordWrap="CJK",
         ),
@@ -349,7 +359,6 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             textColor=TICKET_INK if fmt == "80mm" else colors.black,
             wordWrap="CJK",
         ),
-        # Bloques de datos en 1 renglón c/u (emisión, cliente, pagos, estado)
         "field": ParagraphStyle(
             "l_field",
             fontName=font_r,
@@ -389,9 +398,9 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
         "total": ParagraphStyle(
             "total",
             fontName=font_b,
-            fontSize=body_sz + 1.5 if fmt != "80mm" else 11,
+            fontSize=body_sz + 1.5 if fmt != "80mm" else 10.5,
             alignment=0,
-            leading=(body_sz + 1.5 if fmt != "80mm" else 11) + 1.2,
+            leading=(body_sz + 1.5 if fmt != "80mm" else 10.5) + 1.2,
             spaceAfter=after + 0.4,
             textColor=TICKET_INK if fmt == "80mm" else colors.black,
             wordWrap="CJK",
@@ -399,16 +408,14 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
     }
 
 
-def _sep(content_w: float, *, tight: bool = False) -> Table:
-    """
-    Separador de bloque de ancho idéntico al contenido (tabla 1 celda + LINEABOVE).
-
-    HRFlowable(width=abs) a veces pinta más corto que las tablas y las líneas
-    del ticket quedan desalineadas; la tabla con colWidths=[content_w] no.
-    """
-    thick = _SEP_THICK if tight else 0.7
-    gap = _SEP_GAP_PT if tight else 2.2
-    ink = TICKET_BLACK if tight else colors.HexColor("#334155")
+def _sep(content_w: float, *, tight: bool = False) -> Spacer | Table:
+    """Compat: 80mm = espacio (sin raya); A5/A4 mantiene regla fina opcional."""
+    if tight:
+        return _block_space(tight=True)
+    # A5/A4: linea suave (no 80mm)
+    thick = 0.5
+    gap = 2.0
+    ink = colors.HexColor("#64748b")
     t = Table([[""]], colWidths=[max(1.0, float(content_w))], hAlign="LEFT")
     t.setStyle(
         TableStyle(
@@ -418,20 +425,17 @@ def _sep(content_w: float, *, tight: bool = False) -> Table:
                 ("BOTTOMPADDING", (0, 0), (-1, -1), gap),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ]
         )
     )
     return t
 
 
-def _line(content_w: float, *, tight: bool = False) -> Table:
-    """Alias histórico → mismo separador unificado."""
+def _line(content_w: float, *, tight: bool = False) -> Spacer | Table:
     return _sep(content_w, tight=tight)
 
 
-def _dash(content_w: float, *, tight: bool = False) -> Table:
-    """Alias histórico → mismo separador sólido (sin dash: impact lo pierde)."""
+def _dash(content_w: float, *, tight: bool = False) -> Spacer | Table:
     return _sep(content_w, tight=tight)
 
 
@@ -500,10 +504,10 @@ def build_comprobante_story(
         story.append(_p(dir_txt, styles["center_small"]))
 
     story.append(Spacer(1, 1.0 * mm if tight else 2.5 * mm))
-    story.append(_sep(content_w, tight=tight))
+    # Bloque título: solo negrita (sin rayas — matricial/térmica)
     story.append(_p("COMPROBANTE DE PAGO", styles["center_bold"]))
     story.append(_p(serie, styles["center_bold"]))
-    story.append(_sep(content_w, tight=tight))
+    story.append(_block_space(tight=tight) if tight else _sep(content_w, tight=False))
 
     field = styles["field"]
     story.append(_p_html(f"<b>F. Emisión:</b> {_esc(f_emision)}", field))
@@ -515,22 +519,29 @@ def build_comprobante_story(
     if direccion and direccion != "—":
         story.append(_p_html(f"<b>Dirección:</b> {_esc(direccion)}", field))
 
-    story.append(_sep(content_w, tight=tight))
+    story.append(_block_space(tight=tight) if tight else _sep(content_w, tight=False))
 
-    # --- Ítems ---
-    # 80mm: tipografía + tamaño mínimo legible en impact (nunca < 8 pt)
-    header_fs = 8.5 if fmt == "80mm" else 8
-    body_fs = 9.5 if fmt == "80mm" else 9
+    # --- Ítems (sin rayas horizontales)
+    header_fs = 8 if fmt == "80mm" else 8
+    body_fs = 9 if fmt == "80mm" else 9
     font_r = TICKET_FONT if fmt == "80mm" else "Helvetica"
     font_b = TICKET_FONT_BOLD if fmt == "80mm" else "Helvetica-Bold"
     if fmt == "80mm":
-        col_cant = 10 * mm
-        col_pu = 15 * mm
-        col_tot = 15 * mm
-        col_desc = content_w - col_cant - col_pu - col_tot
-        if col_desc < 18 * mm:
-            col_pu = 13 * mm
-            col_tot = 13 * mm
+        # Courier monoespace ~0.6*fs por glifo: "S/ 192.00" (10) a 8.5pt ≈ 18 mm.
+        # Reservar 20.5 mm p/P.Unit y Total + padding para que el borde derecho
+        # no recorte montos en Star TSP / WebView print preview.
+        col_cant = 7.5 * mm
+        col_pu = 20.5 * mm
+        col_tot = 20.5 * mm
+        col_desc = max(18 * mm, content_w - col_cant - col_pu - col_tot)
+        drift = content_w - (col_cant + col_desc + col_pu + col_tot)
+        col_desc += drift
+        if col_desc < 16 * mm:
+            # Preferir recortar descripción antes que montos
+            need = 16 * mm - col_desc
+            take = min(need / 2, 1.5 * mm)
+            col_pu -= take
+            col_tot -= take
             col_desc = content_w - col_cant - col_pu - col_tot
     else:
         col_cant = content_w * 0.12
@@ -539,8 +550,14 @@ def build_comprobante_story(
         col_tot = content_w * 0.22
 
     col_widths = [col_cant, col_desc, col_pu, col_tot]
-    drift = content_w - sum(col_widths)
-    col_widths[1] += drift
+    if fmt != "80mm":
+        drift = content_w - sum(col_widths)
+        col_widths[1] += drift
+
+    # 80mm: cuerpo 8.5pt — montos caben en columnas de 20 mm sin overflow
+    if fmt == "80mm":
+        body_fs = 8.5
+        header_fs = 7.5
 
     lead_row = body_fs + 1.6 if fmt == "80mm" else body_fs + 2
     hdr_desc = ParagraphStyle(
@@ -577,12 +594,15 @@ def build_comprobante_story(
         textColor=TICKET_INK,
     )
 
+    if tight:
+        story.append(_p_html("<b>Detalle de cobro</b>", styles["section_title"]))
+
     item_rows = [
         [
-            "Cant.",
-            Paragraph("Descripción", hdr_desc),
-            Paragraph("P.Unit", hdr_right),
-            Paragraph("Total", hdr_right),
+            Paragraph("<b>Cant.</b>", hdr_desc) if tight else "Cant.",
+            Paragraph("<b>Descripción</b>", hdr_desc),
+            Paragraph("<b>P.Unit</b>", hdr_right),
+            Paragraph("<b>Total</b>", hdr_right),
         ],
         [
             "1",
@@ -592,36 +612,33 @@ def build_comprobante_story(
         ],
     ]
     items_table = Table(item_rows, colWidths=col_widths, hAlign="LEFT")
-    # padding horizontal mínimo en 80mm: maximiza texto útil alineado con los seps
-    pad_x = 0.4 if tight else 1.5
-    pad_y = 1.2 if tight else 2
-    items_table.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("FONTNAME", (0, 0), (0, 0), font_b),
-                ("FONTNAME", (0, 1), (0, -1), font_r),
-                ("FONTSIZE", (0, 0), (0, -1), header_fs if fmt == "80mm" else body_fs),
-                ("TEXTCOLOR", (0, 0), (-1, -1), TICKET_INK),
-                ("ALIGN", (0, 0), (0, -1), "CENTER"),
-                ("ALIGN", (1, 0), (1, -1), "LEFT"),
-                ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-                ("LEFTPADDING", (0, 0), (-1, -1), pad_x),
-                ("RIGHTPADDING", (0, 0), (-1, -1), pad_x),
-                ("TOPPADDING", (0, 0), (-1, -1), pad_y),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), pad_y),
-                # Misma trama/grosor que _sep (todo el ancho de columnas = content_w)
-                ("LINEBELOW", (0, 0), (-1, 0), _SEP_THICK if tight else 0.7, TICKET_BLACK),
-                ("LINEBELOW", (0, -1), (-1, -1), _SEP_THICK if tight else 0.7, TICKET_BLACK),
-            ]
-        )
-    )
-    story.append(items_table)
-    # No _sep extra tras la tabla: LINEBELOW del último renglón ya cierra el bloque
+    # Padding mínimo en 80mm: el padding de ReportLab come del colWidth y
+    # empuja montos fuera del area imprimible.
+    pad_x = 0.2 if tight else 1.5
+    pad_y = 0.8 if tight else 2
+    style_cmds = [
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("FONTNAME", (0, 0), (0, 0), font_b),
+        ("FONTNAME", (0, 1), (0, -1), font_r),
+        ("FONTSIZE", (0, 0), (0, -1), header_fs if fmt == "80mm" else body_fs),
+        ("TEXTCOLOR", (0, 0), (-1, -1), TICKET_INK),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"),
+        ("ALIGN", (1, 0), (1, -1), "LEFT"),
+        ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), pad_x),
+        ("RIGHTPADDING", (0, 0), (-1, -1), pad_x),
+        ("TOPPADDING", (0, 0), (-1, -1), pad_y),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), pad_y),
+    ]
+    # Solo A5/A4: rayas opcionales (no 80mm)
     if not tight:
-        story.append(Spacer(1, 1.2 * mm))
+        style_cmds.append(("LINEBELOW", (0, 0), (-1, 0), 0.5, TICKET_BLACK))
+        style_cmds.append(("LINEBELOW", (0, -1), (-1, -1), 0.5, TICKET_BLACK))
+    items_table.setStyle(TableStyle(style_cmds))
+    story.append(items_table)
+    story.append(_block_space(tight=tight) if tight else Spacer(1, 1.2 * mm))
 
-    # --- Totales y pagos (mismo estilo field = interlineado compacto) ---
+    # --- Totales y pagos
     story.append(
         _p_html(
             f"<b>Total a pagar: {_esc(format_price_plain(monto))}</b>",
@@ -641,7 +658,6 @@ def build_comprobante_story(
         story.append(Spacer(1, 0.8 * mm if tight else 1.2 * mm))
         story.append(_p_html("<b>Estado del tratamiento:</b>", field))
         story.append(_p(f"Costo: {format_price_plain(float(t_costo))}", field))
-        # Dos líneas cortas evitan "S/\n52.00" partido a media palabra en Courier
         story.append(
             _p(f"A cuenta: {format_price_plain(float(t_ac))}", field)
         )
@@ -658,15 +674,14 @@ def build_comprobante_story(
 
     story.append(_p_html(f"<b>Atendido por:</b> {_esc(vendedor)}", field))
 
-    story.append(_sep(content_w, tight=tight))
+    story.append(_block_space(tight=tight) if tight else _sep(content_w, tight=False))
     story.append(
         _p("Código hash:", styles["left_bold"] if tight else styles["left"])
     )
     story.append(_p(codigo_hash, styles["center_small"]))
     story.append(Spacer(1, 1.4 * mm if tight else 1.8 * mm))
 
-    # QR más grande en 80mm: impact necesita módulos más anchos
-    qr_size = 22 if fmt == "80mm" else 34
+    qr_size = 20 if fmt == "80mm" else 34
     story.append(_qr_image(qr_payload, size_mm=qr_size))
     story.append(Spacer(1, 1.2 * mm if tight else 1.4 * mm))
 
@@ -677,9 +692,7 @@ def build_comprobante_story(
         )
     )
     story.append(_p("¡Gracias por su preferencia!", styles["center_small"]))
-    # Pie de corte para rollo / matricial (aire al final)
     if tight:
-        story.append(Spacer(1, 2.5 * mm))
-        story.append(_sep(content_w, tight=True))
+        story.append(Spacer(1, 3.0 * mm))
 
     return story

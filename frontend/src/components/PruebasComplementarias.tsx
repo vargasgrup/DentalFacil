@@ -104,6 +104,32 @@ const IMAGE_EXTS = new Set([
 /** Soft cap per file: avoids WebView2 OOM that blanks the main pane. */
 const MAX_UPLOAD_BYTES = 120 * 1024 * 1024;
 
+/**
+ * WebView2 often invalidates File/FileList after the native dialog closes or
+ * after input value is cleared. Copy bytes into new File objects immediately.
+ */
+async function materializeUploadFiles(files: File[]): Promise<File[]> {
+  const out: File[] = [];
+  for (const f of files) {
+    try {
+      const buf = await f.arrayBuffer();
+      if (!buf.byteLength && f.size > 0) {
+        throw new Error("buffer vacío");
+      }
+      out.push(
+        new File([buf], f.name || "archivo", {
+          type: f.type || "application/octet-stream",
+          lastModified: f.lastModified || Date.now(),
+        })
+      );
+    } catch {
+      // Last resort: keep original reference if still readable
+      out.push(f);
+    }
+  }
+  return out;
+}
+
 /** Soft ceiling for in-app preview (desktop can store larger). */
 const PREVIEW_WARN_BYTES = 35 * 1024 * 1024;
 /** Above this, refuse Blob buffer (OOM / WebView freeze risk). */
@@ -339,10 +365,14 @@ export function PruebasComplementarias({
   };
 
   const runUpload = async (categoria: Categoria, files: File[]) => {
-    if (!files.length) return;
+    if (!files.length) {
+      setUploadProgress("");
+      return;
+    }
 
     const invalid = files.filter((f) => !isAllowedUpload(f));
     if (invalid.length) {
+      setUploadProgress("");
       setError(
         `Solo se permiten imágenes o PDF. Rechazados: ${invalid
           .map((f) => f.name)
@@ -353,6 +383,7 @@ export function PruebasComplementarias({
 
     const tooBig = files.filter((f) => f.size > MAX_UPLOAD_BYTES);
     if (tooBig.length) {
+      setUploadProgress("");
       setError(
         `Algunos archivos superan ${formatBytes(MAX_UPLOAD_BYTES)}: ${tooBig
           .map((f) => f.name)
@@ -361,7 +392,10 @@ export function PruebasComplementarias({
       return;
     }
 
-    if (!mountedRef.current) return;
+    if (!mountedRef.current) {
+      setUploadProgress("");
+      return;
+    }
     setUploadingCat(categoria);
     setError("");
     const note = notas[categoria].trim();
@@ -432,11 +466,28 @@ export function PruebasComplementarias({
     }
   };
 
-  const onPickFiles = (categoria: Categoria, fileList: FileList | null) => {
-    if (!fileList?.length) return;
-    // Snapshot File objects immediately (list is invalidated after value clear)
-    const files = Array.from(fileList);
-    afterNativeFileDialog(() => runUpload(categoria, files));
+  const onPickFiles = (categoria: Categoria, picked: File[]) => {
+    if (!picked.length) return;
+    setError("");
+    setUploadProgress("Preparando archivo(s)…");
+    // Materialize bytes BEFORE any delay (WebView2) and before input clear effects
+    void (async () => {
+      let files: File[];
+      try {
+        files = await materializeUploadFiles(picked);
+      } catch {
+        files = picked;
+      }
+      if (!files.length) {
+        if (mountedRef.current) {
+          setUploadProgress("");
+          setError("No se pudo leer el archivo seleccionado. Intente de nuevo.");
+        }
+        recoverClinicMainPaint();
+        return;
+      }
+      afterNativeFileDialog(() => runUpload(categoria, files));
+    })();
   };
 
   const onDelete = async (item: ComplementaryItem) => {
@@ -592,9 +643,13 @@ export function PruebasComplementarias({
                         aria-hidden
                         disabled={busy}
                         onChange={(e) => {
-                          const list = e.target.files;
+                          // CRITICAL: Array.from BEFORE clearing value.
+                          // Clearing first empties FileList → upload never runs.
+                          const picked = e.target.files
+                            ? Array.from(e.target.files)
+                            : [];
                           e.target.value = "";
-                          onPickFiles(cat.id, list);
+                          if (picked.length) onPickFiles(cat.id, picked);
                         }}
                       />
                       <button
@@ -602,7 +657,11 @@ export function PruebasComplementarias({
                         disabled={busy}
                         onClick={() => {
                           recoverClinicMainPaint();
-                          inputRefs.current[cat.id]?.click();
+                          const input = inputRefs.current[cat.id];
+                          if (!input || busy) return;
+                          // Reset so selecting the same file fires change again
+                          input.value = "";
+                          input.click();
                         }}
                         className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors ${
                           busy

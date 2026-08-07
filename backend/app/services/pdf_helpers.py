@@ -280,7 +280,7 @@ def logo_image(
 def logo_size_mm_for_ticket(fmt: str) -> float:
     """Ancho máximo del logo en mm para tickets (legible en rollo 80mm)."""
     if fmt == "80mm":
-        return 30.0  # cabecera visible; cabe en frame ~70 mm utiles
+        return 34.0  # cabecera visible; frame ~75–76 mm útiles
     if fmt == "A5":
         return 32.0
     return 36.0

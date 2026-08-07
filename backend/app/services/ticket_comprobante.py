@@ -25,7 +25,6 @@ from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (
-    HRFlowable,
     Image as RLImage,
     Paragraph,
     Spacer,
@@ -263,9 +262,10 @@ def _p_html(text: str, style: ParagraphStyle) -> Paragraph:
     return Paragraph(text, style)
 
 
-# Separadores 80mm: mismo grosor y ancho (aspecto profesional uniforme)
-_SEP_THICK_80 = 0.75
-_SEP_GAP_80 = 1.6  # pt arriba/abajo del separador
+# Separadores 80mm: mismo grosor y siempre el 100 % del marco (no HRFlowable
+# con width absoluto — en ReportLab puede quedar más corto que la tabla).
+_SEP_THICK = 0.9
+_SEP_GAP_PT = 1.4  # padding vertical del renglón-regla
 
 
 def _styles(fmt: str) -> dict[str, ParagraphStyle]:
@@ -399,56 +399,59 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
     }
 
 
-def _sep(content_w: float, *, tight: bool = False) -> HRFlowable:
-    """Separador de bloque: en 80mm siempre el mismo grosor y ancho completo."""
-    if tight:
-        return HRFlowable(
-            width=content_w,
-            thickness=_SEP_THICK_80,
-            color=TICKET_BLACK,
-            spaceBefore=_SEP_GAP_80,
-            spaceAfter=_SEP_GAP_80,
-            hAlign="LEFT",
+def _sep(content_w: float, *, tight: bool = False) -> Table:
+    """
+    Separador de bloque de ancho idéntico al contenido (tabla 1 celda + LINEABOVE).
+
+    HRFlowable(width=abs) a veces pinta más corto que las tablas y las líneas
+    del ticket quedan desalineadas; la tabla con colWidths=[content_w] no.
+    """
+    thick = _SEP_THICK if tight else 0.7
+    gap = _SEP_GAP_PT if tight else 2.2
+    ink = TICKET_BLACK if tight else colors.HexColor("#334155")
+    t = Table([[""]], colWidths=[max(1.0, float(content_w))], hAlign="LEFT")
+    t.setStyle(
+        TableStyle(
+            [
+                ("LINEABOVE", (0, 0), (-1, 0), thick, ink),
+                ("TOPPADDING", (0, 0), (-1, -1), gap),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), gap),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
         )
-    return HRFlowable(
-        width=content_w,
-        thickness=0.6,
-        color=colors.HexColor("#334155"),
-        spaceBefore=2.4,
-        spaceAfter=2.4,
-        hAlign="LEFT",
     )
+    return t
 
 
-def _line(content_w: float, *, tight: bool = False) -> HRFlowable:
+def _line(content_w: float, *, tight: bool = False) -> Table:
     """Alias histórico → mismo separador unificado."""
     return _sep(content_w, tight=tight)
 
 
-def _dash(content_w: float, *, tight: bool = False) -> HRFlowable:
-    """Alias histórico → mismo separador unificado (80mm sin dash fino)."""
-    if tight:
-        return _sep(content_w, tight=True)
-    return HRFlowable(
-        width=content_w,
-        thickness=0.5,
-        color=colors.HexColor("#334155"),
-        spaceBefore=2.2,
-        spaceAfter=2.2,
-        dash=(1, 1.5),
-        hAlign="LEFT",
-    )
+def _dash(content_w: float, *, tight: bool = False) -> Table:
+    """Alias histórico → mismo separador sólido (sin dash: impact lo pierde)."""
+    return _sep(content_w, tight=tight)
 
 
 def build_comprobante_story(
     data: dict[str, Any],
     fmt: str,
-    page_w: float,
-    margin: float,
+    content_w: float,
+    margin: float | None = None,
 ) -> list:
-    """Construye el flowable list del comprobante (ticket / A5 / A4)."""
+    """Construye el flowable list del comprobante (ticket / A5 / A4).
+
+    ``content_w`` es el ancho del marco imprimible (page − left − right).
+    ``margin`` se conserva solo por compatibilidad (ignorado si content_w
+    ya es el ancho del frame).
+    """
     styles = _styles(fmt)
-    content_w = page_w - 2 * margin
+    # Compat: llamadas antiguas pass (page_w, margin)
+    if margin is not None and margin > 0:
+        content_w = float(content_w) - 2 * float(margin)
+    content_w = max(40 * mm if fmt == "80mm" else 80 * mm, float(content_w))
     story: list = []
 
     tx_id = data.get("transaction_id") or "0"
@@ -589,7 +592,9 @@ def build_comprobante_story(
         ],
     ]
     items_table = Table(item_rows, colWidths=col_widths, hAlign="LEFT")
-    pad = 1.5 if tight else 1.5
+    # padding horizontal mínimo en 80mm: maximiza texto útil alineado con los seps
+    pad_x = 0.4 if tight else 1.5
+    pad_y = 1.2 if tight else 2
     items_table.setStyle(
         TableStyle(
             [
@@ -601,17 +606,20 @@ def build_comprobante_story(
                 ("ALIGN", (0, 0), (0, -1), "CENTER"),
                 ("ALIGN", (1, 0), (1, -1), "LEFT"),
                 ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-                ("LEFTPADDING", (0, 0), (-1, -1), pad),
-                ("RIGHTPADDING", (0, 0), (-1, -1), pad),
-                ("TOPPADDING", (0, 0), (-1, -1), 1.5 if tight else 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5 if tight else 2),
-                # Misma trama que _sep en 80mm
-                ("LINEBELOW", (0, 0), (-1, 0), _SEP_THICK_80 if tight else 0.4, TICKET_BLACK),
+                ("LEFTPADDING", (0, 0), (-1, -1), pad_x),
+                ("RIGHTPADDING", (0, 0), (-1, -1), pad_x),
+                ("TOPPADDING", (0, 0), (-1, -1), pad_y),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), pad_y),
+                # Misma trama/grosor que _sep (todo el ancho de columnas = content_w)
+                ("LINEBELOW", (0, 0), (-1, 0), _SEP_THICK if tight else 0.7, TICKET_BLACK),
+                ("LINEBELOW", (0, -1), (-1, -1), _SEP_THICK if tight else 0.7, TICKET_BLACK),
             ]
         )
     )
     story.append(items_table)
-    story.append(_sep(content_w, tight=tight))
+    # No _sep extra tras la tabla: LINEBELOW del último renglón ya cierra el bloque
+    if not tight:
+        story.append(Spacer(1, 1.2 * mm))
 
     # --- Totales y pagos (mismo estilo field = interlineado compacto) ---
     story.append(

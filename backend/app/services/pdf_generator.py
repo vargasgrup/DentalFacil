@@ -45,10 +45,12 @@ _DEFAULT_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "logo-m
 # Ticket 80mm (térmica + matricial Epson TM-U220A / M188A):
 # - Ancho fijo 80mm; altura al contenido.
 # - Tipografía Courier en comprobantes (ver ticket_comprobante.py).
-# Star TSP / 80mm: ~3–4 mm no imprimibles a cada lado.
-# Impact TM-U220: prefiere margen lateral ≥5 mm y pie un poco mayor.
+# Márgenes laterales mínimos de software: el cabezal térmico/impact ya tiene
+# zona no imprimible (~2–3 mm). Márgenes PDF de 5 mm ×2 dejaban el ticket
+# “flotando” con bandas blancas enormes y texto demasiado compacto.
 TICKET_WIDTH = 80 * mm
-TICKET_MARGINS_COMPROBANTE = (5 * mm, 5 * mm, 2 * mm, 4 * mm)
+# (left, right, top, bottom) — ~75 mm de texto útil en 80 mm de papel
+TICKET_MARGINS_COMPROBANTE = (2.2 * mm, 2.2 * mm, 1.8 * mm, 3.0 * mm)
 PAGE_A5 = A5
 PAGE_A4 = A4
 
@@ -438,8 +440,6 @@ def generate_pdf(
 
     page_w = TICKET_WIDTH if fmt == "80mm" else FORMAT_DIMENSIONS[fmt][0]
     left_m, right_m, _, _ = _as_box_margins(margin)
-    # Story width = printable frame (must match SimpleDocTemplate frame)
-    story_margin = (left_m + right_m) / 2.0
     styles = _build_styles(fmt)
     story: list = []
     type_labels = {
@@ -455,9 +455,10 @@ def generate_pdf(
     # Comprobante de caja: layout propio estilo boleta térmica (logo, serie, QR…)
     if doc_type == "comprobante":
         # Factory: ReportLab flowables are single-use (retries must rebuild).
-        # Pass side margin so content_w == frame width (avoids table left overflow).
+        # Pass exact frame width (page − left − right) so tables and rules match.
+        frame_w = page_w - left_m - right_m
         pdf_bytes = _render_pdf_bytes(
-            lambda: build_comprobante_story(data, fmt, page_w, story_margin),
+            lambda: build_comprobante_story(data, fmt, frame_w),
             fmt,
             margin,
         )

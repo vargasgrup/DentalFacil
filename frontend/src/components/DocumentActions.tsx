@@ -519,8 +519,12 @@ export function DocumentActions({
               ) : previewUrl ? (
                 <iframe
                   title={`Vista previa ${label}`}
-                  src={`${previewUrl}#view=FitH`}
-                  className="h-full w-full border-0"
+                  src={`${previewUrl}${
+                    format === "80mm"
+                      ? "#page=1&zoom=page-width"
+                      : "#view=FitH"
+                  }`}
+                  className="h-full w-full border-0 bg-slate-200"
                 />
               ) : null}
             </div>

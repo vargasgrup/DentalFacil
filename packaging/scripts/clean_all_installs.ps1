@@ -1,13 +1,5 @@
-# Full uninstall / wipe of N&K DentalSoft — ZERO residues.
-# Server + Client + clinical ProgramData + registry + firewall + tasks + shortcuts.
-# ASCII-only (Windows PowerShell 5.1). Self-elevates if needed.
-#
-# Log: %USERPROFILE%\Desktop\NKDentalSoft-limpia.log (or %TEMP%)
-#
-# Usage:
-#   powershell -NoProfile -ExecutionPolicy Bypass -File clean_all_installs.ps1
-#   powershell -NoProfile -ExecutionPolicy Bypass -File clean_all_installs.ps1 -NoElevate
-
+# N&K DentalSoft TOTAL WIPE - PS 5.1 ASCII. Logs to Desktop and TEMP.
+# Requires Administrator. Without admin exit code = 3.
 param(
   [switch]$NoElevate,
   [switch]$WhatIf
@@ -17,647 +9,511 @@ $ErrorActionPreference = "Continue"
 $ProgressPreference = "SilentlyContinue"
 
 function Test-IsAdmin {
-  $id = [Security.Principal.WindowsIdentity]::GetCurrent()
-  $p = New-Object Security.Principal.WindowsPrincipal($id)
-  return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  try {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $p = New-Object Security.Principal.WindowsPrincipal($id)
+    return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  } catch { return $false }
 }
 
-function Get-LogPath {
-  $desktop = [Environment]::GetFolderPath("Desktop")
-  if ($desktop -and (Test-Path -LiteralPath $desktop)) {
-    return (Join-Path $desktop "NKDentalSoft-limpia.log")
+function Get-DesktopPath {
+  foreach ($d in @(
+      [Environment]::GetFolderPath("Desktop"),
+      (Join-Path $env:USERPROFILE "Desktop"),
+      (Join-Path $env:USERPROFILE "OneDrive\Desktop"),
+      (Join-Path $env:PUBLIC "Desktop"),
+      $env:TEMP
+    )) {
+    if ($d -and (Test-Path -LiteralPath $d)) { return $d }
   }
-  return (Join-Path $env:TEMP "NKDentalSoft-limpia.log")
+  return $env:TEMP
 }
 
-$script:LogPath = Get-LogPath
-$script:FailCount = 0
-$script:OkCount = 0
-$script:TargetDirs = New-Object System.Collections.Generic.List[string]
+$script:LogPaths = @(
+  (Join-Path (Get-DesktopPath) "NKDentalSoft-limpia.log"),
+  (Join-Path $env:TEMP "NKDentalSoft-limpia.log")
+)
+$BrandDir = "N" + [char]38 + "K DentalSoft"
 $script:PendingReboot = $false
 
 function Write-Log {
   param([string]$Message, [string]$Level = "INFO")
   $line = "[{0}] [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Level, $Message
   Write-Host $line
-  try {
-    Add-Content -LiteralPath $script:LogPath -Value $line -Encoding ASCII -ErrorAction SilentlyContinue
-  } catch {}
-}
-
-function Add-TargetDir {
-  param([string]$Path)
-  if (-not $Path) { return }
-  $t = $Path.TrimEnd('\', '/')
-  if (-not $t) { return }
-  if (-not $script:TargetDirs.Contains($t)) {
-    $script:TargetDirs.Add($t) | Out-Null
+  foreach ($lp in $script:LogPaths) {
+    try { Add-Content -LiteralPath $lp -Value $line -Encoding UTF8 -ErrorAction SilentlyContinue } catch {}
   }
 }
 
-# Self-elevate
+function Init-Log {
+  $h = "NKDentalSoft TOTAL WIPE " + (Get-Date -Format "s") + " Admin=" + (Test-IsAdmin) + " User=" + $env:USERNAME
+  foreach ($lp in $script:LogPaths) {
+    try { Set-Content -LiteralPath $lp -Value $h -Encoding UTF8 -ErrorAction SilentlyContinue } catch {}
+  }
+}
+
 if (-not $NoElevate -and -not (Test-IsAdmin)) {
-  Write-Host "Solicitando permisos de Administrador..."
-  $argList = @(
-    "-NoProfile",
-    "-ExecutionPolicy", "Bypass",
-    "-File", ("`"{0}`"" -f $MyInvocation.MyCommand.Path),
-    "-NoElevate"
-  )
-  if ($WhatIf) { $argList += "-WhatIf" }
+  Write-Host "Solicitando Administrador..."
+  $alist = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $MyInvocation.MyCommand.Path, "-NoElevate")
+  if ($WhatIf) { $alist += "-WhatIf" }
   try {
-    $p = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList ($argList -join " ") -Wait -PassThru
+    $p = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $alist -Wait -PassThru
+    if ($null -eq $p) { exit 2 }
     exit $p.ExitCode
   } catch {
-    Write-Host ("ERROR: no se pudo elevar. Ejecute como Administrador. " + $_.Exception.Message)
+    Write-Host ("ERROR elevacion: " + $_.Exception.Message)
     exit 2
   }
 }
 
-try {
-  Set-Content -LiteralPath $script:LogPath -Value ("NKDentalSoft TOTAL WIPE started " + (Get-Date -Format "s")) -Encoding ASCII
-} catch {}
+Init-Log
+Write-Log "START wipe"
+Write-Log ("Logs: " + ($script:LogPaths -join " | "))
 
-Write-Log ("Admin=" + (Test-IsAdmin) + " WhatIf=" + [bool]$WhatIf)
-Write-Log ("Log=" + $script:LogPath)
-Write-Log "MODE=TOTAL ZERO RESIDUE (files + data + registry + firewall + tasks)"
+if (-not (Test-IsAdmin)) {
+  Write-Log "NOT ADMIN. Cannot delete Program Files / ProgramData." "ERROR"
+  Write-Host ""
+  Write-Host "ERROR: Ejecute como Administrador (UAC Si)."
+  Write-Host ("Log: " + $script:LogPaths[0])
+  exit 3
+}
 
-function Invoke-Step {
-  param([string]$Label, [scriptblock]$Action)
+function Run-Timeout {
+  param([string]$FilePath, [string[]]$ArgumentList, [int]$Seconds = 20, [string]$Label = "")
   if ($WhatIf) {
     Write-Log ("WHATIF " + $Label)
-    return
+    return 0
   }
   try {
-    & $Action
-    $script:OkCount++
-    Write-Log ("OK  " + $Label)
+    $p = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -WindowStyle Hidden -PassThru -ErrorAction Stop
+    if (-not $p.WaitForExit($Seconds * 1000)) {
+      Write-Log ("TIMEOUT " + $Seconds + "s " + $Label) "WARN"
+      try { $p.Kill() } catch {}
+      return 124
+    }
+    return $p.ExitCode
   } catch {
-    $script:FailCount++
     Write-Log ("FAIL " + $Label + " :: " + $_.Exception.Message) "WARN"
+    return 1
   }
 }
 
-function Stop-NamedProcesses {
+function Kill-Names {
   param([string[]]$Names)
   foreach ($n in $Names) {
-    Invoke-Step -Label ("taskkill " + $n) -Action {
-      Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-      cmd.exe /c ("taskkill /F /IM {0}.exe /T >nul 2>&1" -f $n) | Out-Null
-      Start-Sleep -Milliseconds 250
-    }
-  }
-  # By path / window
-  Invoke-Step -Label "taskkill path match NKDental/ConnectClinic" -Action {
-    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-      Where-Object {
-        $cmd = [string]$_.CommandLine
-        $exe = [string]$_.ExecutablePath
-        ($cmd -match 'NKDentalSoft|ConnectClinic|nkdentalsoft') -or
-        ($exe -match 'NKDentalSoft|ConnectClinic|nkdentalsoft')
-      } |
-      ForEach-Object {
-        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-        cmd.exe /c ("taskkill /F /PID {0} /T >nul 2>&1" -f $_.ProcessId) | Out-Null
-      }
+    Write-Log ("kill " + $n)
+    if ($WhatIf) { continue }
+    Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Run-Timeout -FilePath "cmd.exe" -ArgumentList @("/c", "taskkill /F /IM $n.exe /T") -Seconds 8 -Label ("taskkill " + $n) | Out-Null
   }
 }
 
-function Clear-TcpPort {
-  param([int]$Port)
-  Invoke-Step -Label ("free TCP " + $Port) -Action {
-    try {
-      $conns = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
-    } catch { $conns = @() }
-    foreach ($c in $conns) {
-      if ($c.OwningProcess -gt 4) {
-        Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
-        cmd.exe /c ("taskkill /F /PID {0} /T >nul 2>&1" -f $c.OwningProcess) | Out-Null
-      }
+function Kill-ByPathHint {
+  # Mata procesos cuyo ejecutable vive bajo NKDentalSoft / ConnectClinic
+  if ($WhatIf) { return }
+  $hints = @("NKDentalSoft", "ConnectClinic", "nkdentalsoft")
+  Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
+    $proc = $_
+    $path = $null
+    try { $path = $proc.Path } catch { $path = $null }
+    if (-not $path) {
+      try { $path = $proc.MainModule.FileName } catch { $path = $null }
     }
+    if (-not $path) { return }
+    $hit = $false
+    foreach ($h in $hints) {
+      if ($path -like ("*" + $h + "*")) { $hit = $true; break }
+    }
+    if (-not $hit) { return }
+    Write-Log ("kill-by-path " + $proc.ProcessName + " :: " + $path)
+    try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
   }
 }
 
-function Request-DeleteOnReboot {
+function Mark-DeleteOnReboot {
   param([string]$Path)
   if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return }
   try {
-    $sig = @'
-[DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
-public static extern bool MoveFileEx(string lpExistingFileName, string lpNewFileName, int dwFlags);
-'@
-    $type = Add-Type -MemberDefinition $sig -Name NativeMethodsMoveEx -Namespace Win32 -PassThru -ErrorAction SilentlyContinue
-    if (-not $type) {
-      $type = [Win32.NativeMethodsMoveEx]
+    if (-not ("NkdMoveFileEx" -as [type])) {
+      Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class NkdMoveFileEx {
+  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+  public static extern bool MoveFileEx(string existing, string dest, int flags);
+}
+"@
     }
-    $MOVEFILE_DELAY_UNTIL_REBOOT = 4
-    if (Test-Path -LiteralPath $Path -PathType Container) {
-      Get-ChildItem -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue |
-        Sort-Object { $_.FullName.Length } -Descending |
-        ForEach-Object {
-          [void]$type::MoveFileEx($_.FullName, $null, $MOVEFILE_DELAY_UNTIL_REBOOT)
-        }
+    # MOVEFILE_DELAY_UNTIL_REBOOT = 4
+    $ok = [NkdMoveFileEx]::MoveFileEx($Path, $null, 4)
+    if ($ok) {
+      $script:PendingReboot = $true
+      Write-Log ("scheduled reboot-delete " + $Path)
     }
-    [void]$type::MoveFileEx($Path, $null, $MOVEFILE_DELAY_UNTIL_REBOOT)
-    $script:PendingReboot = $true
-    Write-Log ("pending reboot delete: " + $Path) "WARN"
   } catch {
-    Write-Log ("MoveFileEx fail " + $Path + " :: " + $_.Exception.Message) "WARN"
+    Write-Log ("reboot-delete fail " + $Path + " :: " + $_.Exception.Message) "WARN"
   }
 }
 
-function Remove-TreeForce {
+function Clear-AttribTree {
+  param([string]$Path)
+  Run-Timeout -FilePath "cmd.exe" -ArgumentList @("/c", ('attrib -R -S -H "' + $Path + '\*" /S /D')) -Seconds 30 -Label ("attrib " + $Path) | Out-Null
+  Run-Timeout -FilePath "cmd.exe" -ArgumentList @("/c", ('attrib -R -S -H "' + $Path + '"')) -Seconds 10 -Label ("attrib root " + $Path) | Out-Null
+}
+
+function Nuke-DirRobocopy {
+  param([string]$Path)
+  # Robocopy /MIR empty folder forces delete of locked tree content under admin more reliably than rd
+  $empty = Join-Path $env:TEMP ("nkd_empty_" + [Guid]::NewGuid().ToString("N"))
+  try {
+    New-Item -ItemType Directory -Path $empty -Force | Out-Null
+    Run-Timeout -FilePath "robocopy.exe" -ArgumentList @($empty, $Path, "/MIR", "/R:1", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np") -Seconds 90 -Label ("robocopy " + $Path) | Out-Null
+  } finally {
+    try { Remove-Item -LiteralPath $empty -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+  }
+}
+
+function Del-Path {
   param([string]$Path)
   if (-not $Path) { return }
   if (-not (Test-Path -LiteralPath $Path)) {
-    Write-Log ("skip missing " + $Path)
+    Write-Log ("absent " + $Path)
+    return
+  }
+  Write-Log ("DELETE " + $Path)
+  if ($WhatIf) { return }
+
+  $isDir = $false
+  try { $isDir = (Get-Item -LiteralPath $Path -Force -ErrorAction Stop).PSIsContainer } catch {}
+
+  if ($isDir) {
+    Clear-AttribTree -Path $Path
+    Run-Timeout -FilePath "cmd.exe" -ArgumentList @("/c", ('rd /s /q "' + $Path + '"')) -Seconds 60 -Label ("rd " + $Path) | Out-Null
+    if (Test-Path -LiteralPath $Path) {
+      Nuke-DirRobocopy -Path $Path
+      Run-Timeout -FilePath "cmd.exe" -ArgumentList @("/c", ('rd /s /q "' + $Path + '"')) -Seconds 30 -Label ("rd after robocopy " + $Path) | Out-Null
+    }
+  } else {
+    Run-Timeout -FilePath "cmd.exe" -ArgumentList @("/c", ('attrib -R -S -H "' + $Path + '" & del /f /q "' + $Path + '"')) -Seconds 20 -Label ("del " + $Path) | Out-Null
+  }
+
+  if (-not (Test-Path -LiteralPath $Path)) {
+    Write-Log ("OK gone " + $Path)
     return
   }
 
-  Invoke-Step -Label ("remove " + $Path) -Action {
-    cmd.exe /c ("attrib -R -S -H `"{0}\*`" /S /D >nul 2>&1" -f $Path) | Out-Null
-    cmd.exe /c ("takeown /F `"{0}`" /R /D Y >nul 2>&1" -f $Path) | Out-Null
-    cmd.exe /c ("icacls `"{0}`" /grant Administrators:F /T /C /Q >nul 2>&1" -f $Path) | Out-Null
-    cmd.exe /c ("icacls `"{0}`" /grant *S-1-5-32-544:F /T /C /Q >nul 2>&1" -f $Path) | Out-Null
-    cmd.exe /c ("icacls `"{0}`" /grant SYSTEM:F /T /C /Q >nul 2>&1" -f $Path) | Out-Null
+  # takeown + ACL admins
+  Run-Timeout -FilePath "cmd.exe" -ArgumentList @("/c", ('takeown /F "' + $Path + '" /R /D Y /A')) -Seconds 60 -Label ("takeown " + $Path) | Out-Null
+  Run-Timeout -FilePath "cmd.exe" -ArgumentList @("/c", ('icacls "' + $Path + '" /grant *S-1-5-32-544:F /T /C /Q')) -Seconds 60 -Label ("icacls " + $Path) | Out-Null
+  Run-Timeout -FilePath "cmd.exe" -ArgumentList @("/c", ('icacls "' + $Path + '" /grant Administrators:F /T /C /Q')) -Seconds 45 -Label ("icacls2 " + $Path) | Out-Null
 
-    Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
+  if ($isDir) {
+    Nuke-DirRobocopy -Path $Path
+    Run-Timeout -FilePath "cmd.exe" -ArgumentList @("/c", ('rd /s /q "' + $Path + '"')) -Seconds 60 -Label ("rd2 " + $Path) | Out-Null
+  }
+  Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
 
-    if (Test-Path -LiteralPath $Path) {
-      cmd.exe /c ("rd /s /q `"{0}`"" -f $Path) | Out-Null
-    }
-    if (Test-Path -LiteralPath $Path) {
-      $dead = $Path + ".old_" + (Get-Date -Format "yyyyMMddHHmmss")
-      try {
-        Rename-Item -LiteralPath $Path -NewName (Split-Path $dead -Leaf) -ErrorAction Stop
-        if (Test-Path -LiteralPath $dead) {
-          cmd.exe /c ("rd /s /q `"{0}`"" -f $dead) | Out-Null
-        }
-      } catch {}
-    }
-    if (Test-Path -LiteralPath $Path) {
-      Request-DeleteOnReboot -Path $Path
-      throw "still present (scheduled for reboot delete if locked)"
+  if (Test-Path -LiteralPath $Path) {
+    try {
+      $newName = (Split-Path $Path -Leaf) + ".old_" + (Get-Date -Format "yyyyMMddHHmmss")
+      Rename-Item -LiteralPath $Path -NewName $newName -Force -ErrorAction Stop
+      $ren = Join-Path (Split-Path $Path -Parent) $newName
+      Write-Log ("renamed leftover -> " + $ren)
+      if ((Get-Item -LiteralPath $ren -Force).PSIsContainer) {
+        Nuke-DirRobocopy -Path $ren
+        Run-Timeout -FilePath "cmd.exe" -ArgumentList @("/c", ('rd /s /q "' + $ren + '"')) -Seconds 30 -Label "rd ren" | Out-Null
+      } else {
+        Remove-Item -LiteralPath $ren -Force -ErrorAction SilentlyContinue
+      }
+      if (Test-Path -LiteralPath $ren) {
+        Mark-DeleteOnReboot -Path $ren
+      }
+    } catch {
+      Write-Log ("LEFT locked " + $Path) "WARN"
+      Mark-DeleteOnReboot -Path $Path
     }
   }
-}
 
-function Remove-FileForce {
-  param([string]$Path)
-  if (-not $Path) { return }
-  if (-not (Test-Path -LiteralPath $Path)) { return }
-  Invoke-Step -Label ("delete file " + $Path) -Action {
-    cmd.exe /c ("attrib -R -S -H `"{0}`" >nul 2>&1" -f $Path) | Out-Null
-    Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
-    if (Test-Path -LiteralPath $Path) {
-      cmd.exe /c ("del /f /q `"{0}`"" -f $Path) | Out-Null
-    }
-    if (Test-Path -LiteralPath $Path) {
-      Request-DeleteOnReboot -Path $Path
-      throw "file locked (pending reboot)"
-    }
+  if (Test-Path -LiteralPath $Path) {
+    Write-Log ("LEFT " + $Path) "WARN"
+  } else {
+    Write-Log ("OK gone " + $Path)
   }
 }
 
 function Get-RegInstallDirs {
-  $paths = @()
-  $keys = @(
-    "HKLM:\Software\NKDentalSoft\Server",
-    "HKLM:\Software\NKDentalSoft\Client",
-    "HKLM:\Software\WOW6432Node\NKDentalSoft\Server",
-    "HKLM:\Software\WOW6432Node\NKDentalSoft\Client",
-    "HKCU:\Software\NKDentalSoft\Server",
-    "HKCU:\Software\NKDentalSoft\Client"
-  )
-  foreach ($k in $keys) {
+  $list = @()
+  foreach ($k in @(
+      "HKLM:\Software\NKDentalSoft\Server",
+      "HKLM:\Software\NKDentalSoft\Client",
+      "HKLM:\Software\WOW6432Node\NKDentalSoft\Server",
+      "HKLM:\Software\WOW6432Node\NKDentalSoft\Client"
+    )) {
     if (-not (Test-Path -LiteralPath $k)) { continue }
     try {
-      $p = (Get-ItemProperty -LiteralPath $k -ErrorAction Stop).InstallDir
-      if ($p) { $paths += [string]$p }
+      $d = [string](Get-ItemProperty -LiteralPath $k -ErrorAction Stop).InstallDir
+      if ($d) { $list += $d.TrimEnd("\") }
     } catch {}
   }
-  $uninstRoots = @(
-    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
-    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
-    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
-  )
-  foreach ($root in $uninstRoots) {
+  foreach ($root in @(
+      "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
+      "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+    )) {
     if (-not (Test-Path -LiteralPath $root)) { continue }
     Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue | ForEach-Object {
-      $props = Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue
-      $dn = [string]$props.DisplayName
-      if ($dn -and ($dn -match 'N&K DentalSoft|NKDentalSoft|nkdentalsoft|mdodontologia')) {
-        if ($props.InstallLocation) { $paths += [string]$props.InstallLocation }
-        $us = [string]$props.UninstallString
-        if ($us -match '"?([^"]+\\Uninstall\.exe)"?') {
-          $parent = Split-Path $Matches[1] -Parent
-          if ($parent) { $paths += $parent }
-        }
-      }
+      try {
+        $p = Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction Stop
+        $dn = [string]$p.DisplayName
+        if ($dn -notmatch "DentalSoft|NKDentalSoft") { return }
+        if ($p.InstallLocation) { $list += ([string]$p.InstallLocation).TrimEnd("\") }
+      } catch {}
     }
   }
-  return ($paths | Where-Object { $_ } | ForEach-Object { $_.Trim().TrimEnd('\') } | Select-Object -Unique)
+  return ($list | Where-Object { $_ } | Select-Object -Unique)
 }
 
-# ========== 0) COLLECT INSTALL PATHS ==========
-Write-Log "STEP 0 collect install locations from registry"
-foreach ($d in (Get-RegInstallDirs)) {
-  Write-Log ("registry InstallDir: " + $d)
-  Add-TargetDir $d
-  # Parent NKDentalSoft root if Server/Client subfolder
-  $parent = Split-Path $d -Parent
-  if ($parent -and ((Split-Path $parent -Leaf) -eq "NKDentalSoft")) {
-    Add-TargetDir $parent
-  }
+Write-Log "=== 1 STOP ==="
+Kill-Names -Names @("nkdentalsoft-server", "ConnectClinic", "nkdentalsoft-client")
+Kill-ByPathHint
+Start-Sleep -Seconds 2
+Kill-Names -Names @("nkdentalsoft-server", "ConnectClinic", "nkdentalsoft-client")
+Kill-ByPathHint
+
+Write-Log "=== 2 SERVICE/TASK ==="
+Run-Timeout -FilePath "sc.exe" -ArgumentList @("stop", "NKDentalSoftServer") -Seconds 8 -Label "sc stop" | Out-Null
+Run-Timeout -FilePath "sc.exe" -ArgumentList @("delete", "NKDentalSoftServer") -Seconds 8 -Label "sc delete" | Out-Null
+# variantes de nombre de tarea
+foreach ($tn in @("NKDentalSoft Server", "NKDentalSoftServer", "NK DentalSoft Server")) {
+  Run-Timeout -FilePath "schtasks.exe" -ArgumentList @("/Delete", "/TN", $tn, "/F") -Seconds 10 -Label ("schtasks " + $tn) | Out-Null
 }
 
-# ========== 1) STOP ==========
-Write-Log "STEP 1 stop processes"
-$procNames = @(
-  "nkdentalsoft-server",
-  "ConnectClinic",
-  "nkdentalsoft-client",
-  "nkdentalsoft-client-portables",
-  "msedge_proxy"
-)
-Stop-NamedProcesses -Names $procNames
-
-foreach ($base in @(
-    (Join-Path $env:ProgramFiles "NKDentalSoft\Server"),
-    (Join-Path ${env:ProgramFiles(x86)} "NKDentalSoft\Server")
-  ) + @($script:TargetDirs | Where-Object { $_ -match 'Server$|Server\\?$' })) {
-  $stopScript = Join-Path $base "scripts\stop_for_upgrade.ps1"
-  if (Test-Path -LiteralPath $stopScript) {
-    Invoke-Step -Label ("stop_for_upgrade " + $stopScript) -Action {
-      & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stopScript | Out-Null
-    }
-  }
-  $serverExe = Join-Path $base "nkdentalsoft-server.exe"
-  if (Test-Path -LiteralPath $serverExe) {
-    Invoke-Step -Label ("server stop/remove " + $serverExe) -Action {
-      & $serverExe stop 2>$null | Out-Null
-      & $serverExe remove 2>$null | Out-Null
-    }
-  }
-}
-
-Clear-TcpPort -Port 8001
-Clear-TcpPort -Port 37020
-Stop-NamedProcesses -Names $procNames
-
-# ========== 2) SERVICE / TASK ==========
-Write-Log "STEP 2 service and scheduled tasks"
-foreach ($svc in @("NKDentalSoftServer", "NKDentalSoft", "nkdentalsoft-server")) {
-  Invoke-Step -Label ("sc stop/delete " + $svc) -Action {
-    sc.exe stop $svc 2>$null | Out-Null
-    Start-Sleep -Milliseconds 400
-    sc.exe delete $svc 2>$null | Out-Null
-  }
-}
-foreach ($tn in @(
-    "NKDentalSoft Server",
-    "NKDentalSoft",
-    "\NKDentalSoft Server",
-    "\NKDentalSoft"
-  )) {
-  Invoke-Step -Label ("schtasks delete " + $tn) -Action {
-    schtasks.exe /Delete /TN $tn /F 2>$null | Out-Null
-  }
-}
-Invoke-Step -Label "schtasks scan NKDental*" -Action {
-  $xml = schtasks.exe /Query /FO CSV /V 2>$null
-  if (-not $xml) { return }
-  $xml | Select-String -Pattern 'NKDental|DentalSoft|nkdentalsoft' -SimpleMatch:$false | ForEach-Object {
-    # Best-effort: try delete by known names already covered
-  }
-  Get-ScheduledTask -ErrorAction SilentlyContinue |
-    Where-Object { $_.TaskName -match 'NKDental|DentalSoft|nkdental' -or $_.TaskPath -match 'NKDental' } |
-    ForEach-Object {
-      Unregister-ScheduledTask -TaskName $_.TaskName -TaskPath $_.TaskPath -Confirm:$false -ErrorAction SilentlyContinue
-      Write-Log ("OK  Unregister-ScheduledTask " + $_.TaskPath + $_.TaskName)
-    }
-}
-
-# ========== 3) Official uninstallers ==========
-Write-Log "STEP 3 run product Uninstall.exe (silent)"
-$uninstallers = New-Object System.Collections.Generic.List[string]
+# Silent product uninstallers (NSIS). Only when already elevated (no extra UAC).
+Write-Log "=== 3 Uninstall.exe ==="
+$unis = @()
 foreach ($u in @(
     (Join-Path $env:ProgramFiles "NKDentalSoft\Server\Uninstall.exe"),
     (Join-Path $env:ProgramFiles "NKDentalSoft\Client\Uninstall.exe"),
     (Join-Path ${env:ProgramFiles(x86)} "NKDentalSoft\Server\Uninstall.exe"),
     (Join-Path ${env:ProgramFiles(x86)} "NKDentalSoft\Client\Uninstall.exe")
   )) {
-  if (Test-Path -LiteralPath $u) { [void]$uninstallers.Add($u) }
+  if (Test-Path -LiteralPath $u) { $unis += $u }
 }
-foreach ($d in $script:TargetDirs) {
+foreach ($d in (Get-RegInstallDirs)) {
   $u = Join-Path $d "Uninstall.exe"
-  if (Test-Path -LiteralPath $u) { [void]$uninstallers.Add($u) }
+  if (Test-Path -LiteralPath $u) { $unis += $u }
 }
-foreach ($u in ($uninstallers | Select-Object -Unique)) {
-  Invoke-Step -Label ("Uninstall.exe /S " + $u) -Action {
-    $p = Start-Process -FilePath $u -ArgumentList "/S" -Wait -PassThru -WindowStyle Hidden
-    Start-Sleep -Seconds 2
-    if ($null -eq $p) { throw "uninstall did not start" }
-  }
-  Stop-NamedProcesses -Names $procNames
-}
-
-# ========== 4) FILESYSTEM ==========
-Write-Log "STEP 4 wipe all known trees"
-
-# Defaults
-foreach ($p in @(
-    (Join-Path $env:ProgramFiles "NKDentalSoft"),
-    (Join-Path ${env:ProgramFiles(x86)} "NKDentalSoft"),
-    (Join-Path $env:ProgramData "NKDentalSoft"),
-    (Join-Path $env:LOCALAPPDATA "NKDentalSoft"),
-    (Join-Path $env:APPDATA "NKDentalSoft"),
-    (Join-Path $env:LOCALAPPDATA "N&K DentalSoft"),
-    (Join-Path $env:APPDATA "N&K DentalSoft"),
-    (Join-Path $env:LOCALAPPDATA "com.mdodontologia.nkdentalsoft"),
-    (Join-Path $env:APPDATA "com.mdodontologia.nkdentalsoft"),
-    (Join-Path $env:LOCALAPPDATA "nkdentalsoft-client"),
-    (Join-Path $env:TEMP "NKDentalSoft"),
-    (Join-Path $env:TEMP "NKDentalSoft-Clean"),
-    (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\N&K DentalSoft")
-  )) {
-  Add-TargetDir $p
+foreach ($u in ($unis | Select-Object -Unique)) {
+  Write-Log ("Uninstall /S " + $u)
+  # /S only; short timeout — full wipe continues regardless
+  $parent = Split-Path $u -Parent
+  Run-Timeout -FilePath $u -ArgumentList @("/S", ("_?=" + $parent)) -Seconds 30 -Label ("Uninstall " + $u) | Out-Null
+  Kill-Names -Names @("nkdentalsoft-server", "ConnectClinic")
+  Kill-ByPathHint
 }
 
-# Common drive roots (custom install D:\NKDentalSoft etc.)
-foreach ($drive in (Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
-  $root = Join-Path ($drive.Root) "NKDentalSoft"
-  if (Test-Path -LiteralPath $root) {
-    Add-TargetDir $root
-  }
+Write-Log "=== 4 DELETE PATHS ==="
+$targets = New-Object System.Collections.Generic.List[string]
+function Add-T([string]$p) {
+  if (-not $p) { return }
+  $t = $p.TrimEnd("\")
+  if ($t -and -not $targets.Contains($t)) { [void]$targets.Add($t) }
 }
 
-foreach ($p in $script:TargetDirs) {
-  Remove-TreeForce -Path $p
+foreach ($d in (Get-RegInstallDirs)) {
+  Add-T $d
+  $par = Split-Path $d -Parent
+  if ($par -and ((Split-Path $par -Leaf) -eq "NKDentalSoft")) { Add-T $par }
 }
 
-# Per-user wipe (all local profiles)
-$usersRoot = Join-Path $env:SystemDrive "Users"
-if (Test-Path -LiteralPath $usersRoot) {
-  Get-ChildItem -LiteralPath $usersRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+Add-T (Join-Path $env:ProgramFiles "NKDentalSoft")
+Add-T (Join-Path ${env:ProgramFiles(x86)} "NKDentalSoft")
+Add-T (Join-Path $env:ProgramData "NKDentalSoft")
+Add-T (Join-Path $env:LOCALAPPDATA "NKDentalSoft")
+Add-T (Join-Path $env:APPDATA "NKDentalSoft")
+Add-T (Join-Path $env:LOCALAPPDATA $BrandDir)
+Add-T (Join-Path $env:APPDATA $BrandDir)
+Add-T (Join-Path $env:LOCALAPPDATA "com.mdodontologia.nkdentalsoft")
+Add-T (Join-Path $env:APPDATA "com.mdodontologia.nkdentalsoft")
+Add-T (Join-Path $env:LOCALAPPDATA "nkdentalsoft-client")
+Add-T (Join-Path $env:TEMP "NKDentalSoft")
+Add-T (Join-Path $env:TEMP "NKDentalSoft-Clean")
+Add-T (Join-Path $env:ProgramData ("Microsoft\Windows\Start Menu\Programs\" + $BrandDir))
+
+for ($letter = 67; $letter -le 90; $letter++) {
+  $drv = [string][char]$letter + ":\"
+  if (-not (Test-Path -LiteralPath $drv)) { continue }
+  try {
+    $drive = Get-PSDrive -Name ([string][char]$letter) -ErrorAction SilentlyContinue
+    if ($drive -and $drive.Provider.Name -ne "FileSystem") { continue }
+  } catch {}
+  $cand = Join-Path $drv "NKDentalSoft"
+  if (Test-Path -LiteralPath $cand) { Add-T $cand }
+}
+
+$ur = Join-Path $env:SystemDrive "Users"
+if (Test-Path -LiteralPath $ur) {
+  Get-ChildItem -LiteralPath $ur -Directory -ErrorAction SilentlyContinue | ForEach-Object {
     $u = $_.FullName
-    foreach ($rel in @(
-        "AppData\Local\NKDentalSoft",
-        "AppData\Roaming\NKDentalSoft",
-        "AppData\Local\N&K DentalSoft",
-        "AppData\Roaming\N&K DentalSoft",
-        "AppData\Local\com.mdodontologia.nkdentalsoft",
-        "AppData\Roaming\com.mdodontologia.nkdentalsoft",
-        "AppData\Local\nkdentalsoft-client",
-        "AppData\Local\Temp\NKDentalSoft",
-        "Desktop\HOTSPOT.txt",
-        "Desktop\NKDentalSoft-HOTSPOT.txt"
-      )) {
-      Remove-TreeForce -Path (Join-Path $u $rel)
-      if ($rel -match '\.txt$') {
-        Remove-FileForce -Path (Join-Path $u $rel)
-      }
-    }
-    # User Start Menu / Desktop shortcuts
-    foreach ($sm in @(
-        (Join-Path $u "AppData\Roaming\Microsoft\Windows\Start Menu\Programs\N&K DentalSoft"),
-        (Join-Path $u "Desktop")
-      )) {
-      if ($sm -match 'Desktop$') {
-        Get-ChildItem -LiteralPath $sm -Filter "*DentalSoft*" -ErrorAction SilentlyContinue | ForEach-Object {
-          if ($_.Name -eq "NKDentalSoft-limpia.log") { return }
-          Remove-FileForce -Path $_.FullName
-        }
-        Get-ChildItem -LiteralPath $sm -Filter "*NKDental*" -ErrorAction SilentlyContinue | ForEach-Object {
-          if ($_.Name -eq "NKDentalSoft-limpia.log") { return }
-          Remove-FileForce -Path $_.FullName
-        }
-        Get-ChildItem -LiteralPath $sm -Filter "*Hotspot clinica*" -ErrorAction SilentlyContinue | ForEach-Object {
-          Remove-FileForce -Path $_.FullName
-        }
-        Get-ChildItem -LiteralPath $sm -Filter "*Reparar red LAN*" -ErrorAction SilentlyContinue | ForEach-Object {
-          Remove-FileForce -Path $_.FullName
-        }
-        Get-ChildItem -LiteralPath $sm -Filter "*ConnectClinic*" -ErrorAction SilentlyContinue | ForEach-Object {
-          Remove-FileForce -Path $_.FullName
-        }
-      } else {
-        Remove-TreeForce -Path $sm
-      }
-    }
+    Add-T (Join-Path $u "AppData\Local\NKDentalSoft")
+    Add-T (Join-Path $u "AppData\Roaming\NKDentalSoft")
+    Add-T (Join-Path $u ("AppData\Local\" + $BrandDir))
+    Add-T (Join-Path $u ("AppData\Roaming\" + $BrandDir))
+    Add-T (Join-Path $u "AppData\Local\com.mdodontologia.nkdentalsoft")
+    Add-T (Join-Path $u "AppData\Roaming\com.mdodontologia.nkdentalsoft")
+    Add-T (Join-Path $u "AppData\Local\nkdentalsoft-client")
+    Add-T (Join-Path $u ("AppData\Roaming\Microsoft\Windows\Start Menu\Programs\" + $BrandDir))
   }
 }
 
-# ========== 5) SHORTCUTS (current session extras) ==========
-Write-Log "STEP 5 shortcuts current session"
-$shortcutDirs = @(
+Write-Log ("Total targets: " + $targets.Count)
+foreach ($t in $targets) { Del-Path $t }
+
+# second pass critical
+Kill-Names -Names @("nkdentalsoft-server", "ConnectClinic", "nkdentalsoft-client")
+Kill-ByPathHint
+Start-Sleep -Seconds 1
+Del-Path (Join-Path $env:ProgramFiles "NKDentalSoft")
+Del-Path (Join-Path ${env:ProgramFiles(x86)} "NKDentalSoft")
+Del-Path (Join-Path $env:ProgramData "NKDentalSoft")
+Del-Path (Join-Path $env:LOCALAPPDATA "NKDentalSoft")
+
+Write-Log "=== 5 SHORTCUTS ==="
+$linkDirs = @(
   [Environment]::GetFolderPath("Desktop"),
   [Environment]::GetFolderPath("CommonDesktopDirectory"),
-  (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"),
-  (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs")
+  (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs"),
+  (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs")
 ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
 
-foreach ($dir in $shortcutDirs) {
-  foreach ($pat in @("*DentalSoft*", "*NKDental*", "*ConnectClinic*", "*Hotspot clinica*", "*Reparar red LAN*", "*Hotspot clinica*")) {
-    Get-ChildItem -LiteralPath $dir -Filter $pat -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-      if ($_.FullName -eq $script:LogPath) { return }
-      if ($_.Name -eq "NKDentalSoft-limpia.log") { return }
-      Remove-FileForce -Path $_.FullName
-    }
-  }
-  Remove-TreeForce -Path (Join-Path $dir "N&K DentalSoft")
+foreach ($dir in $linkDirs) {
+  Del-Path (Join-Path $dir $BrandDir)
+  Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.Name -match "DentalSoft|NKDental|ConnectClinic|Hotspot clinica|Reparar red LAN" -and
+      $_.Name -notlike "NKDentalSoft-limpia*"
+    } |
+    ForEach-Object { Del-Path $_.FullName }
 }
 
-# Hotspot file in ProgramData
-Remove-FileForce -Path (Join-Path $env:ProgramData "NKDentalSoft\HOTSPOT.txt")
-
-# Prefetch
-$prefetch = Join-Path $env:SystemRoot "Prefetch"
-if (Test-Path -LiteralPath $prefetch) {
-  Get-ChildItem -LiteralPath $prefetch -Filter "*NKDENTAL*" -ErrorAction SilentlyContinue | ForEach-Object {
-    Remove-FileForce -Path $_.FullName
-  }
-  Get-ChildItem -LiteralPath $prefetch -Filter "*CONNECTCLINIC*" -ErrorAction SilentlyContinue | ForEach-Object {
-    Remove-FileForce -Path $_.FullName
-  }
+$pf = Join-Path $env:SystemRoot "Prefetch"
+if (Test-Path -LiteralPath $pf) {
+  Get-ChildItem -LiteralPath $pf -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match "NKDENTAL|CONNECTCLINIC|DENTALSOFT" } |
+    ForEach-Object { Del-Path $_.FullName }
 }
 
-# ========== 6) FIREWALL ==========
-Write-Log "STEP 6 firewall"
-$fwKnown = @(
-  "NKDentalSoft Server 8001",
-  "NKDentalSoft LAN Discovery 37020",
-  "NKDentalSoft Server EXE",
-  "NKDentalSoft Server EXE Out",
-  "NKDentalSoft ICMP Allow",
-  "nkdentalsoft-server",
-  "N&K DentalSoft",
-  "N&K DentalSoft Server",
-  "N&K DentalSoft Client"
-)
-foreach ($rule in $fwKnown) {
-  Invoke-Step -Label ("firewall delete " + $rule) -Action {
-    netsh advfirewall firewall delete rule name="$rule" | Out-Null
-  }
-}
-Invoke-Step -Label "firewall scan residual names" -Action {
-  $names = netsh advfirewall firewall show rule name=all |
-    Select-String -Pattern 'Rule Name:\s*(.+)$' |
-    ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() } |
-    Where-Object { $_ -match 'NKDental|nkdental|DentalSoft|ConnectClinic' } |
-    Select-Object -Unique
-  foreach ($name in $names) {
-    netsh advfirewall firewall delete rule name="$name" | Out-Null
-    Write-Log ("OK  firewall delete " + $name)
-  }
+Write-Log "=== 6 FIREWALL ==="
+foreach ($rule in @(
+    "NKDentalSoft Server 8001",
+    "NKDentalSoft LAN Discovery 37020",
+    "NKDentalSoft Server EXE",
+    "NKDentalSoft Server EXE Out",
+    "NKDentalSoft ICMP Allow",
+    "nkdentalsoft-server"
+  )) {
+  Run-Timeout -FilePath "netsh.exe" -ArgumentList @("advfirewall", "firewall", "delete", "rule", ("name=" + $rule)) -Seconds 10 -Label ("fw " + $rule) | Out-Null
 }
 
-# ========== 7) REGISTRY ==========
-Write-Log "STEP 7 registry full purge"
-$uninstRoots = @(
-  "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
-  "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
-  "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
-)
-foreach ($root in $uninstRoots) {
+Write-Log "=== 7 REGISTRY ==="
+foreach ($root in @(
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
+    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+  )) {
   if (-not (Test-Path -LiteralPath $root)) { continue }
   Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue | ForEach-Object {
-    $keyPath = $_.PSPath
-    $props = Get-ItemProperty -LiteralPath $keyPath -ErrorAction SilentlyContinue
-    $dn = [string]$props.DisplayName
-    $pub = [string]$props.Publisher
-    $keyLeaf = Split-Path $keyPath -Leaf
-    $hit = $false
-    if ($dn -and ($dn -match 'N&K DentalSoft|NKDentalSoft|nkdentalsoft|mdodontologia|ConnectClinic')) { $hit = $true }
-    if ($pub -and ($pub -match 'N&K Systems|NKDentalSoft|N&K DentalSoft')) { $hit = $true }
-    if ($keyLeaf -match 'NKDentalSoft|nkdentalsoft') { $hit = $true }
-    if ($hit) {
-      Invoke-Step -Label ("reg uninstall delete " + $keyLeaf) -Action {
-        Remove-Item -LiteralPath $keyPath -Recurse -Force -ErrorAction Stop
+    try {
+      $props = Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction Stop
+      $dn = [string]$props.DisplayName
+      $leaf = $_.PSChildName
+      if (($dn -match "DentalSoft|NKDentalSoft|ConnectClinic") -or ($leaf -match "NKDentalSoft")) {
+        Write-Log ("reg delete " + $leaf)
+        if (-not $WhatIf) {
+          Remove-Item -LiteralPath $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
       }
-    }
+    } catch {}
   }
 }
-
-# Product keys
 foreach ($k in @(
     "HKLM:\Software\NKDentalSoft",
     "HKLM:\Software\WOW6432Node\NKDentalSoft",
-    "HKCU:\Software\NKDentalSoft",
-    "HKLM:\Software\N&K DentalSoft",
-    "HKCU:\Software\N&K DentalSoft",
-    "HKLM:\Software\WOW6432Node\N&K DentalSoft"
+    "HKCU:\Software\NKDentalSoft"
   )) {
   if (Test-Path -LiteralPath $k) {
-    Invoke-Step -Label ("reg delete tree " + $k) -Action {
-      Remove-Item -LiteralPath $k -Recurse -Force -ErrorAction Stop
-    }
+    Write-Log ("reg tree " + $k)
+    if (-not $WhatIf) { Remove-Item -LiteralPath $k -Recurse -Force -ErrorAction SilentlyContinue }
   }
 }
-
-# Run / RunOnce
 foreach ($runKey in @(
     "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run",
-    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run",
-    "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce",
-    "HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run"
   )) {
   if (-not (Test-Path -LiteralPath $runKey)) { continue }
   $props = Get-ItemProperty -LiteralPath $runKey -ErrorAction SilentlyContinue
   if (-not $props) { continue }
   $props.PSObject.Properties | Where-Object {
-    $_.Name -notmatch '^PS' -and (
-      ([string]$_.Value -match 'NKDentalSoft|nkdentalsoft|ConnectClinic|N&K DentalSoft') -or
-      ($_.Name -match 'NKDental|DentalSoft|ConnectClinic')
+    $_.Name -notmatch "^PS" -and (
+      ([string]$_.Value -match "NKDentalSoft|ConnectClinic|DentalSoft") -or
+      ($_.Name -match "NKDental|DentalSoft")
     )
   } | ForEach-Object {
-    $name = $_.Name
-    Invoke-Step -Label ("Run key remove " + $runKey + "\" + $name) -Action {
-      Remove-ItemProperty -LiteralPath $runKey -Name $name -Force -ErrorAction Stop
+    Write-Log ("Run remove " + $_.Name)
+    if (-not $WhatIf) {
+      Remove-ItemProperty -LiteralPath $runKey -Name $_.Name -Force -ErrorAction SilentlyContinue
     }
   }
 }
 
-# App Paths
-foreach ($ap in @(
-    "HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths\nkdentalsoft-server.exe",
-    "HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths\ConnectClinic.exe",
-    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\nkdentalsoft-server.exe",
-    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\ConnectClinic.exe"
-  )) {
-  if (Test-Path -LiteralPath $ap) {
-    Invoke-Step -Label ("reg App Paths " + $ap) -Action {
-      Remove-Item -LiteralPath $ap -Recurse -Force -ErrorAction Stop
-    }
-  }
-}
-
-# Classes / OpenWithProgids best-effort
-foreach ($root in @(
-    "HKCU:\Software\Classes",
-    "HKLM:\Software\Classes"
-  )) {
-  if (-not (Test-Path -LiteralPath $root)) { continue }
-  Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue |
-    Where-Object { $_.PSChildName -match 'NKDental|nkdentalsoft|ConnectClinic' } |
-    ForEach-Object {
-      Invoke-Step -Label ("reg Classes " + $_.PSChildName) -Action {
-        Remove-Item -LiteralPath $_.PSPath -Recurse -Force -ErrorAction Stop
-      }
-    }
-}
-
-# ========== 8) VERIFY ==========
-Write-Log "STEP 8 verify zero residue"
+Write-Log "=== 8 VERIFY ==="
 $left = @()
-$check = @(
-  (Join-Path $env:ProgramFiles "NKDentalSoft"),
-  (Join-Path ${env:ProgramFiles(x86)} "NKDentalSoft"),
-  (Join-Path $env:ProgramData "NKDentalSoft"),
-  (Join-Path $env:LOCALAPPDATA "NKDentalSoft"),
-  (Join-Path $env:APPDATA "NKDentalSoft")
-)
-foreach ($d in $script:TargetDirs) { $check += $d }
-foreach ($p in ($check | Select-Object -Unique)) {
-  if ($p -and (Test-Path -LiteralPath $p)) { $left += $p }
-}
-foreach ($n in @("nkdentalsoft-server", "ConnectClinic", "nkdentalsoft-client")) {
-  if (Get-Process -Name $n -ErrorAction SilentlyContinue) {
-    $left += ("process:" + $n)
+foreach ($p in @(
+    (Join-Path $env:ProgramFiles "NKDentalSoft"),
+    (Join-Path ${env:ProgramFiles(x86)} "NKDentalSoft"),
+    (Join-Path $env:ProgramData "NKDentalSoft"),
+    (Join-Path $env:LOCALAPPDATA "NKDentalSoft")
+  )) {
+  if (Test-Path -LiteralPath $p) {
+    $left += $p
+    Write-Log ("LEFT " + $p) "WARN"
   }
 }
-# Registry leftovers
-foreach ($k in @(
-    "HKLM:\Software\NKDentalSoft",
-    "HKLM:\Software\WOW6432Node\NKDentalSoft",
-    "HKCU:\Software\NKDentalSoft",
-    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\NKDentalSoftServer",
-    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\NKDentalSoftClient"
-  )) {
-  if (Test-Path -LiteralPath $k) { $left += ("registry:" + $k) }
+foreach ($n in @("nkdentalsoft-server", "ConnectClinic")) {
+  if (Get-Process -Name $n -ErrorAction SilentlyContinue) { $left += ("process:" + $n) }
 }
 
-Write-Log ("Done. ok=" + $script:OkCount + " fail=" + $script:FailCount)
-if ($left.Count -eq 0 -and -not $script:PendingReboot) {
-  Write-Log "SUCCESS: ZERO residue — no NKDentalSoft leftovers."
+$criticalGone = -not (
+  (Test-Path -LiteralPath (Join-Path $env:ProgramFiles "NKDentalSoft")) -or
+  (Test-Path -LiteralPath (Join-Path ${env:ProgramFiles(x86)} "NKDentalSoft")) -or
+  (Test-Path -LiteralPath (Join-Path $env:ProgramData "NKDentalSoft"))
+)
+
+if ($left.Count -eq 0) {
+  Write-Log "SUCCESS: ZERO residue"
   Write-Host ""
-  Write-Host "Desinstalacion TOTAL OK. No quedaron residuos."
-  Write-Host "Ya puede instalar Server y Client de nuevo."
-  Write-Host ("Log: " + $script:LogPath)
+  Write-Host "Desinstalacion total OK."
+  Write-Host ("Log: " + $script:LogPaths[0])
   exit 0
 }
 
-if ($left.Count -eq 0 -and $script:PendingReboot) {
-  Write-Log "SUCCESS after REBOOT: some locked files scheduled for deletion." "WARN"
+if ($criticalGone) {
+  Write-Log "SUCCESS_PARTIAL critical paths removed"
   Write-Host ""
-  Write-Host "Limpieza casi completa. REINICIE el PC para borrar archivos bloqueados."
-  Write-Host ("Log: " + $script:LogPath)
+  Write-Host "Limpieza principal OK (quedan restos menores de perfil)."
+  Write-Host ("Log: " + $script:LogPaths[0])
   exit 0
 }
 
-Write-Log "INCOMPLETE leftovers:" "WARN"
-foreach ($p in $left) { Write-Log ("  LEFT " + $p) "WARN" }
+if ($script:PendingReboot) {
+  Write-Log "REBOOT_REQUIRED files scheduled for deletion"
+  Write-Host ""
+  Write-Host "Carpeta en uso. Reinicie el PC y ejecute de nuevo el desinstalador."
+  Write-Host ("Log: " + $script:LogPaths[0])
+  exit 1
+}
+
+Write-Log "FAILED leftovers remain"
 Write-Host ""
-Write-Host "Quedaron restos (archivo en uso). REINICIE el PC y vuelva a ejecutar este desinstalador."
-Write-Host ("Log: " + $script:LogPath)
+Write-Host "No se pudo borrar todo. Ejecute como Administrador, reinicie y re-ejecute."
+Write-Host ("Log: " + $script:LogPaths[0])
 exit 1

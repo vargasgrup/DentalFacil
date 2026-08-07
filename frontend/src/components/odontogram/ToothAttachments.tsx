@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch, apiFetchBlob, getToken } from "@/lib/api";
+import { apiFetch, buildMediaSrc, getToken } from "@/lib/api";
 import { DigitizedDocumentViewer } from "@/components/DigitizedDocumentViewer";
+import { MediaPanelErrorBoundary } from "@/components/MediaPanelErrorBoundary";
 
 interface MediaItem {
   id: string;
@@ -19,11 +20,6 @@ const TIPO_LABEL: Record<string, string> = {
   foto: "Foto intraoral",
   panoramica: "Panorámica",
 };
-
-async function fetchMediaBlob(url: string): Promise<string> {
-  const blob = await apiFetchBlob(url);
-  return URL.createObjectURL(blob);
-}
 
 export function ToothAttachments({
   patientId,
@@ -57,28 +53,13 @@ export function ToothAttachments({
     void load();
   }, [load]);
 
-  useEffect(() => {
-    return () => {
-      if (viewer?.src) URL.revokeObjectURL(viewer.src);
-    };
-  }, [viewer]);
+  const closeViewer = () => setViewer(null);
 
-  const closeViewer = () => {
-    setViewer((prev) => {
-      if (prev?.src) URL.revokeObjectURL(prev.src);
-      return null;
-    });
-  };
-
-  const openViewer = async (item: MediaItem) => {
+  const openViewer = (item: MediaItem) => {
     setError(null);
     setLoadingId(item.id);
     try {
-      const src = await fetchMediaBlob(item.url);
-      setViewer((prev) => {
-        if (prev?.src) URL.revokeObjectURL(prev.src);
-        return { item, src };
-      });
+      setViewer({ item, src: buildMediaSrc(item.url) });
     } catch {
       setError("No se pudo visualizar la imagen. Intenta de nuevo.");
     } finally {
@@ -112,6 +93,7 @@ export function ToothAttachments({
   };
 
   return (
+    <MediaPanelErrorBoundary title="Error en imágenes de pieza">
     <div className="mt-2 space-y-2 border-t border-slate-200 pt-2">
       <p className="text-xs font-medium text-slate-700">
         Imágenes de la pieza {pieza} (Rx / foto intraoral)
@@ -159,7 +141,7 @@ export function ToothAttachments({
                   type="button"
                   className="rounded border border-brand-600 bg-brand-50 px-2 py-1 text-xs font-semibold text-brand-800 hover:bg-brand-100 disabled:opacity-60"
                   disabled={loadingId === m.id}
-                  onClick={() => void openViewer(m)}
+                  onClick={() => openViewer(m)}
                 >
                   {loadingId === m.id ? "Cargando…" : "Ver imagen"}
                 </button>
@@ -190,5 +172,6 @@ export function ToothAttachments({
         />
       )}
     </div>
+    </MediaPanelErrorBoundary>
   );
 }

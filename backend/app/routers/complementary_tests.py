@@ -190,6 +190,10 @@ def get_file(
         media_type=media_type,
         filename=_safe_download_name(row.filename, media_type),
         content_disposition_type="inline",
+        headers={
+            "Cache-Control": "private, max-age=120",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

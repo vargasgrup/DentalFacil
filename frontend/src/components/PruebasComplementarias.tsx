@@ -10,9 +10,10 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { apiFetch, apiUpload, apiFetchBlob, ApiError } from "@/lib/api";
+import { apiFetch, apiUpload, apiFetchBlob, ApiError, buildMediaSrc } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { DigitizedDocumentViewer } from "@/components/DigitizedDocumentViewer";
+import { MediaPanelErrorBoundary } from "@/components/MediaPanelErrorBoundary";
 
 type Categoria = "radiografia" | "fotografia_clinica" | "laboratorio";
 
@@ -110,14 +111,10 @@ function errMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-async function fetchBlobUrl(url: string, contentType?: string): Promise<string> {
-  const blob = await apiFetchBlob(url);
-  const typed =
-    contentType && (!blob.type || blob.type === "application/octet-stream")
-      ? new Blob([blob], { type: contentType })
-      : blob;
-  return URL.createObjectURL(typed);
-}
+/** Soft ceiling for in-app preview (desktop can store larger). */
+const PREVIEW_WARN_BYTES = 35 * 1024 * 1024;
+/** Above this, refuse Blob buffer (OOM / WebView freeze risk). */
+const PREVIEW_HARD_MAX_BYTES = 80 * 1024 * 1024;
 
 /** Group files by subtype (preserves newest-first order within each group). */
 function groupBySubtype(
@@ -172,6 +169,7 @@ export function PruebasComplementarias({
   const [viewer, setViewer] = useState<{
     item: ComplementaryItem;
     src: string;
+    revoke: boolean;
   } | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
@@ -202,7 +200,9 @@ export function PruebasComplementarias({
 
   useEffect(() => {
     return () => {
-      if (viewer?.src) URL.revokeObjectURL(viewer.src);
+      if (viewer?.revoke && viewer.src.startsWith("blob:")) {
+        URL.revokeObjectURL(viewer.src);
+      }
     };
   }, [viewer]);
 
@@ -222,7 +222,9 @@ export function PruebasComplementarias({
 
   const closeViewer = () => {
     setViewer((prev) => {
-      if (prev?.src) URL.revokeObjectURL(prev.src);
+      if (prev?.revoke && prev.src.startsWith("blob:")) {
+        URL.revokeObjectURL(prev.src);
+      }
       return null;
     });
   };
@@ -231,10 +233,47 @@ export function PruebasComplementarias({
     setError("");
     setLoadingId(item.id);
     try {
-      const src = await fetchBlobUrl(item.url, item.content_type);
+      if (item.size_bytes > PREVIEW_HARD_MAX_BYTES) {
+        setError(
+          `El archivo pesa demasiado para previsualizar (~${formatBytes(
+            item.size_bytes
+          )}). Use un equipo de diagnóstico o reduzca el tamaño del archivo.`
+        );
+        return;
+      }
+      if (item.size_bytes > PREVIEW_WARN_BYTES) {
+        const mb = (item.size_bytes / (1024 * 1024)).toFixed(0);
+        const proceed = window.confirm(
+          `Este archivo pesa ~${mb} MB. La vista previa puede demorar.\n\n¿Continuar?`
+        );
+        if (!proceed) return;
+      }
+
+      // Prefer streaming URL (Bearer cookie/query) — avoids RAM double-buffer in WebView2.
+      // If the host ignores query/cookie (legacy backend), fall back to authenticated Blob.
+      let src = buildMediaSrc(item.url);
+      let revoke = false;
+      try {
+        const res = await fetch(src, {
+          method: "GET",
+          credentials: "include",
+          headers: { Range: "bytes=0-0" },
+        });
+        // 206/200 = stream OK; 401/403 = need Bearer blob path
+        if (res.status === 401 || res.status === 403) throw new Error("auth");
+        if (!res.ok && res.status !== 206 && res.status !== 416) {
+          throw new Error("stream");
+        }
+      } catch {
+        const blob = await apiFetchBlob(item.url);
+        src = URL.createObjectURL(blob);
+        revoke = true;
+      }
       setViewer((prev) => {
-        if (prev?.src) URL.revokeObjectURL(prev.src);
-        return { item, src };
+        if (prev?.revoke && prev.src.startsWith("blob:")) {
+          URL.revokeObjectURL(prev.src);
+        }
+        return { item, src, revoke };
       });
     } catch (err) {
       setError(errMessage(err, "No se pudo visualizar el archivo. Intenta de nuevo."));
@@ -310,6 +349,7 @@ export function PruebasComplementarias({
   };
 
   return (
+    <MediaPanelErrorBoundary title="Error en Pruebas complementarias">
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-slate-500">
@@ -543,5 +583,6 @@ export function PruebasComplementarias({
         />
       )}
     </div>
+    </MediaPanelErrorBoundary>
   );
 }

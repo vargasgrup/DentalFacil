@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -7,11 +7,33 @@ from app.core.security import decode_token, is_token_revoked
 from app.database import get_db
 from app.models import User
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+# auto_error=False: also accept session cookie / query (media <img>/<iframe> cannot send Authorization).
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+
+# Cookie written by the SPA (authCookie.ts) — same-origin desktop WebView / browser.
+_AUTH_COOKIE = "ds_access_token"
+_QUERY_TOKEN_KEYS = ("access_token", "token")
+
+
+def _extract_access_token(request: Request, bearer: str | None) -> str | None:
+    if bearer and bearer.strip():
+        return bearer.strip()
+    cookie = request.cookies.get(_AUTH_COOKIE)
+    if cookie and cookie.strip():
+        return cookie.strip()
+    for key in _QUERY_TOKEN_KEYS:
+        q = request.query_params.get(key)
+        if q and q.strip():
+            return q.strip()
+    auth = request.headers.get("Authorization") or ""
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip() or None
+    return None
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    request: Request,
+    token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
     cred_exc = HTTPException(
@@ -19,8 +41,11 @@ def get_current_user(
         detail="Credenciales inválidas",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    raw = _extract_access_token(request, token)
+    if not raw:
+        raise cred_exc
     try:
-        payload = decode_token(token)
+        payload = decode_token(raw)
         if payload.get("type") != "access":
             raise cred_exc
         user_id = payload["sub"]

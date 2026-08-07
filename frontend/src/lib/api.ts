@@ -402,3 +402,28 @@ export async function apiFetchBlob(
 
   return res.blob();
 }
+
+/**
+ * Same-origin streaming URL for <img> / PDF iframe (WebView-safe).
+ * Avoids buffering the full file into a Blob URL (OOM / freeze on radiology).
+ * Auth: Bearer still works for fetch; media may use cookie or ?access_token=.
+ */
+export function buildMediaSrc(path: string): string {
+  const raw = (path || "").trim();
+  if (!raw) return "";
+  if (
+    raw.startsWith("blob:") ||
+    raw.startsWith("data:") ||
+    /^https?:\/\//i.test(raw)
+  ) {
+    return raw;
+  }
+  const base = getApiBase();
+  const withSlash = raw.startsWith("/") ? raw : `/${raw}`;
+  const url = `${base}${withSlash}`;
+  const token = getToken();
+  if (!token) return url;
+  if (/[?&](access_token|token)=/i.test(url)) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}access_token=${encodeURIComponent(token)}`;
+}

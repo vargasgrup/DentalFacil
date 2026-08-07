@@ -12,10 +12,11 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { apiFetch, apiFetchBlob, apiUpload, ApiError } from "@/lib/api";
+import { apiFetch, apiFetchBlob, apiUpload, ApiError, buildMediaSrc } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { Button } from "@/components/ui/Button";
 import { DigitizedDocumentViewer } from "@/components/DigitizedDocumentViewer";
+import { MediaPanelErrorBoundary } from "@/components/MediaPanelErrorBoundary";
 
 interface HistoricalDoc {
   id: string;
@@ -83,15 +84,6 @@ function isImageFile(item: HistoricalDoc): boolean {
   return /\.(jpe?g|png|gif|webp|bmp|tiff?|heic|heif)$/i.test(item.filename);
 }
 
-async function fetchBlobUrl(url: string, contentType?: string): Promise<string> {
-  const blob = await apiFetchBlob(url);
-  const typed =
-    contentType && (!blob.type || blob.type === "application/octet-stream")
-      ? new Blob([blob], { type: contentType })
-      : blob;
-  return URL.createObjectURL(typed);
-}
-
 function validateFile(file: File): string | null {
   const okImage = file.type.startsWith("image/");
   const okPdf =
@@ -153,43 +145,25 @@ export function DocumentosHistoricos({
 
   useEffect(() => {
     return () => {
-      if (viewer?.src) URL.revokeObjectURL(viewer.src);
-      Object.values(thumbs).forEach((u) => URL.revokeObjectURL(u));
       stopCamera();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Lazy thumbnails for images
+  // Lazy thumbnails via streaming URL (never full Blob into JS heap).
   useEffect(() => {
-    let cancelled = false;
     const pending = items.filter((item) => isImageFile(item) && !thumbs[item.id]);
     if (pending.length === 0) return;
-
-    const loadThumbs = async () => {
+    setThumbs((prev) => {
+      const next = { ...prev };
+      let changed = false;
       for (const item of pending) {
-        try {
-          const src = await fetchBlobUrl(item.url, item.content_type);
-          if (cancelled) {
-            URL.revokeObjectURL(src);
-            return;
-          }
-          setThumbs((prev) => {
-            if (prev[item.id]) {
-              URL.revokeObjectURL(src);
-              return prev;
-            }
-            return { ...prev, [item.id]: src };
-          });
-        } catch {
-          /* ignore thumb errors */
-        }
+        if (next[item.id]) continue;
+        next[item.id] = buildMediaSrc(item.url);
+        changed = true;
       }
-    };
-    void loadThumbs();
-    return () => {
-      cancelled = true;
-    };
+      return changed ? next : prev;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed thumbs; refetch on items only
   }, [items]);
 
@@ -306,22 +280,13 @@ export function DocumentosHistoricos({
     }
   };
 
-  const closeViewer = () => {
-    setViewer((prev) => {
-      if (prev?.src) URL.revokeObjectURL(prev.src);
-      return null;
-    });
-  };
+  const closeViewer = () => setViewer(null);
 
-  const openViewer = async (item: HistoricalDoc) => {
+  const openViewer = (item: HistoricalDoc) => {
     setError("");
     setLoadingId(item.id);
     try {
-      const src = await fetchBlobUrl(item.url, item.content_type);
-      setViewer((prev) => {
-        if (prev?.src) URL.revokeObjectURL(prev.src);
-        return { item, src };
-      });
+      setViewer({ item, src: buildMediaSrc(item.url) });
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -359,7 +324,6 @@ export function DocumentosHistoricos({
       setThumbs((prev) => {
         const next = { ...prev };
         if (next[item.id]) {
-          URL.revokeObjectURL(next[item.id]);
           delete next[item.id];
         }
         return next;
@@ -373,6 +337,7 @@ export function DocumentosHistoricos({
   const visible = items.filter((i) => filterTipo === "all" || i.tipo === filterTipo);
 
   return (
+    <MediaPanelErrorBoundary title="Error en documentos históricos">
     <div className="space-y-5">
       <div className="rounded-xl border border-brand-100 bg-gradient-to-br from-brand-50/80 to-white px-4 py-3.5">
         <div className="flex items-start gap-3">
@@ -728,5 +693,6 @@ export function DocumentosHistoricos({
         />
       )}
     </div>
+    </MediaPanelErrorBoundary>
   );
 }

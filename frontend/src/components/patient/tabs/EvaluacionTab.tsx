@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { DocumentActions } from "@/components/DocumentActions";
 import { PruebasComplementarias } from "@/components/PruebasComplementarias";
+import { MediaPanelErrorBoundary } from "@/components/MediaPanelErrorBoundary";
 import { TreatmentAutocomplete } from "@/components/TreatmentAutocomplete";
 import { Section } from "@/components/clinical/Section";
 import { formatDateTime } from "@/lib/datetime";
@@ -422,7 +423,9 @@ export function EvaluacionTab({
       </Section>
 
       <Section title="Pruebas complementarias" noSave>
-        <PruebasComplementarias patientId={patientId} readOnly={inactive} />
+        <MediaPanelErrorBoundary title="Error en Pruebas complementarias">
+          <PruebasComplementarias patientId={patientId} readOnly={inactive} />
+        </MediaPanelErrorBoundary>
       </Section>
     </div>
   );

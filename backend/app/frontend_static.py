@@ -5,7 +5,9 @@ Professional pattern (Starlette):
   2. Mount SpaStaticFiles at "/" LAST so unmatched paths (including "/")
      are served as the SPA, while /api/* keeps matching the routers.
 
-This avoids FastAPI's default ``{"detail":"Not Found"}`` on the clinic homepage.
+Never return bare ``{"detail":"Not Found"}`` JSON for browser navigations
+(text/html Accept) — that blank-white WebView after login/resume is fatal for
+clinic desktop mode.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 
@@ -27,6 +29,55 @@ logger = logging.getLogger("dentalfacil.frontend_static")
 
 _cached_ui_root: Path | None | bool = False  # False=unset
 _mirror_attempted = False
+
+_RECOVERY_HTML = """<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>N&amp;K DentalSoft</title>
+<meta http-equiv="refresh" content="2;url=/"/>
+<style>
+ body{font-family:"Segoe UI",system-ui,sans-serif;max-width:28rem;margin:15vh auto;padding:0 1.25rem;
+  color:#0f172a;line-height:1.5;text-align:center}
+ h1{font-size:1.15rem;margin:0 0 .5rem}
+ p{color:#475569;font-size:.95rem}
+ a{color:#1d4ed8}
+ .spin{width:2rem;height:2rem;margin:1rem auto;border:3px solid #e2e8f0;border-top-color:#55BBF9;
+  border-radius:50%;animation:s .7s linear infinite}
+ @keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head><body>
+<div class="spin" aria-hidden="true"></div>
+<h1>Reconectando la interfaz</h1>
+<p>El servidor respondió sin la pantalla de la clínica (posiblemente tras reanudar el PC del suspensión).</p>
+<p><a href="/">Volver al inicio de sesión</a> · <a href="/dashboard/">Ir al panel</a></p>
+<script>
+try {
+  var t = (document.body && document.body.innerText || "").trim();
+  if (t.indexOf('{"detail"') === 0) { location.replace("/"); }
+} catch (e) {}
+</script>
+</body></html>
+"""
+
+_KNOWN_APP_SHELLS = frozenset(
+    {
+        "dashboard",
+        "pacientes",
+        "agenda",
+        "caja",
+        "reportes",
+        "configuracion",
+        "ops",
+        "recuperar-clave",
+    }
+)
+
+
+def invalidate_ui_root_cache() -> None:
+    """Drop cached UI root (e.g. after sleep when disk was briefly offline)."""
+    global _cached_ui_root
+    _cached_ui_root = False
 
 
 def _install_dir() -> Path | None:
@@ -51,11 +102,7 @@ def _meipass_dir() -> Path | None:
 
 
 def ensure_web_dir_beside_exe() -> None:
-    """Mirror packaged UI beside the exe; refresh on upgrade when MEIPASS is newer.
-
-    Without a refresh, an old ``install/web`` (with a stale login HUD) can shadow
-    the updated ``_internal/web`` after an installer upgrade.
-    """
+    """Mirror packaged UI beside the exe; refresh on upgrade when MEIPASS is newer."""
     global _mirror_attempted
     if _mirror_attempted:
         return
@@ -77,8 +124,6 @@ def ensure_web_dir_beside_exe() -> None:
             if src_mtime > dest_mtime + 1:
                 need_sync = True
             else:
-                # Force refresh when the new equipment login hero is missing
-                # (upgrade left an older web/ tree with only dental-hud-bg.webp).
                 hero = dest / "login" / "dental-equipment-bg-v2.webp"
                 src_hero = src / "login" / "dental-equipment-bg-v2.webp"
                 if src_hero.is_file() and not hero.is_file():
@@ -97,10 +142,16 @@ def ensure_web_dir_beside_exe() -> None:
         logger.warning("could not mirror web/: %s", exc)
 
 
-def resolve_ui_root() -> Path | None:
+def resolve_ui_root(*, force: bool = False) -> Path | None:
     global _cached_ui_root
+    if force:
+        _cached_ui_root = False
     if _cached_ui_root is not False:
-        return _cached_ui_root  # type: ignore[return-value]
+        root = _cached_ui_root
+        if root is not None and not (Path(root) / "index.html").is_file():
+            _cached_ui_root = False
+        else:
+            return root  # type: ignore[return-value]
 
     ensure_web_dir_beside_exe()
     candidates: list[Path] = []
@@ -116,7 +167,6 @@ def resolve_ui_root() -> Path | None:
     if meipass:
         candidates.append(meipass / "web")
 
-    # Dev / source tree
     repo = Path(__file__).resolve().parents[2]
     candidates.append(repo / "frontend" / "out")
 
@@ -141,15 +191,9 @@ def resolve_ui_root() -> Path | None:
 
 
 def pick_ui_relpath(root: Path, url_path: str) -> str | None:
-    """Return path relative to root (posix) suitable for StaticFiles, or None.
-
-    Starlette on Windows may pass backslash paths (``pacientes\\uuid``). Always
-    normalize to ``/`` before matching Next.js ``output: "export"`` files.
-
-    Never fall back to root ``index.html`` for missing app routes — that HTML is
-    the login shell and authenticated clients bounce to ``/dashboard``.
-    """
+    """Return path relative to root (posix) suitable for StaticFiles, or None."""
     rel = (url_path or "").replace("\\", "/").strip("/")
+    rel = rel.split("?", 1)[0].split("#", 1)[0]
     candidates: list[Path] = []
     if not rel:
         candidates.append(root / "index.html")
@@ -161,7 +205,6 @@ def pick_ui_relpath(root: Path, url_path: str) -> str | None:
         last = parts[-1] if parts else ""
         looks_like_asset = bool(last and "." in last and not last.endswith(".html"))
 
-        # Dynamic patient ficha: export only embeds pacientes/_/index.html
         if (
             len(parts) >= 2
             and parts[0] == "pacientes"
@@ -170,14 +213,18 @@ def pick_ui_relpath(root: Path, url_path: str) -> str | None:
         ):
             candidates.append(root / "pacientes" / "_" / "index.html")
 
+        if parts and parts[0] in _KNOWN_APP_SHELLS:
+            candidates.append(root / parts[0] / "index.html")
+
+    root_res = root.resolve()
     for c in candidates:
         try:
             resolved = c.resolve()
-            resolved.relative_to(root.resolve())
+            resolved.relative_to(root_res)
         except (OSError, ValueError):
             continue
         if resolved.is_file():
-            return resolved.relative_to(root.resolve()).as_posix()
+            return resolved.relative_to(root_res).as_posix()
     return None
 
 
@@ -188,8 +235,48 @@ class SpaStaticFiles(StaticFiles):
         super().__init__(directory=str(directory), html=True, check_dir=True, **kwargs)
         self._root = Path(directory).resolve()
 
+    def _html_accepts(self, scope: Scope) -> bool:
+        headers = scope.get("headers") or []
+        accept = b""
+        for k, v in headers:
+            if k == b"accept":
+                accept = v
+                break
+        if not accept:
+            return True
+        al = accept.lower()
+        if b"application/json" in al and b"text/html" not in al:
+            return False
+        return True
+
+    def _recovery_response(self) -> Response:
+        for name in ("404.html", "index.html"):
+            p = self._root / name
+            if p.is_file():
+                try:
+                    return FileResponse(
+                        p,
+                        media_type="text/html; charset=utf-8",
+                        headers={
+                            "Cache-Control": "no-cache, must-revalidate",
+                            "Pragma": "no-cache",
+                        },
+                    )
+                except OSError:
+                    pass
+        return HTMLResponse(
+            _RECOVERY_HTML,
+            status_code=200,
+            headers={"Cache-Control": "no-cache, must-revalidate"},
+        )
+
     async def get_response(self, path: str, scope: Scope) -> Response:
-        # Starlette StaticFiles on Windows uses "\\" in path segments.
+        if not self._root.is_dir() or not (self._root / "index.html").is_file():
+            fresh = resolve_ui_root(force=True)
+            if fresh is not None:
+                self._root = fresh
+                self.directory = str(fresh)
+
         path_norm = (path or "").replace("\\", "/")
         if not path_norm or path_norm in {".", "/"}:
             path_norm = "index.html"
@@ -203,20 +290,31 @@ class SpaStaticFiles(StaticFiles):
             if exc.status_code != 404:
                 raise
 
-        alt = pick_ui_relpath(self._root, path_norm)
-        if alt and alt != path_norm.lstrip("/"):
-            try:
-                response = await super().get_response(alt, scope)
-                self._apply_asset_cache_headers(alt, response)
-                return response
-            except StarletteHTTPException:
-                pass
+        for attempt in range(2):
+            alt = pick_ui_relpath(self._root, path_norm)
+            if alt:
+                try:
+                    response = await super().get_response(alt, scope)
+                    if getattr(response, "status_code", 200) != 404:
+                        self._apply_asset_cache_headers(alt, response)
+                        return response
+                except StarletteHTTPException as exc:
+                    if exc.status_code != 404:
+                        raise
+            if attempt == 0:
+                fresh = resolve_ui_root(force=True)
+                if fresh is not None:
+                    self._root = fresh
+                    self.directory = str(fresh)
+
+        if self._html_accepts(scope):
+            logger.warning("SPA path missing (serving recovery HTML): %s", path_norm)
+            return self._recovery_response()
 
         raise StarletteHTTPException(status_code=404, detail="Not Found")
 
     @staticmethod
     def _apply_asset_cache_headers(path: str, response: Response) -> None:
-        """Avoid sticky WebView caches for HTML shells and login hero art."""
         lower = (path or "").replace("\\", "/").lower()
         if lower.endswith((".html",)) or "/login/" in lower or lower.startswith("login/"):
             response.headers["Cache-Control"] = "no-cache, must-revalidate"
@@ -249,7 +347,7 @@ def mount_frontend_static(app: FastAPI) -> Path | None:
 
     @app.get("/api/system/ui-root")
     def ui_root_info():
-        current = resolve_ui_root()
+        current = resolve_ui_root(force=False)
         return {
             "ui_root": str(current) if current else None,
             "index": bool(current and (current / "index.html").is_file()),
@@ -267,7 +365,6 @@ def mount_frontend_static(app: FastAPI) -> Path | None:
         logger.error("SPA mount skipped — web/ missing")
         return None
 
-    # Mount LAST: only unmatched paths (not /api/*) reach this.
     app.mount("/", SpaStaticFiles(directory=root), name="nkdentalsoft_spa")
     logger.info("SPA mounted at / from %s", root)
     return root

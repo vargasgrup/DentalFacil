@@ -10,6 +10,7 @@ import { OfflineSyncProvider } from "@/lib/offlineSync";
 import { ShortcutsListener } from "@/components/ShortcutsListener";
 import { DocumentSendToast } from "@/components/DocumentSendToast";
 import { IdleSessionGuard } from "@/components/IdleSessionGuard";
+import { DesktopResumeGuard } from "@/components/DesktopResumeGuard";
 
 export function ClientProviders({ children }: { children: ReactNode }) {
   return (
@@ -20,6 +21,7 @@ export function ClientProviders({ children }: { children: ReactNode }) {
             <ConnectionProvider>
               <OfflineSyncProvider>
                 <ShortcutsListener>
+                  <DesktopResumeGuard />
                   <IdleSessionGuard />
                   {children}
                   <DocumentSendToast />

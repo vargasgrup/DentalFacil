@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { getApiBase } from "@/lib/api";
 import { useClinicBrand } from "@/lib/clinicBrand";
+import { navigateToAppShell } from "@/lib/desktopNav";
 
 type SetupMode = "new" | "restore";
 type AuthView = "login" | "forgot" | "reset";
@@ -120,7 +121,7 @@ export default function LoginPage() {
 
   if (user) {
     if (typeof window !== "undefined") {
-      window.location.assign("/dashboard");
+      void navigateToAppShell("/dashboard/");
     }
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#eef2f6]">
@@ -142,7 +143,8 @@ export default function LoginPage() {
       } else {
         await login(username, password);
       }
-      window.location.assign("/dashboard");
+      // After PC sleep, server may wake slowly — probe HTML shell before navigate
+      await navigateToAppShell("/dashboard/");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Credenciales incorrectas";
       setError(msg || "Credenciales incorrectas");

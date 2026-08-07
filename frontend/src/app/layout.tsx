@@ -101,6 +101,11 @@ export default function RootLayout({
   return (
     <html lang="es" className={plusJakarta.variable}>
       <body className={`${plusJakarta.className} min-h-screen antialiased`}>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){function c(){try{var t=(document.body&&document.body.innerText||"").trim();if(t.indexOf('{"detail"')===0||t.indexOf('{"detail":"Not Found"}')!==-1){location.replace("/");}}catch(e){}}if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",c);else c();})();`,
+          }}
+        />
         <ClientProviders>{children}</ClientProviders>
       </body>
     </html>

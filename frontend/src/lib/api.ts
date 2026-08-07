@@ -324,29 +324,77 @@ export function clearRefreshToken() {
   storageRemove(REFRESH_KEY);
 }
 
-/** Multipart upload (e.g. clinic logo). Do not set Content-Type manually. */
-export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+/** Multipart upload (clinic logo / complementary tests / docs). Do not set Content-Type. */
+export async function apiUpload<T>(
+  path: string,
+  formData: FormData,
+  options: ApiFetchOptions = {}
+): Promise<T> {
+  const { _retryAuth, skipAuth, ...fetchOptions } = options;
   const token = getToken();
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
+  const headers: Record<string, string> = {
+    ...(fetchOptions.headers as Record<string, string>),
+  };
+  // Browser sets multipart boundary — never force application/json
+  delete headers["Content-Type"];
+  if (token && !skipAuth && !isAuthCredentialPath(path)) {
+    headers.Authorization = `Bearer ${token}`;
+  }
 
-  const res = await fetch(`${getApiBase()}${path}`, {
-    method: "POST",
-    headers,
-    body: formData,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${getApiBase()}${path}`, {
+      ...fetchOptions,
+      method: fetchOptions.method || "POST",
+      headers,
+      body: formData,
+      credentials: "same-origin",
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError("La subida fue cancelada o agotó el tiempo de espera.", 0);
+    }
+    throw new ApiError(
+      "No se pudo conectar con el servidor para subir el archivo. Compruebe que el Server esté en ejecución.",
+      0
+    );
+  }
+
+  if (res.status === 401 && !_retryAuth && !isAuthCredentialPath(path)) {
+    const renewed = await refreshAccessToken();
+    if (renewed) {
+      return apiUpload<T>(path, formData, { ...options, _retryAuth: true });
+    }
+    clearToken();
+    clearRefreshToken();
+    throw new ApiError(
+      "Sesión expirada. Cierre sesión e ingrese de nuevo para subir archivos.",
+      401
+    );
+  }
+
   if (!res.ok) {
     let msg = res.statusText || "Error al subir archivo";
     try {
       const body = await res.json();
       msg = formatApiDetail(body.detail ?? body.message, msg);
     } catch {
-      /* ignore */
+      if (res.status === 413) msg = "El archivo es demasiado grande para el servidor.";
+      else if (res.status >= 500) {
+        msg = "Error del servidor al guardar el archivo. Intente de nuevo.";
+      }
     }
     throw new ApiError(msg, res.status);
   }
   if (res.status === 204) return null as T;
-  return res.json();
+  // Some gateways return empty body with 201
+  const text = await res.text();
+  if (!text || !text.trim()) return null as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ApiError("El servidor respondió un formato inesperado tras la subida.", res.status);
+  }
 }
 
 /** Authenticated binary fetch (images/PDF preview) with the same token + refresh rules as apiFetch. */

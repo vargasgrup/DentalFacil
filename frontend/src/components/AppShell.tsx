@@ -15,6 +15,10 @@ import {
   SHELL_SIDEBAR_WIDTH,
 } from "./shell";
 import { useAuth } from "@/lib/auth";
+import {
+  pinClinicShellHeight,
+  recoverClinicMainPaint,
+} from "@/lib/desktopViewport";
 import { useSidebar } from "./SidebarContext";
 
 const RAIL_SURFACE =
@@ -44,9 +48,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const body = document.body;
     html.classList.add("nk-app-shell");
     body.classList.add("nk-app-shell");
+    pinClinicShellHeight();
+    const onResize = () => pinClinicShellHeight();
+    const onVis = () => {
+      if (document.visibilityState === "visible") recoverClinicMainPaint();
+    };
+    const onFocus = () => recoverClinicMainPaint();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onFocus);
     return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onFocus);
       html.classList.remove("nk-app-shell");
       body.classList.remove("nk-app-shell");
+      html.style.removeProperty("--nk-shell-h");
     };
   }, []);
 
@@ -65,7 +84,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     mode === "collapsed" ? SHELL_SIDEBAR_COLLAPSED_WIDTH : SHELL_SIDEBAR_WIDTH;
 
   return (
-    <div className="flex h-dvh max-h-dvh min-h-0 w-full overflow-hidden bg-surface-muted">
+    <div className="flex h-[var(--nk-shell-h,100vh)] max-h-[var(--nk-shell-h,100vh)] min-h-0 w-full overflow-hidden bg-surface-muted">
       <MaintenanceAlert />
 
       {/* Desktop rail — in-flow, altura completa del viewport */}

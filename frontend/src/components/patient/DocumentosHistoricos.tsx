@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { apiFetch, apiFetchBlob, apiUpload, ApiError, buildMediaSrc } from "@/lib/api";
+import { afterNativeFileDialog, recoverClinicMainPaint } from "@/lib/desktopViewport";
 import { formatDateTime } from "@/lib/datetime";
 import { Button } from "@/components/ui/Button";
 import { DigitizedDocumentViewer } from "@/components/DigitizedDocumentViewer";
@@ -272,12 +273,15 @@ export function DocumentosHistoricos({
     }
   };
 
-  const onFiles = async (list: FileList | File[] | null, source: "upload" | "scan") => {
+  const onFiles = (list: FileList | File[] | null, source: "upload" | "scan") => {
     if (!list || (Array.isArray(list) ? list.length === 0 : list.length === 0)) return;
     const files = Array.from(list as FileList);
-    for (const file of files) {
-      await uploadFile(file, source);
-    }
+    afterNativeFileDialog(async () => {
+      for (const file of files) {
+        await uploadFile(file, source);
+      }
+      recoverClinicMainPaint();
+    });
   };
 
   const closeViewer = () => setViewer(null);

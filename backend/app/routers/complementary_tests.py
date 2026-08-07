@@ -103,13 +103,39 @@ def _to_out(row: ComplementaryTestFile) -> ComplementaryOut:
     )
 
 
+def _guess_content_type(filename: str | None, content_type: str | None) -> str:
+    """Windows WebView often sends empty Content-Type for local picks."""
+    raw = (content_type or "").strip()
+    if raw and raw not in ("application/octet-stream", "binary/octet-stream"):
+        return raw
+    ext = Path(filename or "").suffix.lower()
+    if ext in PDF_EXTS:
+        return "application/pdf"
+    if ext in {".jpg", ".jpeg"}:
+        return "image/jpeg"
+    if ext == ".png":
+        return "image/png"
+    if ext == ".gif":
+        return "image/gif"
+    if ext == ".webp":
+        return "image/webp"
+    if ext == ".bmp":
+        return "image/bmp"
+    if ext in {".tif", ".tiff"}:
+        return "image/tiff"
+    if ext in {".heic", ".heif"}:
+        return "image/heic"
+    if ext == ".svg":
+        return "image/svg+xml"
+    return raw or "application/octet-stream"
+
+
 def _is_allowed_file(filename: str | None, content_type: str | None) -> bool:
     ext = Path(filename or "").suffix.lower()
     if ext in IMAGE_EXTS or ext in PDF_EXTS:
         return True
-    if content_type and (
-        content_type.startswith("image/") or content_type == "application/pdf"
-    ):
+    ct = (content_type or "").strip().lower()
+    if ct.startswith("image/") or ct == "application/pdf":
         return True
     return False
 
@@ -286,7 +312,8 @@ async def upload_file(
     allowed_sub = CATEGORIAS[categoria]
     if subtipo not in allowed_sub:
         raise HTTPException(400, "Subtipo inválido para la categoría")
-    if not _is_allowed_file(file.filename, file.content_type):
+    resolved_ct = _guess_content_type(file.filename, file.content_type)
+    if not _is_allowed_file(file.filename, resolved_ct):
         raise HTTPException(400, "Solo se permiten imágenes o archivos PDF")
 
     root = _upload_root()
@@ -302,7 +329,7 @@ async def upload_file(
         ) from exc
 
     ext = Path(file.filename or "archivo.bin").suffix or (
-        ".pdf" if (file.content_type or "").endswith("pdf") else ".bin"
+        ".pdf" if resolved_ct.endswith("pdf") else ".bin"
     )
     stored_name = f"{uuid.uuid4().hex}{ext.lower()}"
     dest = dest_dir / stored_name
@@ -326,7 +353,7 @@ async def upload_file(
         subtipo=subtipo,
         filename=file.filename or stored_name,
         stored_path=str(dest),
-        content_type=file.content_type or "application/octet-stream",
+        content_type=resolved_ct,
         size_bytes=size,
         notas=(notas or "").strip() or None,
         uploaded_by=user.id,

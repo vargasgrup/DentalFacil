@@ -63,11 +63,14 @@ body {
 /* Documento bloqueado mientras AppShell está montado (ver clase .nk-app-shell).
  * Si el body scrollea, topbar y tabs “viajan” juntos y el contenido se corta
  * bajo el chrome — es el bug de ficha clínica visto en capturas.
+ *
+ * Prefer --nk-shell-h (innerHeight pin) over bare 100dvh: WebView2 can collapse
+ * dynamic viewport after native file pickers and blank the main column.
  */
 html.nk-app-shell,
 html.nk-app-shell body {
-  height: 100%;
-  max-height: 100dvh;
+  height: var(--nk-shell-h, 100vh);
+  max-height: var(--nk-shell-h, 100vh);
   overflow: hidden;
   overscroll-behavior: none;
 }

@@ -81,7 +81,7 @@ Function StopRunningServer
   DetailPrint "stop_for_upgrade exit=$0"
   ${If} $0 == 2
     MessageBox MB_ICONEXCLAMATION|MB_RETRYCANCEL \
-      "No se pudo liberar nkdentalsoft-server.exe.$\r$\n$\r$\n1) Cierre la ventana de N&K DentalSoft$\r$\n2) En el Administrador de tareas finalice 'nkdentalsoft-server.exe'$\r$\n3) Pulse Reintentar$\r$\n$\r$\nO ejecute como Administrador:$\r$\n$INSTDIR\scripts\stop_for_upgrade.ps1 -InstallDir `"$INSTDIR`"" \
+      "No se pudo liberar nkdentalsoft-server.exe.$\r$\n$\r$\n1) Cierre la ventana de N&K DentalSoft$\r$\n2) En el Administrador de tareas finalice nkdentalsoft-server.exe$\r$\n3) Pulse Reintentar$\r$\n$\r$\nCarpeta: $INSTDIR$\r$\nScript: scripts\stop_for_upgrade.ps1" \
       IDRETRY retry_stop IDCANCEL abort_stop
     abort_stop:
       Abort "Instalacion cancelada: el servidor sigue en uso."

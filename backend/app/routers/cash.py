@@ -248,9 +248,13 @@ def _payment_parts(payload: CashTransactionCreate) -> list[list]:
     """Mutable [metodo, monto] buckets for waterfill onto clinical targets."""
     splits = payload.pagos_parciales or []
     if splits:
-        return [
+        rows = [
             [p.metodo_pago.strip().lower(), round(float(p.monto), 2)] for p in splits
         ]
+        # Ignorar líneas en 0 (UI de mixto a veces deja un método vacío)
+        positive = [r for r in rows if float(r[1]) > 0.009]
+        if positive:
+            return positive
     return [
         [
             (payload.metodo_pago or "efectivo").strip().lower(),
@@ -739,10 +743,12 @@ def create_transaction(
     from app.models.ids import new_uuid
 
     parts = _payment_parts(payload)
-    is_mixto = bool(payload.pagos_parciales) and len(payload.pagos_parciales) > 1
+    # Mixto real = 2+ medios con monto > 0 (no basta con tener grupo o partiales vacíos)
+    distinct_methods = {m for m, a in parts if float(a) > 0.009}
+    is_mixto = len(distinct_methods) > 1
     concepto_base = payload.concepto.strip()
     if is_mixto:
-        detalle = " + ".join(f"{m} S/ {amt:.2f}" for m, amt in parts)
+        detalle = " + ".join(f"{m} S/ {amt:.2f}" for m, amt in parts if float(amt) > 0.009)
         if "mixto" not in concepto_base.lower():
             concepto_base = f"{concepto_base} (mixto: {detalle})"
 

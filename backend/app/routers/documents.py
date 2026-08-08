@@ -74,9 +74,10 @@ def download_comprobante(
     session = db.get(CashSession, tx.cash_session_id)
     operator = db.get(User, session.usuario_id) if session else user
 
-    # Cobro mixto: sumar partes activas del mismo grupo para el ticket
+    # Medio de pago real: no etiquetar como "mixto" solo por tener grupo
+    # (grupo también une abonos multi-línea con el mismo método, p.ej. todo efectivo).
     monto = float(tx.monto)
-    metodo = tx.metodo_pago
+    metodo = (tx.metodo_pago or "efectivo").strip().lower()
     grupo_id = getattr(tx, "grupo_pago_id", None)
     if grupo_id:
         parts = (
@@ -90,9 +91,23 @@ def download_comprobante(
         )
         if parts:
             monto = round(sum(float(p.monto) for p in parts), 2)
-            metodo = "mixto (" + " + ".join(
-                f"{p.metodo_pago} S/ {float(p.monto):.2f}" for p in parts
-            ) + ")"
+            by_method: dict[str, float] = {}
+            for p in parts:
+                m = (p.metodo_pago or "efectivo").strip().lower()
+                if m in ("mixto", "mixed", ""):
+                    continue
+                by_method[m] = by_method.get(m, 0.0) + float(p.monto)
+            items = [
+                (m, round(a, 2))
+                for m, a in sorted(by_method.items(), key=lambda x: x[0])
+                if a > 0.009
+            ]
+            if len(items) == 1:
+                metodo = items[0][0]
+            elif len(items) > 1:
+                metodo = " + ".join(f"{m} S/ {a:.2f}" for m, a in items)
+            elif metodo in ("mixto", "mixed"):
+                metodo = "efectivo"
 
     serie = format_serie(tx.id)
     emitido = tx.created_at

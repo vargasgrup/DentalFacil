@@ -270,15 +270,15 @@ def _block_space(*, tight: bool) -> Spacer:
 
 def _ink_rule(content_w: float, *, compact: bool = True) -> Table:
     """
-    Raya de bloque con aire respecto al texto arriba y abajo.
+    Raya de bloque con aire moderado respecto al texto (ni pegada ni suelta).
 
-    LINEABOVE va al borde superior de la celda: el espacio *antes* de la raya
-    debe ir en ``spaceBefore``; el espacio *después* en TOPPADDING.
+    LINEABOVE va al borde superior: espacio *antes* → ``spaceBefore``;
+    espacio *después* → TOPPADDING.
     """
     thick = 0.65
-    # ~1.8–2.4 mm de aire (matricial: legible sin alargar mucho el rollo)
-    gap_above = 2.0 * mm if compact else 2.6 * mm
-    gap_below = 1.9 * mm if compact else 2.4 * mm
+    # ~1.1–1.3 mm: legible y compacto en matricial/térmica
+    gap_above = 1.15 * mm if compact else 1.8 * mm
+    gap_below = 1.1 * mm if compact else 1.6 * mm
     t = Table([[""]], colWidths=[max(1.0, float(content_w))], hAlign="LEFT")
     t.spaceBefore = float(gap_above)
     t.spaceAfter = 0
@@ -470,6 +470,34 @@ def _dash(content_w: float, *, tight: bool = False) -> Spacer | Table:
     return _sep(content_w, tight=tight)
 
 
+def format_metodo_display(raw: object) -> str:
+    """Etiqueta legible del medio de pago (sin pretender 'mixto' incorrecto)."""
+    s = str(raw or "efectivo").strip()
+    if not s:
+        return "Efectivo"
+    low = s.lower()
+    # Ya viene con desglose ("efectivo S/ 100.00 + yape S/ 50.00")
+    if " + " in low or "s/" in low.replace(" ", ""):
+        parts = [p.strip() for p in s.split("+")]
+        pretty: list[str] = []
+        for p in parts:
+            pl = p.lower()
+            if pl.startswith("mixto"):
+                # residual de datos viejos: quitar prefijo confuso
+                p = p.split("(", 1)[-1].rstrip(")").strip() or p
+            # Capitalizar solo la primera palabra del trozo (método)
+            bits = p.split(None, 1)
+            if bits:
+                bits[0] = bits[0][:1].upper() + bits[0][1:].lower()
+                pretty.append(" ".join(bits))
+            else:
+                pretty.append(p)
+        return " + ".join(pretty)
+    if low in ("mixto", "mixed"):
+        return "Efectivo"
+    return s[:1].upper() + s[1:].lower() if len(s) > 1 else s.upper()
+
+
 def build_comprobante_story(
     data: dict[str, Any],
     fmt: str,
@@ -493,7 +521,8 @@ def build_comprobante_story(
     serie = data.get("serie") or format_serie(tx_id)
     monto = float(data.get("monto") or 0)
     concepto = strip_markdown_noise(str(data.get("concepto") or "Servicio odontológico"))
-    metodo = str(data.get("metodo_pago") or "efectivo").capitalize()
+    metodo_raw = str(data.get("metodo_pago") or "efectivo")
+    metodo = format_metodo_display(metodo_raw)
     patient = str(data.get("patient_nombre") or "Clientes - Varios")
     doc_num = str(data.get("patient_documento") or "—")
     telefono = str(data.get("patient_telefono") or "")
@@ -649,8 +678,8 @@ def build_comprobante_story(
     # Padding: en 80mm dar aire a LINEBELOW de cabecera (antes pegaba al texto)
     pad_x = 0.2 if tight else 1.5
     pad_y = 0.8 if tight else 2
-    hdr_bot = (pad_y + 1.6) if tight else (pad_y + 1.0)  # texto cabecera → raya
-    body_top = (pad_y + 1.4) if tight else pad_y  # raya → fila de ítem
+    hdr_bot = (pad_y + 1.1) if tight else (pad_y + 1.0)  # texto cabecera → raya
+    body_top = (pad_y + 1.0) if tight else pad_y  # raya → fila de ítem
     style_cmds = [
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("FONTNAME", (0, 0), (0, 0), font_b),
@@ -687,7 +716,11 @@ def build_comprobante_story(
     story.append(Spacer(1, 0.8 * mm if tight else 1.2 * mm))
     story.append(_p_html("<b>Condición de pago:</b> Contado", field))
     story.append(_p_html("<b>Pagos:</b>", field))
-    story.append(_p(f"* {metodo} — {format_price_plain(monto)}", field))
+    # Un solo método → "* Efectivo — S/ …"; desglose multi → solo la cadena (ya trae montos)
+    if " + " in metodo or "S/" in metodo.replace(" ", "").upper() or "s/" in metodo:
+        story.append(_p(f"* {metodo}", field))
+    else:
+        story.append(_p(f"* {metodo} — {format_price_plain(monto)}", field))
 
     t_costo = data.get("tratamiento_costo")
     t_ac = data.get("tratamiento_a_cuenta")

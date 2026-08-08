@@ -183,6 +183,13 @@ def create_appointment(
         notas=payload.notas,
     )
     db.add(apt)
+    # Acumula en ficha: especialidades de visitas en distintas fechas
+    if payload.especialidad:
+        from app.services.patient_especialidades import append_patient_especialidad
+
+        patient = db.get(Patient, payload.patient_id)
+        if patient and append_patient_especialidad(patient, payload.especialidad):
+            db.add(patient)
     db.commit()
     db.refresh(apt)
     from app.realtime.connection_manager import publish_event
@@ -226,6 +233,12 @@ def update_appointment(
         data["fecha_hora"] = _as_utc(data["fecha_hora"])
     for field, value in data.items():
         setattr(apt, field, value)
+    if "especialidad" in data and data.get("especialidad"):
+        from app.services.patient_especialidades import append_patient_especialidad
+
+        patient = db.get(Patient, apt.patient_id)
+        if patient and append_patient_especialidad(patient, data["especialidad"]):
+            db.add(patient)
     db.commit()
     db.refresh(apt)
     from app.realtime.connection_manager import publish_event

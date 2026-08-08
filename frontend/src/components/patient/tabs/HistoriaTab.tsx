@@ -171,6 +171,7 @@ export function HistoriaTab({
                 especialidad: especialidades[0] || "",
               })
             }
+            hint="Perfil de seguimiento. Las visitas en Agenda/Evolución registran la especialidad de cada fecha y la agregan a este listado."
           />
           <label className="block">
             <span className="mb-1 block text-label tracking-wide text-slate-700">Estado civil</span>

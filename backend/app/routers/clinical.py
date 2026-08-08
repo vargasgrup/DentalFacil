@@ -232,6 +232,13 @@ def create_evolution(
     db.flush()
     if payload.plan_item_id:
         _sync_plan_item_from_evolution(db, patient_id, entry)
+    if payload.especialidad:
+        from app.models import Patient
+        from app.services.patient_especialidades import append_patient_especialidad
+
+        patient = db.get(Patient, patient_id)
+        if patient and append_patient_especialidad(patient, payload.especialidad):
+            db.add(patient)
     db.commit()
     db.refresh(entry)
     from app.realtime.connection_manager import publish_event
@@ -279,6 +286,13 @@ def update_evolution(
     entry.a_cuenta = min(float(entry.a_cuenta or 0), float(entry.costo or 0))
     if entry.plan_item_id:
         _sync_plan_item_from_evolution(db, entry.patient_id, entry)
+    if "especialidad" in data and data.get("especialidad"):
+        from app.models import Patient
+        from app.services.patient_especialidades import append_patient_especialidad
+
+        patient = db.get(Patient, entry.patient_id)
+        if patient and append_patient_especialidad(patient, data["especialidad"]):
+            db.add(patient)
     db.commit()
     db.refresh(entry)
     from app.realtime.connection_manager import publish_event

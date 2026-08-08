@@ -919,42 +919,45 @@ export default function NuevoPacientePage() {
             </button>
           )}
 
-          {/* 5. Salud: alergias + chips de especialidades (ancho completo) */}
-          <section className="space-y-4">
+          {/* 5. Salud: alergias + especialidades (una fila) */}
+          <section className="space-y-3">
             <div>
               <h2 className="text-section-title text-slate-800">Salud y atención</h2>
               <p className="mt-0.5 text-help text-slate-500">
-                Alergias clínicas y especialidades de seguimiento (puede elegir varias).
+                Alergias y especialidades de seguimiento. La especialidad de cada visita
+                se registra en la cita o en la evolución de esa fecha.
               </p>
             </div>
-            <label className="block">
-              <span className="mb-1 block text-label text-slate-700">
-                Alergias{" "}
-                <span className="font-normal text-slate-500">(recomendado)</span>
-              </span>
-              <textarea
-                ref={alergiasRef}
-                value={form.alergias}
-                onChange={(e) => set("alergias", e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    focusNext(especialidadRef.current);
-                  }
-                }}
-                rows={2}
-                className={`${selectClass} min-h-[2.75rem] resize-y`}
-                placeholder="Penicilina, látex… o escriba Ninguna"
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
+              <label className="block">
+                <span className="mb-1 block text-label text-slate-700">
+                  Alergias{" "}
+                  <span className="font-normal text-slate-500">(recomendado)</span>
+                </span>
+                <textarea
+                  ref={alergiasRef}
+                  value={form.alergias}
+                  onChange={(e) => set("alergias", e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      focusNext(especialidadRef.current);
+                    }
+                  }}
+                  rows={3}
+                  className={`${selectClass} min-h-[2.625rem] resize-y`}
+                  placeholder="Penicilina, látex… o escriba Ninguna"
+                />
+              </label>
+              <SpecialtyMultiSelect
+                ref={especialidadRef}
+                label="Especialidades de atención"
+                value={form.especialidades}
+                onChange={(v) => setForm((prev) => ({ ...prev, especialidades: v }))}
+                className="w-full"
+                hint="Perfil del paciente (puede marcar varias). Cada cita/evolución guarda la especialidad de esa fecha; se suma automáticamente al perfil."
               />
-            </label>
-            <SpecialtyMultiSelect
-              ref={especialidadRef}
-              label="Especialidades de atención"
-              value={form.especialidades}
-              onChange={(v) => setForm((prev) => ({ ...prev, especialidades: v }))}
-              className="w-full"
-              hint="Toque las especialidades en las que se atiende al paciente. Puede marcar varias."
-            />
+            </div>
           </section>
 
           {/* Alta retroactiva */}

@@ -153,6 +153,46 @@ def test_patient_multi_especialidades(
     assert cleared.json()["especialidad"] in (None, "")
 
 
+def test_appointment_appends_patient_especialidad(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    patient: dict,
+):
+    """Cita con especialidad nueva se acumula en el perfil del paciente."""
+    # ensure patient starts with one specialty
+    client.patch(
+        f"/api/patients/{patient['id']}",
+        headers=admin_headers,
+        json={"especialidades": ["Ortodoncia"]},
+    )
+    # need doctor id - get me
+    me = client.get("/api/auth/me", headers=admin_headers)
+    assert me.status_code == 200
+    doctor_id = me.json()["id"]
+    from datetime import datetime, timedelta, timezone
+
+    when = (datetime.now(timezone.utc) + timedelta(days=2)).replace(
+        hour=15, minute=0, second=0, microsecond=0
+    )
+    apt = client.post(
+        "/api/appointments",
+        headers=admin_headers,
+        json={
+            "patient_id": patient["id"],
+            "doctor_id": doctor_id,
+            "fecha_hora": when.isoformat(),
+            "duracion_minutos": 30,
+            "especialidad": "Endodoncia",
+        },
+    )
+    assert apt.status_code == 201, apt.text
+    got = client.get(f"/api/patients/{patient['id']}", headers=admin_headers)
+    assert got.status_code == 200
+    esps = got.json().get("especialidades") or []
+    assert "Ortodoncia" in esps
+    assert "Endodoncia" in esps
+
+
 def test_create_patient_full_fields_linked(
     client: TestClient,
     admin_headers: dict[str, str],

@@ -274,6 +274,7 @@ export function PatientEditModal({ patient, onClose, onSaved }: PatientEditModal
                 onChange={(especialidades) =>
                   setForm((prev) => ({ ...prev, especialidades }))
                 }
+                hint="Perfil de seguimiento. Las citas y evoluciones suman la especialidad de cada fecha."
               />
               <label className="block">
                 <span className="mb-1 block text-label text-slate-700">Estado civil</span>

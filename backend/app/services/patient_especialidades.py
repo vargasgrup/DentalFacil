@@ -75,3 +75,27 @@ def patient_matches_especialidad(patient: Any, filter_value: str) -> bool:
         return True
     needle_cf = needle.casefold()
     return any(s.casefold() == needle_cf for s in resolve_from_patient(patient))
+
+
+def append_patient_especialidad(patient: Any, especialidad: str | None) -> bool:
+    """
+    Une una especialidad de visita (cita/evolución) al listado del paciente.
+    No quita especialidades ya registradas. Devuelve True si cambió el ORM.
+    """
+    esp = (especialidad or "").strip()
+    if not esp:
+        return False
+    current = resolve_from_patient(patient)
+    merged = normalize_especialidades(current + [esp], None)
+    if merged == current:
+        # Ensure dual-write columns still consistent
+        primary, multi = dual_write_fields(current, None)
+        if (
+            getattr(patient, "especialidad", None) == primary
+            and list(getattr(patient, "especialidades", None) or []) == list(multi or [])
+        ):
+            return False
+    primary, multi = dual_write_fields(merged, None)
+    setattr(patient, "especialidad", primary)
+    setattr(patient, "especialidades", multi)
+    return True

@@ -220,13 +220,37 @@ const [patient, setPatient] = useState<Patient | null>(null);
         : patientForm.especialidad
           ? [patientForm.especialidad]
           : [];
+      // Never send "" for optional dates/fields (422 from Pydantic)
+      const emptyToNull = (v: unknown) =>
+        v === undefined || v === null || (typeof v === "string" && !v.trim())
+          ? null
+          : v;
       const updated = await apiFetch<Patient>(`/api/patients/${patientId}`, {
         method: "PATCH",
         body: JSON.stringify({
-          ...patientForm,
-          telefono: tel || patientForm.telefono,
+          nombres: patientForm.nombres,
+          apellidos: patientForm.apellidos,
+          tipo_documento: patientForm.tipo_documento,
+          numero_documento: emptyToNull(patientForm.numero_documento),
+          fecha_nacimiento: emptyToNull(patientForm.fecha_nacimiento),
+          telefono: emptyToNull(tel || patientForm.telefono),
+          email: emptyToNull(patientForm.email),
+          direccion: emptyToNull(patientForm.direccion),
+          contacto_emergencia: emptyToNull(patientForm.contacto_emergencia),
+          alergias: emptyToNull(patientForm.alergias),
+          lugar_nacimiento: emptyToNull(patientForm.lugar_nacimiento),
+          ocupacion: emptyToNull(patientForm.ocupacion),
+          estado_civil: emptyToNull(patientForm.estado_civil),
+          sexo: emptyToNull(patientForm.sexo),
+          nombre_responsable: emptyToNull(patientForm.nombre_responsable),
+          parentesco_responsable: emptyToNull(patientForm.parentesco_responsable),
+          telefono_responsable: emptyToNull(patientForm.telefono_responsable),
+          documento_responsable: emptyToNull(patientForm.documento_responsable),
           especialidades,
           especialidad: especialidades[0] || null,
+          es_migrado: patientForm.es_migrado,
+          fecha_ingreso_clinica: emptyToNull(patientForm.fecha_ingreso_clinica),
+          resumen_historia_previa: emptyToNull(patientForm.resumen_historia_previa),
         }),
       });
       setPatient(updated);

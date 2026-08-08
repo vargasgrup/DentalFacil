@@ -214,6 +214,7 @@ def _refresh_allocation_after_cash_flush(
 def _backfill_tx_refs(
     db: Session, txs: list[CashTransaction], applied_rows: list[dict]
 ) -> None:
+    """Legacy: attach primary refs when a single lump TX already exists."""
     if not applied_rows or not txs:
         return
     primary = txs[0]
@@ -221,12 +222,14 @@ def _backfill_tx_refs(
         evo = next((a for a in applied_rows if a["kind"] == "evolution"), None)
         if evo:
             for tx in txs:
-                tx.evolution_entry_id = evo["id"]
+                if not tx.evolution_entry_id:
+                    tx.evolution_entry_id = evo["id"]
     if not primary.plan_item_ref:
         plan = next((a for a in applied_rows if a["kind"] == "plan"), None)
         if plan:
             for tx in txs:
-                tx.plan_item_ref = plan["id"]
+                if not tx.plan_item_ref:
+                    tx.plan_item_ref = plan["id"]
         else:
             from app.models import ClinicalEvolutionEntry
 
@@ -236,8 +239,136 @@ def _backfill_tx_refs(
                 entry = db.get(ClinicalEvolutionEntry, a["id"])
                 if entry and entry.plan_item_id:
                     for tx in txs:
-                        tx.plan_item_ref = entry.plan_item_id
+                        if not tx.plan_item_ref:
+                            tx.plan_item_ref = entry.plan_item_id
                     break
+
+
+def _payment_parts(payload: CashTransactionCreate) -> list[list]:
+    """Mutable [metodo, monto] buckets for waterfill onto clinical targets."""
+    splits = payload.pagos_parciales or []
+    if splits:
+        return [
+            [p.metodo_pago.strip().lower(), round(float(p.monto), 2)] for p in splits
+        ]
+    return [
+        [
+            (payload.metodo_pago or "efectivo").strip().lower(),
+            round(float(payload.monto), 2),
+        ]
+    ]
+
+
+def _take_from_parts(parts: list[list], need: float) -> list[tuple[str, float]]:
+    """Consume up to ``need`` from payment parts (FIFO). Returns (metodo, monto)."""
+    need = round(float(need), 2)
+    out: list[tuple[str, float]] = []
+    if need <= 0:
+        return out
+    for slot in parts:
+        if need <= 0.009:
+            break
+        metodo, avail = slot[0], float(slot[1])
+        if avail <= 0.009:
+            continue
+        take = round(min(avail, need), 2)
+        if take <= 0.009:
+            continue
+        out.append((metodo, take))
+        slot[1] = round(avail - take, 2)
+        need = round(need - take, 2)
+    return out
+
+
+def _build_ingreso_txs_for_allocation(
+    db: Session,
+    *,
+    session_id: str,
+    patient_id: str | None,
+    concepto: str,
+    parts: list[list],
+    applied_rows: list[dict],
+    unallocated: float,
+    grupo_id: str | None,
+    pieza_fdi: str | None,
+) -> list[CashTransaction]:
+    """
+    One cash row per (clinical target × payment slice).
+
+    Multi-line Auto-FIFO used to put full monto on the first evolution only,
+    so secondary saldos stayed 'paid' after void. Linking each slice fixes that.
+    """
+    from app.models import ClinicalEvolutionEntry
+
+    created: list[CashTransaction] = []
+    for row in applied_rows:
+        amount = round(float(row.get("amount") or 0), 2)
+        if amount <= 0.009:
+            continue
+        kind = row.get("kind")
+        tid = str(row.get("id") or "")
+        evo_id: str | None = tid if kind == "evolution" else None
+        plan_ref: str | None = tid if kind == "plan" else None
+        if kind == "evolution" and evo_id:
+            entry = db.get(ClinicalEvolutionEntry, evo_id)
+            if entry and entry.plan_item_id:
+                plan_ref = entry.plan_item_id
+        slices = _take_from_parts(parts, amount)
+        for metodo, mon in slices:
+            created.append(
+                CashTransaction(
+                    cash_session_id=session_id,
+                    patient_id=patient_id,
+                    tipo="ingreso",
+                    concepto=concepto,
+                    monto=mon,
+                    metodo_pago=metodo,
+                    grupo_pago_id=grupo_id,
+                    plan_item_ref=plan_ref,
+                    pieza_fdi=pieza_fdi,
+                    evolution_entry_id=evo_id,
+                    anulado=False,
+                )
+            )
+    # Anticipo / sobrante sin destino clínico
+    antic = round(float(unallocated or 0), 2)
+    if antic > 0.009:
+        slices = _take_from_parts(parts, antic)
+        tagged = _tag_anticipo_concepto(concepto, antic)
+        for metodo, mon in slices:
+            created.append(
+                CashTransaction(
+                    cash_session_id=session_id,
+                    patient_id=patient_id,
+                    tipo="ingreso",
+                    concepto=tagged,
+                    monto=mon,
+                    metodo_pago=metodo,
+                    grupo_pago_id=grupo_id,
+                    plan_item_ref=None,
+                    pieza_fdi=pieza_fdi,
+                    evolution_entry_id=None,
+                    anulado=False,
+                )
+            )
+    # Residual payment still in parts (should be ~0)
+    for metodo, rem in parts:
+        rem_f = round(float(rem), 2)
+        if rem_f > 0.009:
+            created.append(
+                CashTransaction(
+                    cash_session_id=session_id,
+                    patient_id=patient_id,
+                    tipo="ingreso",
+                    concepto=concepto,
+                    monto=rem_f,
+                    metodo_pago=metodo,
+                    grupo_pago_id=grupo_id,
+                    pieza_fdi=pieza_fdi,
+                    anulado=False,
+                )
+            )
+    return created
 
 
 def _get_open_session(db: Session) -> CashSession | None:
@@ -536,20 +667,20 @@ def void_transaction(
     for evo_id in evo_ids:
         entry = db.get(ClinicalEvolutionEntry, evo_id)
         if entry:
-            # Forzar a_cuenta a Σ cash activa (puede bajar al anular)
-            paid = (
-                db.query(CashTransaction)
-                .filter(
-                    CashTransaction.evolution_entry_id == evo_id,
-                    CashTransaction.tipo == "ingreso",
-                    CashTransaction.anulado.is_(False),
-                )
-                .all()
-            )
-            entry.a_cuenta = round(sum(float(t.monto) for t in paid), 2)
+            sync_evolution_a_cuenta_from_cash(db, entry)
             _sync_plan_from_entry(db, entry)
 
     for pid in patient_ids:
+        # Full resync so multi-line payments reverse cleanly after void
+        reconcile_plan_evolution_costs(db, pid)
+        entries = (
+            db.query(ClinicalEvolutionEntry)
+            .filter(ClinicalEvolutionEntry.patient_id == pid)
+            .all()
+        )
+        for entry in entries:
+            sync_evolution_a_cuenta_from_cash(db, entry)
+            _sync_plan_from_entry(db, entry)
         reconcile_plan_evolution_costs(db, pid)
 
     try:
@@ -607,113 +738,66 @@ def create_transaction(
     evo_id = (payload.evolution_entry_id or "").strip() or None
     from app.models.ids import new_uuid
 
-    splits = payload.pagos_parciales or []
-    if splits:
-        grupo_id = new_uuid()
-        parts = [
-            (p.metodo_pago.strip().lower(), round(float(p.monto), 2)) for p in splits
-        ]
+    parts = _payment_parts(payload)
+    is_mixto = bool(payload.pagos_parciales) and len(payload.pagos_parciales) > 1
+    concepto_base = payload.concepto.strip()
+    if is_mixto:
         detalle = " + ".join(f"{m} S/ {amt:.2f}" for m, amt in parts)
-        concepto_base = payload.concepto.strip()
         if "mixto" not in concepto_base.lower():
             concepto_base = f"{concepto_base} (mixto: {detalle})"
 
+    # Egreso: una fila por método (mixto o simple)
+    if payload.tipo == "egreso":
+        grupo_id = new_uuid() if len(parts) > 1 else None
         created: list[CashTransaction] = []
-        for metodo, monto_part in parts:
+        for metodo, mon in parts:
             tx = CashTransaction(
                 cash_session_id=session.id,
                 patient_id=payload.patient_id,
-                tipo=payload.tipo,
+                tipo="egreso",
                 concepto=concepto_base,
-                monto=monto_part,
+                monto=mon,
                 metodo_pago=metodo,
                 grupo_pago_id=grupo_id,
-                plan_item_ref=plan_ref,
-                pieza_fdi=payload.pieza_fdi,
-                evolution_entry_id=evo_id,
                 anulado=False,
             )
             db.add(tx)
             created.append(tx)
-
-        allocated_total = 0.0
-        unallocated_amount = None
-        allocations_out = None
-        saldo_pendiente = None
-        if payload.allocate and payload.tipo == "ingreso" and payload.patient_id:
-            (
-                allocated_total,
-                unallocated_amount,
-                allocations_out,
-                saldo_pendiente,
-            ) = _run_clinical_allocation(
-                db,
-                patient_id=payload.patient_id,
-                monto=float(payload.monto),
-                evolution_entry_id=evo_id,
-                plan_item_ref=plan_ref,
-            )
-            _backfill_tx_refs(db, created, allocations_out or [])
-            if unallocated_amount and unallocated_amount > 0.009:
-                tagged = _tag_anticipo_concepto(concepto_base, unallocated_amount)
-                for tx in created:
-                    tx.concepto = tagged
-
-        db.flush()
-        if allocations_out and payload.patient_id:
-            allocations_out, saldo_pendiente = _refresh_allocation_after_cash_flush(
-                db, allocations_out, patient_id=payload.patient_id
-            )
-
         try:
             db.commit()
         except Exception as exc:
             db.rollback()
             raise HTTPException(
-                status_code=500,
-                detail=f"No se pudo guardar el pago mixto: {exc}",
+                status_code=500, detail=f"No se pudo guardar el egreso: {exc}"
             ) from exc
-
         for tx in created:
             db.refresh(tx)
         primary = created[0]
         out = _tx_to_out(
             primary,
             db,
-            allocated_total=allocated_total,
-            unallocated_amount=unallocated_amount,
-            allocations=allocations_out,
-            saldo_pendiente_destino=saldo_pendiente,
-            pagos_parciales=[{"metodo_pago": m, "monto": a} for m, a in parts],
+            pagos_parciales=(
+                [{"metodo_pago": m, "monto": a} for m, a in parts]
+                if len(parts) > 1
+                else None
+            ),
         )
-        out.monto = float(payload.monto)
-        out.metodo_pago = "mixto"
-        out.grupo_pago_id = grupo_id
+        if len(parts) > 1:
+            out.monto = float(payload.monto)
+            out.metodo_pago = "mixto"
+            out.grupo_pago_id = grupo_id
         _publish_tx_created(user, primary, monto=float(payload.monto))
         return out
 
-    concepto = payload.concepto.strip()
-    tx = CashTransaction(
-        cash_session_id=session.id,
-        patient_id=payload.patient_id,
-        tipo=payload.tipo,
-        concepto=concepto,
-        monto=payload.monto,
-        metodo_pago=payload.metodo_pago,
-        plan_item_ref=plan_ref,
-        pieza_fdi=payload.pieza_fdi,
-        evolution_entry_id=evo_id,
-        anulado=False,
-    )
-    db.add(tx)
-
-    allocated_total = (
-        0.0 if (payload.allocate and payload.tipo == "ingreso" and payload.patient_id) else None
-    )
-    unallocated_amount = None
-    allocations_out = None
+    # Ingreso con posible aplicación clínica
+    allocated_total = 0.0
+    unallocated_amount = 0.0
+    allocations_out: list[dict] | None = None
     saldo_pendiente = None
-    if payload.allocate and payload.tipo == "ingreso" and payload.patient_id:
+    do_alloc = bool(
+        payload.allocate and payload.tipo == "ingreso" and payload.patient_id
+    )
+    if do_alloc:
         (
             allocated_total,
             unallocated_amount,
@@ -726,9 +810,70 @@ def create_transaction(
             evolution_entry_id=evo_id,
             plan_item_ref=plan_ref,
         )
-        _backfill_tx_refs(db, [tx], allocations_out or [])
+
+    apply_rows = [
+        a
+        for a in (allocations_out or [])
+        if round(float(a.get("amount") or 0), 2) > 0.009
+    ]
+    use_split_targets = do_alloc and len(apply_rows) > 0
+
+    grupo_id = new_uuid() if (is_mixto or use_split_targets or len(parts) > 1) else None
+    if use_split_targets:
+        created = _build_ingreso_txs_for_allocation(
+            db,
+            session_id=session.id,
+            patient_id=payload.patient_id,
+            concepto=concepto_base,
+            parts=parts,
+            applied_rows=apply_rows,
+            unallocated=float(unallocated_amount or 0),
+            grupo_id=grupo_id,
+            pieza_fdi=payload.pieza_fdi,
+        )
+        if not created:
+            # Fallback: un solo movimiento
+            created = [
+                CashTransaction(
+                    cash_session_id=session.id,
+                    patient_id=payload.patient_id,
+                    tipo="ingreso",
+                    concepto=concepto_base,
+                    monto=payload.monto,
+                    metodo_pago=(payload.metodo_pago or "efectivo").strip().lower(),
+                    grupo_pago_id=grupo_id,
+                    plan_item_ref=plan_ref,
+                    pieza_fdi=payload.pieza_fdi,
+                    evolution_entry_id=evo_id,
+                    anulado=False,
+                )
+            ]
+            _backfill_tx_refs(db, created, apply_rows)
+        for tx in created:
+            db.add(tx)
+    else:
+        # Sin allocate o sin destinos: una fila por método
+        created = []
+        for metodo, mon in parts:
+            tx = CashTransaction(
+                cash_session_id=session.id,
+                patient_id=payload.patient_id,
+                tipo="ingreso",
+                concepto=concepto_base,
+                monto=mon,
+                metodo_pago=metodo,
+                grupo_pago_id=grupo_id if len(parts) > 1 else None,
+                plan_item_ref=plan_ref,
+                pieza_fdi=payload.pieza_fdi,
+                evolution_entry_id=evo_id,
+                anulado=False,
+            )
+            db.add(tx)
+            created.append(tx)
         if unallocated_amount and unallocated_amount > 0.009:
-            tx.concepto = _tag_anticipo_concepto(concepto, unallocated_amount)
+            tagged = _tag_anticipo_concepto(concepto_base, unallocated_amount)
+            for tx in created:
+                tx.concepto = tagged
 
     db.flush()
     if allocations_out and payload.patient_id:
@@ -744,13 +889,28 @@ def create_transaction(
             status_code=500,
             detail=f"No se pudo guardar el pago: {exc}",
         ) from exc
-    db.refresh(tx)
-    _publish_tx_created(user, tx)
-    return _tx_to_out(
-        tx,
+
+    for tx in created:
+        db.refresh(tx)
+    primary = created[0]
+    multi_method = len({t.metodo_pago for t in created}) > 1 or is_mixto
+    out = _tx_to_out(
+        primary,
         db,
-        allocated_total=allocated_total,
-        unallocated_amount=unallocated_amount,
+        allocated_total=allocated_total if do_alloc else None,
+        unallocated_amount=unallocated_amount if do_alloc else None,
         allocations=allocations_out,
         saldo_pendiente_destino=saldo_pendiente,
+        pagos_parciales=(
+            [{"metodo_pago": m, "monto": a} for m, a in _payment_parts(payload)]
+            if multi_method
+            else None
+        ),
     )
+    if multi_method or len(created) > 1:
+        out.monto = float(payload.monto)
+        if multi_method:
+            out.metodo_pago = "mixto"
+        out.grupo_pago_id = grupo_id or primary.grupo_pago_id
+    _publish_tx_created(user, primary, monto=float(payload.monto))
+    return out

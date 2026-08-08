@@ -16,7 +16,15 @@ from app.models.ids import CLINIC_SETTINGS_ID
 
 _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 _DEFAULT_LOGO = _ASSETS_DIR / "logo-md.png"
-_UPLOADS_DIR = _ASSETS_DIR / "uploads"
+
+
+def clinic_uploads_dir() -> Path:
+    """Writable logo dir (ProgramData on desktop Server; never Program Files)."""
+    from app.paths import resolve_media_root
+
+    root = resolve_media_root("UPLOAD_DIR", "uploads")
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
 @dataclass(frozen=True)
@@ -95,14 +103,21 @@ def _get_or_create_row(db: Session) -> ClinicSettings:
 def resolve_logo_path(logo_rel: str | None) -> tuple[Path | None, bool]:
     """Devuelve (ruta absoluta usable, es_logo_personalizado)."""
     if logo_rel:
-        candidate = (_ASSETS_DIR / logo_rel).resolve()
-        # Seguridad: solo dentro de assets/
-        try:
-            candidate.relative_to(_ASSETS_DIR.resolve())
-        except ValueError:
-            candidate = _DEFAULT_LOGO
-        if candidate.is_file():
-            return candidate, True
+        rel = logo_rel.replace("\\", "/").lstrip("/")
+        name = Path(rel).name
+        candidates = [
+            clinic_uploads_dir() / name,
+            _ASSETS_DIR / rel,
+            _ASSETS_DIR / name,
+            _ASSETS_DIR / "uploads" / name,
+        ]
+        for candidate in candidates:
+            try:
+                candidate = candidate.resolve()
+            except OSError:
+                continue
+            if candidate.is_file():
+                return candidate, True
     if _DEFAULT_LOGO.is_file():
         return _DEFAULT_LOGO, False
     return None, False
@@ -191,5 +206,6 @@ def _profile_from_settings(logo_rel: str | None) -> ClinicProfile:
 
 
 def ensure_uploads_dir() -> Path:
-    _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-    return _UPLOADS_DIR
+    d = clinic_uploads_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    return d

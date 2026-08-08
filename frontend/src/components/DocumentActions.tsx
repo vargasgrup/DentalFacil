@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { isValidPhone } from "@/lib/whatsapp";
-import { apiFetch, getToken } from "@/lib/api";
+import { apiFetch, getToken, getApiBase } from "@/lib/api";
 import { downloadBlob } from "@/lib/downloadBlob";
 import { documentSender } from "@/lib/documentSender";
 import {
@@ -88,9 +88,17 @@ function withFormat(url: string, format: PrintFormat): string {
   return `${url}${sep}fmt=${format}`;
 }
 
+function resolveDocumentUrl(url: string): string {
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url) || url.startsWith("blob:")) return url;
+  const base = getApiBase().replace(/\/$/, "");
+  if (url.startsWith("/")) return `${base}${url}`;
+  return `${base}/${url}`;
+}
+
 async function fetchPdfBlob(url: string): Promise<{ blob: Blob; filename: string }> {
   const token = getToken();
-  const resp = await fetch(url, {
+  const resp = await fetch(resolveDocumentUrl(url), {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!resp.ok) throw new Error("Error al obtener el documento");

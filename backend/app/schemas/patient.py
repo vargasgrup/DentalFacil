@@ -160,6 +160,15 @@ class PatientUpdate(BaseModel):
     resumen_historia_previa: Optional[str] = Field(default=None, max_length=5000)
     activo: Optional[bool] = None
 
+    @field_validator("fecha_nacimiento", "fecha_ingreso_clinica", mode="before")
+    @classmethod
+    def _empty_date_to_none(cls, v: object) -> object:
+        if v is None:
+            return None
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
     @field_validator("sexo", mode="before")
     @classmethod
     def _normalize_sexo(cls, v: object) -> Optional[str]:

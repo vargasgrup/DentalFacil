@@ -11,7 +11,7 @@
  * El frontend NUNCA llama a Meta Graph directamente.
  */
 
-import { getToken } from "@/lib/api";
+import { getToken, getApiBase } from "@/lib/api";
 import {
   normalizePeruPhone,
   openWhatsAppChat,
@@ -29,6 +29,14 @@ import {
   type SendStrategy,
   type WhatsAppCloudStatus,
 } from "./types";
+
+function resolveDocumentUrl(url: string): string {
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url) || url.startsWith("blob:")) return url;
+  const base = getApiBase().replace(/\/$/, "");
+  if (url.startsWith("/")) return `${base}${url}`;
+  return `${base}/${url}`;
+}
 
 type StrategyMetrics = Record<SendStrategy, { success: number; fail: number }>;
 
@@ -96,7 +104,7 @@ export class DocumentSender {
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), this.config.timeoutMs);
     try {
-      const resp = await fetch(downloadUrl, {
+      const resp = await fetch(resolveDocumentUrl(downloadUrl), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         signal: controller.signal,
       });

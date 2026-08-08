@@ -156,19 +156,16 @@ def test_patient_multi_especialidades(
 def test_appointment_appends_patient_especialidad(
     client: TestClient,
     admin_headers: dict[str, str],
+    admin_user,
     patient: dict,
+    wide_clinic_hours,
 ):
     """Cita con especialidad nueva se acumula en el perfil del paciente."""
-    # ensure patient starts with one specialty
     client.patch(
         f"/api/patients/{patient['id']}",
         headers=admin_headers,
         json={"especialidades": ["Ortodoncia"]},
     )
-    # need doctor id - get me
-    me = client.get("/api/auth/me", headers=admin_headers)
-    assert me.status_code == 200
-    doctor_id = me.json()["id"]
     from datetime import datetime, timedelta, timezone
 
     when = (datetime.now(timezone.utc) + timedelta(days=2)).replace(
@@ -179,7 +176,7 @@ def test_appointment_appends_patient_especialidad(
         headers=admin_headers,
         json={
             "patient_id": patient["id"],
-            "doctor_id": doctor_id,
+            "doctor_id": admin_user.id,
             "fecha_hora": when.isoformat(),
             "duracion_minutos": 30,
             "especialidad": "Endodoncia",

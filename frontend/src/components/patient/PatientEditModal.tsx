@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
-import { SpecialtySelect } from "@/components/SpecialtySelect";
+import { SpecialtyMultiSelect } from "@/components/SpecialtyMultiSelect";
 import { formatFichaCode } from "@/lib/ficha";
+import { resolvePatientEspecialidades } from "@/lib/especialidades";
 
 export interface PatientAdmin {
   id: string;
@@ -29,6 +30,7 @@ export interface PatientAdmin {
   telefono_responsable?: string | null;
   documento_responsable?: string | null;
   especialidad?: string | null;
+  especialidades?: string[] | null;
   activo?: boolean;
   created_at: string;
 }
@@ -71,7 +73,7 @@ export function PatientEditModal({ patient, onClose, onSaved }: PatientEditModal
     parentesco_responsable: patient.parentesco_responsable || "",
     telefono_responsable: patient.telefono_responsable || "",
     documento_responsable: patient.documento_responsable || "",
-    especialidad: patient.especialidad || "",
+    especialidades: resolvePatientEspecialidades(patient),
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -118,7 +120,7 @@ export function PatientEditModal({ patient, onClose, onSaved }: PatientEditModal
           parentesco_responsable: form.parentesco_responsable.trim() || null,
           telefono_responsable: form.telefono_responsable.trim() || null,
           documento_responsable: form.documento_responsable.trim() || null,
-          especialidad: form.especialidad.trim() || null,
+          especialidades: form.especialidades,
         }),
       });
       onSaved(updated);
@@ -266,10 +268,12 @@ export function PatientEditModal({ patient, onClose, onSaved }: PatientEditModal
                   className={FIELD}
                 />
               </label>
-              <SpecialtySelect
-                value={form.especialidad}
-                onChange={(v) => set("especialidad", v)}
-                allowEmpty
+              <SpecialtyMultiSelect
+                label="Especialidades de atención"
+                value={form.especialidades}
+                onChange={(especialidades) =>
+                  setForm((prev) => ({ ...prev, especialidades }))
+                }
               />
               <label className="block">
                 <span className="mb-1 block text-label text-slate-700">Estado civil</span>

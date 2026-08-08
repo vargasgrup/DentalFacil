@@ -383,15 +383,21 @@ def build_dashboard_home(db: Session) -> dict[str, Any]:
         or 0
     )
 
-    # --- Especialidades (fill gap) ---
-    esp_rows = (
-        db.query(Patient.especialidad, func.count(Patient.id))
-        .filter(Patient.especialidad.isnot(None), Patient.especialidad != "")
-        .group_by(Patient.especialidad)
-        .order_by(func.count(Patient.id).desc())
-        .limit(6)
+    # --- Especialidades (conteo por membresía multi) ---
+    from collections import Counter
+
+    from app.services.patient_especialidades import resolve_from_patient
+
+    patients_esp = (
+        db.query(Patient)
+        .filter(Patient.activo.is_(True))
         .all()
     )
+    esp_counter: Counter[str] = Counter()
+    for p in patients_esp:
+        for name in resolve_from_patient(p):
+            esp_counter[name] += 1
+    esp_rows = esp_counter.most_common(6)
     esp_total = sum(int(c) for _, c in esp_rows) or 1
     especialidades = [
         {

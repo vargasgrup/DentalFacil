@@ -1,7 +1,7 @@
 from datetime import datetime, time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import String, and_, func, literal, or_
+from sqlalchemy import String, and_, cast, func, literal, or_
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.orm import Session
 
@@ -35,6 +35,7 @@ from app.schemas.patient import (
     PatientUpdate,
 )
 from app.services.audit import log_audit
+from app.services.patient_especialidades import dual_write_fields
 from app.utils.ficha import format_ficha_label, parse_ficha_query
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
@@ -134,6 +135,9 @@ def search_patients(
         func.lower(Patient.apellidos).like(raw_like),
         func.lower(func.coalesce(Patient.numero_documento, "")).like(raw_like),
         func.lower(func.coalesce(Patient.especialidad, "")).like(raw_like),
+        func.lower(func.coalesce(cast(Patient.especialidades, String), "")).like(
+            raw_like
+        ),
         func.cast(Patient.numero_ficha, String).like(raw_like),
     ]
     ficha_n = parse_ficha_query(raw)
@@ -187,7 +191,14 @@ def list_patients(
     elif estado_norm != "todos":
         raise HTTPException(400, "estado inválido (activos | inactivos | todos)")
     if especialidad and especialidad.strip():
-        q = q.filter(Patient.especialidad == especialidad.strip())
+        esp = especialidad.strip()
+        # Match primary column OR membership in multi-list (JSON text portable).
+        q = q.filter(
+            or_(
+                Patient.especialidad == esp,
+                cast(Patient.especialidades, String).like(f'%"{esp}"%'),
+            )
+        )
     return q.order_by(Patient.created_at.desc()).offset(skip).limit(limit).all()
 
 
@@ -236,6 +247,10 @@ def create_patient(
         # Allow multiple patients without a real document number.
         doc = None
 
+    esp_primary, esp_list = dual_write_fields(
+        payload.especialidades, payload.especialidad
+    )
+
     patient = Patient(
         numero_ficha=_next_ficha_number(db),
         nombres=payload.nombres.strip(),
@@ -247,7 +262,8 @@ def create_patient(
         ocupacion=payload.ocupacion,
         estado_civil=payload.estado_civil,
         sexo=(payload.sexo or None),
-        especialidad=(payload.especialidad or "").strip() or None,
+        especialidad=esp_primary,
+        especialidades=esp_list,
         telefono=payload.telefono,
         email=payload.email,
         direccion=payload.direccion,
@@ -347,9 +363,16 @@ def update_patient(
         data["nombres"] = data["nombres"].strip()
     if "apellidos" in data and data["apellidos"] is not None:
         data["apellidos"] = data["apellidos"].strip()
-    if "especialidad" in data:
-        esp = data["especialidad"]
-        data["especialidad"] = (esp or "").strip() or None
+
+    # Multi-especialidad: especialidades lista gana; especialidad solo = reemplazo a 1 ítem
+    if "especialidades" in data or "especialidad" in data:
+        if "especialidades" in data:
+            prim, multi = dual_write_fields(data.get("especialidades"), None)
+        else:
+            # Solo se envió especialidad: compat legado (reemplaza lista a un valor)
+            prim, multi = dual_write_fields(None, data.get("especialidad"))
+        data["especialidad"] = prim
+        data["especialidades"] = multi
 
     next_tipo = data.get("tipo_documento", p.tipo_documento)
     next_doc = data["numero_documento"] if "numero_documento" in data else p.numero_documento

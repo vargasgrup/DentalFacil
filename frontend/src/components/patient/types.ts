@@ -21,8 +21,10 @@ export interface Patient {
   parentesco_responsable?: string | null;
   telefono_responsable?: string | null;
   documento_responsable?: string | null;
-  /** Especialidad odontológica en la que se atiende al paciente */
+  /** Primera especialidad (legado / primaria); preferir especialidades */
   especialidad?: string;
+  /** Especialidades en las que se atiende al paciente (multi) */
+  especialidades?: string[];
   es_migrado?: boolean;
   fecha_ingreso_clinica?: string | null;
   resumen_historia_previa?: string | null;

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import String, Date, DateTime, Text, Index, Integer, Boolean, func
+from sqlalchemy import String, Date, DateTime, Text, Index, Integer, Boolean, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -41,8 +41,9 @@ class Patient(Base):
     parentesco_responsable: Mapped[str | None] = mapped_column(String(40), nullable=True)
     telefono_responsable: Mapped[str | None] = mapped_column(String(30), nullable=True)
     documento_responsable: Mapped[str | None] = mapped_column(String(30), nullable=True)
-    # Especialidad en la que se atenderá / se atiende al paciente
+    # Especialidades de atención: lista JSON + primaria denormalizada (filtros/compat)
     especialidad: Mapped[str | None] = mapped_column(String(80), index=True)
+    especialidades: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Alta retroactiva (pacientes históricos previos al sistema)
     es_migrado: Mapped[bool] = mapped_column(Boolean, default=False)
     fecha_ingreso_clinica: Mapped[date | None] = mapped_column(Date)

@@ -138,6 +138,17 @@ async def lifespan(app: FastAPI):
         logger.error("ensure_patient_lifecycle_schema FAILED: %s", exc, exc_info=True)
         raise
     try:
+        from app.ensure_patient_especialidades_schema import (
+            ensure_patient_especialidades_schema,
+        )
+
+        ensure_patient_especialidades_schema()
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "ensure_patient_especialidades_schema FAILED: %s", exc, exc_info=True
+        )
+        raise
+    try:
         from app.ensure_cash_schema import ensure_cash_schema
 
         ensure_cash_schema()

@@ -118,6 +118,11 @@ const [patient, setPatient] = useState<Patient | null>(null);
         fecha_nacimiento: p.fecha_nacimiento
           ? p.fecha_nacimiento.slice(0, 10)
           : "",
+        especialidades: Array.isArray(p.especialidades)
+          ? p.especialidades
+          : p.especialidad
+            ? [p.especialidad]
+            : [],
       });
 
       let items: PlanItem[] = [];
@@ -210,9 +215,19 @@ const [patient, setPatient] = useState<Patient | null>(null);
       return;
     }
     try {
+      const especialidades = Array.isArray(patientForm.especialidades)
+        ? patientForm.especialidades
+        : patientForm.especialidad
+          ? [patientForm.especialidad]
+          : [];
       const updated = await apiFetch<Patient>(`/api/patients/${patientId}`, {
         method: "PATCH",
-        body: JSON.stringify({ ...patientForm, telefono: tel || patientForm.telefono }),
+        body: JSON.stringify({
+          ...patientForm,
+          telefono: tel || patientForm.telefono,
+          especialidades,
+          especialidad: especialidades[0] || null,
+        }),
       });
       setPatient(updated);
       setPatientForm({
@@ -220,6 +235,11 @@ const [patient, setPatient] = useState<Patient | null>(null);
         fecha_nacimiento: updated.fecha_nacimiento
           ? updated.fecha_nacimiento.slice(0, 10)
           : "",
+        especialidades: Array.isArray(updated.especialidades)
+          ? updated.especialidades
+          : updated.especialidad
+            ? [updated.especialidad]
+            : [],
       });
       setPatientSaved("saved");
       setTimeout(() => setPatientSaved("idle"), 2000);

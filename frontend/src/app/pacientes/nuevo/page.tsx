@@ -20,7 +20,7 @@ import {
   normalizePeruvianMobile,
 } from "@/lib/validators";
 import { formatFichaLabel } from "@/lib/ficha";
-import { SpecialtySelect } from "@/components/SpecialtySelect";
+import { SpecialtyMultiSelect } from "@/components/SpecialtyMultiSelect";
 import {
   AGE_BANDS,
   PARENTESCO_OPTIONS,
@@ -82,7 +82,7 @@ export default function NuevoPacientePage() {
   const tutorNombreRef = useRef<HTMLInputElement>(null);
   const tutorTelRef = useRef<HTMLInputElement>(null);
   const alergiasRef = useRef<HTMLTextAreaElement>(null);
-  const especialidadRef = useRef<HTMLSelectElement>(null);
+  const especialidadRef = useRef<HTMLDivElement>(null);
 
   const [busy, setBusy] = useState(false);
   const submittingRef = useRef(false);
@@ -105,7 +105,7 @@ export default function NuevoPacientePage() {
     lugar_nacimiento: "",
     ocupacion: "",
     estado_civil: "",
-    especialidad: "",
+    especialidades: [] as string[],
     telefono: "",
     email: "",
     direccion: "",
@@ -508,7 +508,7 @@ export default function NuevoPacientePage() {
           lugar_nacimiento: form.lugar_nacimiento.trim() || null,
           ocupacion: form.ocupacion.trim() || null,
           estado_civil: form.estado_civil || null,
-          especialidad: form.especialidad.trim() || null,
+          especialidades: form.especialidades,
           nombre_responsable: form.nombre_responsable.trim() || null,
           parentesco_responsable: form.parentesco_responsable.trim() || null,
           telefono_responsable: tutorTel || null,
@@ -924,7 +924,7 @@ export default function NuevoPacientePage() {
             <div>
               <h2 className="text-section-title text-slate-800">Salud y atención</h2>
               <p className="mt-0.5 text-help text-slate-500">
-                Alergias clínicas y especialidad de seguimiento en el listado.
+                Alergias clínicas y especialidades de atención (puede marcar varias).
               </p>
             </div>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start">
@@ -949,15 +949,15 @@ export default function NuevoPacientePage() {
                 />
               </label>
               <div className="lg:col-span-5">
-                <SpecialtySelect
+                <SpecialtyMultiSelect
                   ref={especialidadRef}
-                  label="Especialidad"
-                  value={form.especialidad}
-                  onChange={(v) => set("especialidad", v)}
-                  allowEmpty
-                  required={false}
+                  label="Especialidades de atención"
+                  value={form.especialidades}
+                  onChange={(v) =>
+                    setForm((prev) => ({ ...prev, especialidades: v }))
+                  }
                   className="w-full"
-                  hint="Filtra agenda y listado (ortodoncia, pediatría…)"
+                  hint="Un paciente frecuente puede atenderse en varias (p. ej. ortodoncia y endodoncia)."
                 />
               </div>
             </div>

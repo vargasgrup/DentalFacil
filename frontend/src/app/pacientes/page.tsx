@@ -33,7 +33,12 @@ import {
   type PatientAdmin,
 } from "@/components/patient/PatientEditModal";
 import { formatFichaCode } from "@/lib/ficha";
-import { ESPECIALIDADES_ODONTOLOGICAS, especialidadShort } from "@/lib/especialidades";
+import {
+  ESPECIALIDADES_ODONTOLOGICAS,
+  formatEspecialidadesFull,
+  formatEspecialidadesShort,
+  resolvePatientEspecialidades,
+} from "@/lib/especialidades";
 import {
   bandFromAge,
   bandLabel,
@@ -130,11 +135,12 @@ export default function PacientesPage() {
   const filtered = useMemo(() => {
     if (!search.trim()) return patients;
     const q = search.toLowerCase();
-    return patients.filter((p) =>
-      `${p.nombres} ${p.apellidos} ${p.numero_documento || ""} ${p.numero_ficha} ${formatFichaCode(p.numero_ficha)} ${p.especialidad || ""}`
+    return patients.filter((p) => {
+      const esp = resolvePatientEspecialidades(p).join(" ");
+      return `${p.nombres} ${p.apellidos} ${p.numero_documento || ""} ${p.numero_ficha} ${formatFichaCode(p.numero_ficha)} ${esp}`
         .toLowerCase()
-        .includes(q)
-    );
+        .includes(q);
+    });
   }, [search, patients]);
 
   const hasFilters = Boolean(search.trim() || especialidadFilter || estadoFilter !== "activos");
@@ -474,16 +480,25 @@ export default function PacientesPage() {
                     </div>
 
                     <PacienteFichaLink patientId={p.id} className="mt-1.5 block">
-                      {p.especialidad ? (
-                        <p className="flex items-center gap-1.5 text-xs font-medium text-brand-700">
-                          <Stethoscope className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                          <span className="truncate" title={p.especialidad}>
-                            {especialidadShort(p.especialidad)}
-                          </span>
-                        </p>
-                      ) : (
-                        <p className="text-xs text-slate-400">Sin especialidad asignada</p>
-                      )}
+                      {(() => {
+                        const espList = resolvePatientEspecialidades(p);
+                        if (espList.length === 0) {
+                          return (
+                            <p className="text-xs text-slate-400">Sin especialidad asignada</p>
+                          );
+                        }
+                        return (
+                          <p className="flex items-center gap-1.5 text-xs font-medium text-brand-700">
+                            <Stethoscope className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                            <span
+                              className="truncate"
+                              title={formatEspecialidadesFull(espList)}
+                            >
+                              {formatEspecialidadesShort(espList)}
+                            </span>
+                          </p>
+                        );
+                      })()}
                       <ul className="mt-3 space-y-1.5 text-sm text-slate-500">
                         <li className="flex items-center gap-2">
                           <IdCard className="h-3.5 w-3.5 shrink-0 text-slate-400" />

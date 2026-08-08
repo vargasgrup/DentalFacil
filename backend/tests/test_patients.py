@@ -69,6 +69,7 @@ def test_patient_especialidad_create_and_filter(
     assert created.status_code == 201, created.text
     body = created.json()
     assert body["especialidad"] == "Ortodoncia"
+    assert body["especialidades"] == ["Ortodoncia"]
 
     listed = client.get(
         "/api/patients",
@@ -94,6 +95,62 @@ def test_patient_especialidad_create_and_filter(
     )
     assert patched.status_code == 200, patched.text
     assert patched.json()["especialidad"] == "Endodoncia"
+    assert patched.json()["especialidades"] == ["Endodoncia"]
+
+
+def test_patient_multi_especialidades(
+    client: TestClient,
+    admin_headers: dict[str, str],
+):
+    created = client.post(
+        "/api/patients",
+        headers=admin_headers,
+        json={
+            "nombres": "Diego",
+            "apellidos": "Mamani",
+            "tipo_documento": "DNI",
+            "numero_documento": "40526399",
+            "especialidades": ["Ortodoncia", "Endodoncia", "Rehabilitación oral"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["especialidad"] == "Ortodoncia"
+    assert body["especialidades"] == [
+        "Ortodoncia",
+        "Endodoncia",
+        "Rehabilitación oral",
+    ]
+
+    # Filter by non-primary specialty still finds the patient
+    listed = client.get(
+        "/api/patients",
+        headers=admin_headers,
+        params={"especialidad": "Endodoncia"},
+    )
+    assert listed.status_code == 200
+    assert body["id"] in {p["id"] for p in listed.json()}
+
+    patched = client.patch(
+        f"/api/patients/{body['id']}",
+        headers=admin_headers,
+        json={"especialidades": ["Implantología oral", "Estética dental"]},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["especialidades"] == [
+        "Implantología oral",
+        "Estética dental",
+    ]
+    assert patched.json()["especialidad"] == "Implantología oral"
+
+    cleared = client.patch(
+        f"/api/patients/{body['id']}",
+        headers=admin_headers,
+        json={"especialidades": []},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["especialidades"] == []
+    assert cleared.json()["especialidad"] in (None, "")
 
 
 def test_create_patient_full_fields_linked(

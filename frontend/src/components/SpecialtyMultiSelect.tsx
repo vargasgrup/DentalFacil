@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef, useEffect, useState } from "react";
+import { Check } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { ESPECIALIDADES_ODONTOLOGICAS } from "@/lib/especialidades";
 
@@ -15,8 +16,8 @@ interface SpecialtyMultiSelectProps {
 }
 
 /**
- * Selección múltiple de especialidades de atención del paciente
- * (catálogo del centro). Componente distinto de SpecialtySelect (cita/evolución = una).
+ * Multi-select de especialidades: chips en flow (sin caja con scroll).
+ * Responsive: se reacomoda al ancho disponible en escritorio y móvil.
  */
 export const SpecialtyMultiSelect = forwardRef<HTMLDivElement, SpecialtyMultiSelectProps>(
   function SpecialtyMultiSelect(
@@ -67,46 +68,59 @@ export const SpecialtyMultiSelect = forwardRef<HTMLDivElement, SpecialtyMultiSel
     return (
       <div ref={ref} className={`block ${className}`} id={id}>
         {label ? (
-          <span className="mb-1 block text-label text-slate-700">{label}</span>
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+            <span className="text-label text-slate-700">{label}</span>
+            <span className="text-[11px] font-medium tabular-nums text-slate-400">
+              {selected.length === 0
+                ? "Opcional · ninguna elegida"
+                : selected.length === 1
+                  ? "1 elegida"
+                  : `${selected.length} elegidas`}
+            </span>
+          </div>
         ) : null}
+
         <div
           role="group"
           aria-label={label || "Especialidades"}
-          className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-300 bg-white p-2"
+          className="flex flex-wrap gap-2"
         >
           {catalog.map((esp) => {
             const on = selected.includes(esp);
             return (
-              <label
+              <button
                 key={esp}
+                type="button"
+                aria-pressed={on}
+                disabled={disabled}
+                onClick={() => toggle(esp)}
                 className={[
-                  "flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                  on ? "bg-brand-50 text-brand-900" : "hover:bg-slate-50 text-slate-700",
-                  disabled ? "cursor-not-allowed opacity-60" : "",
+                  "inline-flex max-w-full items-center gap-1.5 rounded-lg border px-3 py-2 text-left text-[13px] font-medium leading-snug transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1",
+                  on
+                    ? "border-brand-600 bg-brand-600 text-white shadow-sm shadow-brand-600/20"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-brand-300 hover:bg-brand-50/60",
+                  disabled ? "cursor-not-allowed opacity-55" : "cursor-pointer",
                 ].join(" ")}
               >
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                  checked={on}
-                  disabled={disabled}
-                  onChange={() => toggle(esp)}
-                />
-                <span className="leading-snug">{esp}</span>
-              </label>
+                <span
+                  className={[
+                    "inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
+                    on
+                      ? "border-white/40 bg-white/20 text-white"
+                      : "border-slate-300 bg-slate-50 text-transparent",
+                  ].join(" ")}
+                  aria-hidden
+                >
+                  <Check className="h-2.5 w-2.5 stroke-[3]" />
+                </span>
+                <span className="min-w-0">{esp}</span>
+              </button>
             );
           })}
         </div>
-        {selected.length > 0 ? (
-          <p className="mt-1.5 text-xs font-medium text-slate-600">
-            {selected.length === 1
-              ? "1 especialidad seleccionada"
-              : `${selected.length} especialidades seleccionadas`}
-          </p>
-        ) : (
-          <p className="mt-1.5 text-xs text-slate-400">Ninguna seleccionada (opcional)</p>
-        )}
-        {hint ? <p className="mt-1 text-help text-slate-500">{hint}</p> : null}
+
+        {hint ? <p className="mt-2 text-help text-slate-500">{hint}</p> : null}
       </div>
     );
   }

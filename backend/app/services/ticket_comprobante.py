@@ -631,13 +631,15 @@ def build_comprobante_story(
 
     item_rows = [
         [
-            Paragraph("<b>Cant.</b>", hdr_desc) if tight else "Cant.",
+            # Sin punto final: en 80mm la col. es ~7.5 mm y "Cant." partía en
+            # "Cant" + línea con solo "." (punto suelto en el tique).
+            Paragraph("<b>Cant</b>", hdr_desc) if tight else "Cant",
             Paragraph("<b>Descripción</b>", hdr_desc),
-            Paragraph("<b>P.Unit</b>", hdr_right),
+            Paragraph("<b>P/U</b>", hdr_right) if tight else Paragraph("<b>P.Unit</b>", hdr_right),
             Paragraph("<b>Total</b>", hdr_right),
         ],
         [
-            "1",
+            Paragraph("1", body_left) if tight else "1",
             Paragraph(_esc(concepto[:120]), body_left),
             Paragraph(_esc(format_price_plain(monto)), body_right),
             Paragraph(_esc(format_price_plain(monto)), body_right),

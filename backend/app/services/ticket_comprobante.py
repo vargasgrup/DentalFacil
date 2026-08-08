@@ -269,17 +269,25 @@ def _block_space(*, tight: bool) -> Spacer:
 
 
 def _ink_rule(content_w: float, *, compact: bool = True) -> Table:
-    """Línea sólida de bloque (0.6–0.75 pt). Poco padding para no alargar el rollo."""
+    """
+    Raya de bloque con aire respecto al texto arriba y abajo.
+
+    LINEABOVE va al borde superior de la celda: el espacio *antes* de la raya
+    debe ir en ``spaceBefore``; el espacio *después* en TOPPADDING.
+    """
     thick = 0.65
-    pad_top = 1.1 if compact else 1.6
-    pad_bot = 0.9 if compact else 1.4
+    # ~1.8–2.4 mm de aire (matricial: legible sin alargar mucho el rollo)
+    gap_above = 2.0 * mm if compact else 2.6 * mm
+    gap_below = 1.9 * mm if compact else 2.4 * mm
     t = Table([[""]], colWidths=[max(1.0, float(content_w))], hAlign="LEFT")
+    t.spaceBefore = float(gap_above)
+    t.spaceAfter = 0
     t.setStyle(
         TableStyle(
             [
                 ("LINEABOVE", (0, 0), (-1, 0), thick, TICKET_BLACK),
-                ("TOPPADDING", (0, 0), (-1, -1), pad_top),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), pad_bot),
+                ("TOPPADDING", (0, 0), (-1, -1), float(gap_below)),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
             ]
@@ -304,6 +312,8 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
         field_after = 0.4
         font_r, font_b = TICKET_FONT, TICKET_FONT_BOLD
         mute = TICKET_INK
+        # Cabecera identidad: un poco de aire antes de la raya de bloque
+        center_bold_after = 1.2
     elif fmt == "A5":
         title_sz, body_sz, small_sz, tiny_sz = 12, 9, 8, 7
         after = 2.0
@@ -311,6 +321,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
         field_after = after
         font_r, font_b = "Helvetica", "Helvetica-Bold"
         mute = colors.HexColor("#334155")
+        center_bold_after = after
     else:
         title_sz, body_sz, small_sz, tiny_sz = 14, 10, 9, 8
         after = 2.0
@@ -318,6 +329,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
         field_after = after
         font_r, font_b = "Helvetica", "Helvetica-Bold"
         mute = colors.HexColor("#334155")
+        center_bold_after = after
 
     field_lead = body_sz + (1.2 if fmt == "80mm" else lead_extra)
 
@@ -329,7 +341,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             alignment=1,
             leading=title_sz + lead_extra,
             spaceBefore=0,
-            spaceAfter=after + (0.8 if fmt == "80mm" else 0),
+            spaceAfter=center_bold_after if fmt == "80mm" else after + 0,
             textColor=TICKET_INK if fmt == "80mm" else colors.black,
             wordWrap="CJK",
         ),
@@ -632,10 +644,11 @@ def build_comprobante_story(
         ],
     ]
     items_table = Table(item_rows, colWidths=col_widths, hAlign="LEFT")
-    # Padding mínimo en 80mm: el padding de ReportLab come del colWidth y
-    # empuja montos fuera del area imprimible.
+    # Padding: en 80mm dar aire a LINEBELOW de cabecera (antes pegaba al texto)
     pad_x = 0.2 if tight else 1.5
     pad_y = 0.8 if tight else 2
+    hdr_bot = (pad_y + 1.6) if tight else (pad_y + 1.0)  # texto cabecera → raya
+    body_top = (pad_y + 1.4) if tight else pad_y  # raya → fila de ítem
     style_cmds = [
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("FONTNAME", (0, 0), (0, 0), font_b),
@@ -647,8 +660,10 @@ def build_comprobante_story(
         ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
         ("LEFTPADDING", (0, 0), (-1, -1), pad_x),
         ("RIGHTPADDING", (0, 0), (-1, -1), pad_x),
-        ("TOPPADDING", (0, 0), (-1, -1), pad_y),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), pad_y),
+        ("TOPPADDING", (0, 0), (-1, 0), pad_y),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), hdr_bot),
+        ("TOPPADDING", (0, 1), (-1, -1), body_top),
+        ("BOTTOMPADDING", (0, 1), (-1, -1), pad_y + (0.6 if tight else 0)),
         # Una sola raya bajo cabecera de columnas (80mm y hoja)
         ("LINEBELOW", (0, 0), (-1, 0), 0.55 if tight else 0.5, TICKET_BLACK),
     ]

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
+import { formatDateTime } from "@/lib/datetime";
 import { useAuth } from "@/lib/auth";
 import {
   normalizePlans,
@@ -404,7 +405,7 @@ const [patient, setPatient] = useState<Patient | null>(null);
             method: "POST",
             body: JSON.stringify({
               denticion: "permanente",
-              label: `Evolución ${new Date().toLocaleString("es-VE")}`,
+              label: `Evolución ${formatDateTime(new Date())}`,
             }),
           });
         } catch {

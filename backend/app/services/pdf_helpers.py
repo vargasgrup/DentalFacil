@@ -11,6 +11,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from app.utils.clinic_datetime import format_time_12h, to_clinic, now_clinic
+
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Image as RLImage
@@ -71,12 +73,12 @@ def format_date_for_document(
     *,
     include_time: bool = False,
 ) -> str:
-    """Fecha formal: '23 de julio de 2026' (sin hora salvo include_time)."""
+    """Fecha formal: '23 de julio de 2026' (+ hora 12h si include_time)."""
     dt: datetime | date | None
     if value is None:
-        dt = datetime.now()
+        dt = now_clinic()
     elif isinstance(value, datetime):
-        dt = value
+        dt = to_clinic(value) or value
     elif isinstance(value, date):
         dt = value
     elif isinstance(value, str):
@@ -91,11 +93,14 @@ def format_date_for_document(
             "%d/%m/%Y",
         ):
             try:
-                # strip timezone colon variants
                 candidate = raw.replace("Z", "+00:00")
                 if fmt.endswith("%z") and len(candidate) > 19 and candidate[-3] == ":":
                     candidate = candidate[:-3] + candidate[-2:]
-                dt = datetime.strptime(candidate[:26], fmt)
+                parsed = datetime.strptime(candidate[:26], fmt)
+                if isinstance(parsed, datetime) and "%H" in fmt:
+                    dt = to_clinic(parsed) if parsed.tzinfo or "T" in raw else parsed
+                else:
+                    dt = parsed
                 break
             except ValueError:
                 continue
@@ -106,7 +111,7 @@ def format_date_for_document(
 
     if isinstance(dt, datetime):
         d = dt.date()
-        time_part = dt.strftime("%H:%M") if include_time else None
+        time_part = format_time_12h(dt) if include_time else None
     else:
         d = dt
         time_part = None

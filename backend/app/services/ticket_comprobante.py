@@ -41,6 +41,7 @@ from app.services.pdf_helpers import (
     logo_size_mm_for_ticket,
     strip_markdown_noise,
 )
+from app.utils.clinic_datetime import format_datetime_parts, now_clinic
 
 _DEFAULT_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "logo-md.png"
 
@@ -534,14 +535,23 @@ def build_comprobante_story(
     telefono = str(data.get("patient_telefono") or "")
     direccion = str(data.get("patient_direccion") or "—")
     vendedor = str(data.get("vendedor") or "Administrador")
+    # Fecha/hora: America/Lima, dd/mm/aaaa + 12 h (el UTC naive se convierte en format_datetime_parts)
     emitido = data.get("fecha_emision")
-    if isinstance(emitido, datetime):
-        f_emision = emitido.strftime("%Y-%m-%d")
-        h_emision = emitido.strftime("%H:%M:%S")
+    if emitido is not None:
+        f_emision, h_emision = format_datetime_parts(emitido)
     else:
-        now = datetime.now()
-        f_emision = str(data.get("f_emision") or now.strftime("%Y-%m-%d"))
-        h_emision = str(data.get("h_emision") or now.strftime("%H:%M:%S"))
+        f_raw = data.get("f_emision")
+        h_raw = data.get("h_emision")
+        if f_raw and h_raw:
+            f_emision, h_emision = format_datetime_parts(f"{f_raw} {h_raw}")
+        elif f_raw:
+            f_emision, h_emision = format_datetime_parts(f_raw)
+        else:
+            f_emision, h_emision = format_datetime_parts(now_clinic())
+    if not f_emision or f_emision == "—":
+        f_emision, _ = format_datetime_parts(now_clinic())
+    if not h_emision or h_emision == "—":
+        _, h_emision = format_datetime_parts(now_clinic())
 
     hash_src = f"{serie}|{monto:.2f}|{f_emision}|{h_emision}|{patient}|{concepto}|{metodo}"
     codigo_hash = data.get("hash") or build_receipt_hash(hash_src)

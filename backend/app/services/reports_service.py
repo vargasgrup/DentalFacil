@@ -69,20 +69,16 @@ def _doctor_name(db: Session, doctor_id: str | None) -> str:
     return u.nombre if u else "—"
 
 
+from app.utils.clinic_datetime import format_time_12h, to_clinic as _to_clinic_util
+
+# re-export for local names used below
 def _to_clinic(dt: datetime) -> datetime:
-    """Normalize stored UTC/naive timestamps to America/Lima for display."""
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(CLINIC_TZ)
+    out = _to_clinic_util(dt)
+    return out if out is not None else dt
 
 
 def _fmt_time_12h(local: datetime) -> str:
-    """Native system clock: 12h with es-PE markers (e.g. '1:37 p. m.')."""
-    h = local.hour
-    m = local.minute
-    period = "p. m." if h >= 12 else "a. m."
-    h12 = h % 12 or 12
-    return f"{h12}:{m:02d} {period}"
+    return format_time_12h(local)
 
 
 def _fmt_dt(dt: datetime | None) -> tuple[str, str]:

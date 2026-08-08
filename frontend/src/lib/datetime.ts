@@ -1,4 +1,4 @@
-/** Display helpers — clinic wall clock America/Lima (Perú), 12-hour a. m. / p. m. */
+/** Display helpers — clinic wall clock America/Lima (Perú), fecha dd/mm/aaaa y 12 h a. m. / p. m. */
 
 export const CLINIC_TIME_ZONE = "America/Lima";
 
@@ -6,6 +6,12 @@ export const TIME_12H: Intl.DateTimeFormatOptions = {
   hour: "numeric",
   minute: "2-digit",
   hour12: true,
+};
+
+export const DATE_DMY: Intl.DateTimeFormatOptions = {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
 };
 
 /**
@@ -30,6 +36,14 @@ export function toDate(value: Date | string | number): Date {
   return new Date(raw);
 }
 
+/** e.g. "08/08/2026" in clinic timezone */
+export function formatDate(value: Date | string | number): string {
+  return toDate(value).toLocaleDateString("es-PE", {
+    timeZone: CLINIC_TIME_ZONE,
+    ...DATE_DMY,
+  });
+}
+
 /** e.g. "3:44 p. m." in clinic timezone */
 export function formatTime(value: Date | string | number): string {
   return toDate(value).toLocaleTimeString("es-PE", {
@@ -38,16 +52,14 @@ export function formatTime(value: Date | string | number): string {
   });
 }
 
-/** Date + time with 12h clock in America/Lima. Extra options merge on top. */
+/** Fecha + hora: "08/08/2026, 5:13 p. m." (America/Lima). Extra options merge on top. */
 export function formatDateTime(
   value: Date | string | number,
   extra?: Intl.DateTimeFormatOptions
 ): string {
   return toDate(value).toLocaleString("es-PE", {
     timeZone: CLINIC_TIME_ZONE,
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
+    ...DATE_DMY,
     ...TIME_12H,
     ...extra,
   });

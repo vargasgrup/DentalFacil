@@ -33,6 +33,7 @@ import {
   type PatientAdmin,
 } from "@/components/patient/PatientEditModal";
 import { formatFichaCode } from "@/lib/ficha";
+import { formatDate } from "@/lib/datetime";
 import {
   ESPECIALIDADES_ODONTOLOGICAS,
   formatEspecialidadesFull,
@@ -519,11 +520,7 @@ export default function PacientesPage() {
 
                     <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
                       <span className="text-help text-slate-400">
-                        {new Date(p.created_at).toLocaleDateString("es-PE", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })}
+                        {formatDate(p.created_at)}
                       </span>
                       <div className="flex items-center gap-2">
                         <button

@@ -56,12 +56,7 @@ function formatDocDate(value: string): string {
   // YYYY-MM-DD from backend date — avoid UTC shift
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
   if (m) {
-    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-    return d.toLocaleDateString("es-PE", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+    return `${m[3]}/${m[2]}/${m[1]}`;
   }
   return formatDateTime(value, { hour: undefined, minute: undefined });
 }

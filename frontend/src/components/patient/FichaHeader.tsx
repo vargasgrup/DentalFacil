@@ -5,6 +5,7 @@ import { Pencil, UserX, UserCheck } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { formatDate } from "@/lib/datetime";
 import { formatFichaCode } from "@/lib/ficha";
 import {
   PatientEditModal,
@@ -115,10 +116,7 @@ export function FichaHeader({ patient, onBack, onPatientUpdated }: FichaHeaderPr
           Migrado — datos históricos desde{" "}
           <span className="ml-1 font-medium text-slate-900">
             {patient.fecha_ingreso_clinica
-              ? new Date(`${patient.fecha_ingreso_clinica}T12:00:00`).toLocaleDateString(
-                  "es-PE",
-                  { day: "2-digit", month: "short", year: "numeric" }
-                )
+              ? formatDate(patient.fecha_ingreso_clinica)
               : "fecha no registrada"}
           </span>
         </p>

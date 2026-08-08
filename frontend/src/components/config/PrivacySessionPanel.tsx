@@ -12,6 +12,7 @@ import {
   countOfflineOps,
 } from "@/lib/offlineQueue";
 import { useConnection } from "@/lib/connectionStatus";
+import { formatDateTime } from "@/lib/datetime";
 import { useOfflineSync } from "@/lib/offlineSync";
 
 /**
@@ -106,7 +107,7 @@ export function PrivacySessionPanel() {
             <dt className="text-help text-slate-500">Última conexión OK</dt>
             <dd className="font-medium text-slate-800">
               {lastOkAt
-                ? new Date(lastOkAt).toLocaleString("es-PE")
+                ? formatDateTime(lastOkAt)
                 : "—"}
             </dd>
           </div>

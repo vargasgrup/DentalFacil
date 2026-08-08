@@ -17,6 +17,7 @@ from app.models.clinic_settings import ClinicSettings
 from app.models.ids import CLINIC_SETTINGS_ID
 from app.models.patient import Patient
 from app.services.clinic_profile import get_clinic_profile
+from app.utils.clinic_datetime import format_time_12h as _fmt_time_12h
 
 CLINIC_TZ = ZoneInfo("America/Lima")
 
@@ -109,7 +110,7 @@ def build_reminder_message(
         nombre_paciente=nombre_paciente,
         nombre_centro=profile.nombre_publico,
         fecha_cita=local.strftime("%d/%m/%Y"),
-        hora_cita=local.strftime("%H:%M"),
+        hora_cita=_fmt_time_12h(local),
     )
 
 

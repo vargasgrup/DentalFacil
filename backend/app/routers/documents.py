@@ -1,4 +1,8 @@
 from datetime import datetime, timezone, date
+from zoneinfo import ZoneInfo
+
+from app.utils.clinic_datetime import CLINIC_TZ, format_date_dmy, to_clinic
+
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -20,6 +24,7 @@ from app.models import (
 from app.schemas.cash import CashCloseSummary
 from app.services.pdf_generator import generate_pdf
 from app.services.ticket_comprobante import format_serie
+from app.utils.clinic_datetime import format_date_dmy, to_clinic
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -27,8 +32,10 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 def _format_date(d) -> str:
     if not d:
         return "—"
-    if isinstance(d, (datetime, date)):
-        return d.strftime("%d/%m/%Y")
+    if isinstance(d, datetime):
+        return format_date_dmy(d)
+    if isinstance(d, date):
+        return format_date_dmy(d)
     return str(d)
 
 
@@ -110,11 +117,8 @@ def download_comprobante(
                 metodo = "efectivo"
 
     serie = format_serie(tx.id)
-    emitido = tx.created_at
-    if emitido is not None and getattr(emitido, "tzinfo", None) is not None:
-        from zoneinfo import ZoneInfo
-
-        emitido = emitido.astimezone(ZoneInfo("America/Lima"))
+    # BD en UTC (a veces naive): to_clinic aplica America/Lima para el tique
+    emitido = to_clinic(tx.created_at) if tx.created_at is not None else None
 
     phone = ""
     if patient:

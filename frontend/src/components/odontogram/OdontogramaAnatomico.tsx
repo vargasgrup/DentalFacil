@@ -13,6 +13,7 @@ import {
   displayToothLabel,
   type NumberingSystem,
 } from "@/lib/odontogramNumbering";
+import { formatDateTime } from "@/lib/datetime";
 import type { PlanProposalItem } from "@/lib/odontogramTreatments";
 import { ToothSVG } from "./ToothSVG";
 import { SurfaceCross } from "./SurfaceCross";
@@ -97,10 +98,7 @@ function ToothCell({
 
 function formatDt(iso: string) {
   try {
-    return new Date(iso).toLocaleString("es-VE", {
-      dateStyle: "short",
-      timeStyle: "short",
-    });
+    return formatDateTime(iso);
   } catch {
     return iso;
   }

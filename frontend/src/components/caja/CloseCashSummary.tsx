@@ -83,6 +83,8 @@ export function CloseCashSummary({ summary, onDismiss }: CloseCashSummaryProps) 
           telefono={null}
           mensaje=""
           hideWhatsApp
+          forceFormat="A5"
+          defaultFormat="A5"
         />
       </div>
       <Button variant="ghost" className="mt-3" onClick={onDismiss}>

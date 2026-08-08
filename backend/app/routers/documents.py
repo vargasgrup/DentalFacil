@@ -1,15 +1,11 @@
 from datetime import datetime, timezone, date
-from zoneinfo import ZoneInfo
-
-from app.utils.clinic_datetime import CLINIC_TZ, format_date_dmy, to_clinic
-
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core.deps import get_current_user
+from app.core.deps import require_module
 from app.database import get_db
 from app.models import (
     CashSession,
@@ -24,7 +20,7 @@ from app.models import (
 from app.schemas.cash import CashCloseSummary
 from app.services.pdf_generator import generate_pdf
 from app.services.ticket_comprobante import format_serie
-from app.utils.clinic_datetime import format_date_dmy, to_clinic
+from app.utils.clinic_datetime import format_date_dmy, now_clinic, to_clinic
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -47,8 +43,10 @@ def _calc_age(birthdate) -> str | None:
             birthdate = datetime.strptime(birthdate, "%Y-%m-%d").date()
         except ValueError:
             return None
-    today = date.today()
-    age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
+    today = now_clinic().date()
+    age = today.year - birthdate.year - (
+        (today.month, today.day) < (birthdate.month, birthdate.day)
+    )
     return f"{age} años"
 
 
@@ -67,7 +65,7 @@ def download_comprobante(
     transaction_id: str,
     fmt: str = Query("80mm", regex="^(80mm|A5|A4)$"),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("caja")),
 ):
     """Generate payment receipt PDF (official Caja format: 80mm thermal ticket)."""
     tx = db.get(CashTransaction, transaction_id)
@@ -212,7 +210,7 @@ def download_cierre_caja(
     session_id: str,
     fmt: str = Query("A5", regex="^(80mm|A5|A4)$"),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("caja")),
 ):
     """Generate and download a cash close summary PDF."""
     session = db.get(CashSession, session_id)
@@ -264,7 +262,7 @@ def download_ficha(
     patient_id: str,
     fmt: str = Query("A4", regex="^(80mm|A5|A4)$"),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     """Generate and download a clinical record PDF."""
     patient = db.get(Patient, patient_id)
@@ -353,7 +351,7 @@ def download_evolucion(
     entry_id: str,
     fmt: str = Query("A5", regex="^(80mm|A5|A4)$"),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     """Generate and download an evolution entry PDF."""
     entry = db.get(ClinicalEvolutionEntry, entry_id)
@@ -379,7 +377,7 @@ def download_evolucion(
 
 @router.get("/consentimiento-tipos")
 def list_consentimiento_tipos(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     """Catálogo de consentimientos oficiales (COP) disponibles."""
     from app.services.consent_official_templates import list_consent_templates
@@ -418,7 +416,7 @@ def download_consentimiento(
     ),
     fmt: str = Query("A4", regex="^(80mm|A5|A4)$"),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     """Generate informed consent PDF (plan clínico o texto oficial COP)."""
     from app.services.clinic_profile import get_clinic_profile
@@ -490,7 +488,7 @@ def download_presupuesto(
     plan_id: str | None = Query(None),
     fmt: str = Query("A4", regex="^(80mm|A5|A4)$"),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     """PDF de presupuesto (plan activo o una alternativa)."""
     from app.odontogram.plans import normalize_plans, estimate
@@ -537,7 +535,7 @@ def mark_whatsapp_sent_by_meta(
     patient_id: str = Query(..., description="Paciente dueño del PDF"),
     tipo: str = Query(..., description="Tipo de documento generado"),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     """Mark the latest generated document for patient+tipo as sent via WhatsApp."""
     doc = (
@@ -560,7 +558,7 @@ def mark_whatsapp_sent_by_meta(
 def mark_whatsapp_sent(
     document_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     """Mark a document as 'sent via WhatsApp' by DocumentGenerated.id."""
     doc = db.get(DocumentGenerated, document_id)

@@ -89,3 +89,22 @@ def require_module(module: str):
         return user
 
     return checker
+
+
+def require_any_module(*modules: str):
+    """Allow if the user has at least one of the listed modules."""
+    from app.core.modules import user_can_access
+
+    names = tuple(m for m in modules if m)
+
+    def checker(user: User = Depends(get_current_user)) -> User:
+        stored = getattr(user, "modulos_acceso", None)
+        if any(user_can_access(user.rol, stored, m) for m in names):
+            return user
+        detail = ", ".join(names) if names else "módulos"
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Sin acceso a ninguno de: {detail}",
+        )
+
+    return checker

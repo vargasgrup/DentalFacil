@@ -307,6 +307,11 @@ class SpaStaticFiles(StaticFiles):
         if not path_norm or path_norm in {".", "/"}:
             path_norm = "index.html"
 
+        # Nunca enmascarar API con HTML de la SPA (clientes LAN / multi-PC).
+        api_path = path_norm.lstrip("/").lower()
+        if api_path == "api" or api_path.startswith("api/"):
+            raise StarletteHTTPException(status_code=404, detail="Not Found")
+
         try:
             response = await super().get_response(path_norm, scope)
             if getattr(response, "status_code", 200) != 404:

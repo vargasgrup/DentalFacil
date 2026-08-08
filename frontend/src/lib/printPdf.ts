@@ -19,10 +19,12 @@ let workerReady = false;
 async function loadPdfJs() {
   const pdfjs = await import("pdfjs-dist/build/pdf.mjs");
   if (!workerReady) {
-    const version = pdfjs.version || "4.10.38";
-    const major = Number(String(version).split(".")[0] || "4");
-    const workerFile = major >= 4 ? "pdf.worker.min.mjs" : "pdf.worker.min.js";
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/${workerFile}`;
+    // Mismo origen: funciona en clínica offline / sin CDN (escritorio LAN)
+    const origin =
+      typeof window !== "undefined" && window.location?.origin
+        ? window.location.origin
+        : "";
+    pdfjs.GlobalWorkerOptions.workerSrc = `${origin}/pdf.worker.min.mjs`;
     workerReady = true;
   }
   return pdfjs;

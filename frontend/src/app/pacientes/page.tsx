@@ -107,7 +107,7 @@ export default function PacientesPage() {
 
   useAppRefresh(() => {
     void load();
-  });
+  }, { eventPrefixes: ["patient.", "clinical."] });
 
   useEffect(() => {
     if (!menuId) return;

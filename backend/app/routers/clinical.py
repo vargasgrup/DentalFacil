@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_module, require_any_module
 from app.database import get_db
 from app.models import (
     CashTransaction,
@@ -98,7 +98,7 @@ def _sync_plan_item_from_evolution(
 def get_record(
     patient_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     return _get_or_create_record(db, patient_id)
 
@@ -108,7 +108,7 @@ def update_record(
     patient_id: str,
     payload: ClinicalRecordUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     record = _get_or_create_record(db, patient_id, require_active=True)
     data = payload.model_dump(exclude_unset=True)
@@ -153,7 +153,7 @@ def update_consentimiento(
     patient_id: str,
     payload: ConsentimientoUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     from datetime import datetime, timezone
     record = _get_or_create_record(db, patient_id, require_active=True)
@@ -185,7 +185,7 @@ def update_consentimiento(
 def list_evolution(
     patient_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     return (
         db.query(ClinicalEvolutionEntry)
@@ -204,7 +204,7 @@ def create_evolution(
     patient_id: str,
     payload: ClinicalEvolutionEntryCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     _get_or_create_record(db, patient_id, require_active=True)
     cantidad = float(payload.cantidad or 1) or 1.0
@@ -212,7 +212,7 @@ def create_evolution(
     costo = float(payload.costo) if payload.costo is not None else cantidad * unit
     if unit == 0 and costo and cantidad:
         unit = costo / cantidad
-    a_cuenta = min(float(payload.a_cuenta or 0), costo)
+    a_cuenta = 0.0  # Solo Caja actualiza a_cuenta vía payment_allocation
     entry = ClinicalEvolutionEntry(
         patient_id=patient_id,
         doctor_id=payload.doctor_id or user.id,
@@ -256,17 +256,18 @@ def update_evolution(
     entry_id: str,
     payload: ClinicalEvolutionEntryUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     entry = db.get(ClinicalEvolutionEntry, entry_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Entrada no encontrada")
     get_active_patient_or_404(db, entry.patient_id)
     data = payload.model_dump(exclude_unset=True)
-    # Bloquear backdating / cambio de origen aunque el cliente envíe campos extras
+    # Bloquear backdating / origen / a_cuenta manual (caja es fuente de verdad)
     data.pop("fecha", None)
     data.pop("origen", None)
     data.pop("created_at", None)
+    data.pop("a_cuenta", None)
     for field, value in data.items():
         setattr(entry, field, value)
     # Keep costo coherent with qty × unit when either changes
@@ -283,6 +284,10 @@ def update_evolution(
                 entry.costo_unitario = unit
             entry.costo = cantidad * float(entry.costo_unitario or 0)
             entry.cantidad = cantidad
+    # Re-sync a_cuenta desde caja (nunca confiar en el cliente)
+    from app.services.payment_allocation import sync_evolution_a_cuenta_from_cash
+
+    sync_evolution_a_cuenta_from_cash(db, entry)
     entry.a_cuenta = min(float(entry.a_cuenta or 0), float(entry.costo or 0))
     if entry.plan_item_id:
         _sync_plan_item_from_evolution(db, entry.patient_id, entry)
@@ -310,7 +315,7 @@ def delete_evolution(
     patient_id: str,
     entry_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     entry = db.get(ClinicalEvolutionEntry, entry_id)
     if not entry or entry.patient_id != patient_id:
@@ -333,7 +338,7 @@ def delete_evolution(
 def financial_summary(
     patient_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     """
     Financial summary calculated live.
@@ -395,7 +400,7 @@ def financial_summary(
 def payment_targets(
     patient_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     """Open plan/evolución lines with saldo — for payment allocation UI."""
     get_patient_or_404(db, patient_id)

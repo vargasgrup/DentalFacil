@@ -225,7 +225,7 @@ export default function CajaPage() {
   useAppRefresh(() => {
     void loadData();
     void loadMovements(period);
-  });
+  }, { eventPrefixes: ["cash."] });
 
   useEffect(() => {
     if (!incomePatient?.id) {

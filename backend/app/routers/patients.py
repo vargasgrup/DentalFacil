@@ -5,7 +5,7 @@ from sqlalchemy import String, and_, cast, func, literal, or_
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user
+from app.core.deps import require_module
 from app.core.roles import Rol
 from app.database import get_db
 from app.logging_config import get_logger
@@ -114,7 +114,7 @@ def _assert_unique_document(
 def search_patients(
     q: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     """
     Búsqueda inteligente de pacientes:
@@ -180,7 +180,7 @@ def list_patients(
         description="activos | inactivos | todos",
     ),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     q = db.query(Patient)
     estado_norm = (estado or "activos").strip().lower()
@@ -206,7 +206,7 @@ def list_patients(
 def get_patient(
     patient_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     p = db.get(Patient, patient_id)
     if not p:
@@ -218,7 +218,7 @@ def get_patient(
 def create_patient(
     payload: PatientCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     mig = migrations_status()
     if not mig["ok"]:
@@ -350,7 +350,7 @@ def update_patient(
     patient_id: str,
     payload: PatientUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     p = db.get(Patient, patient_id)
     if not p:
@@ -399,7 +399,7 @@ def update_patient(
 def deactivate_patient(
     patient_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     """Baja lógica: oculta al paciente de la lista activa conservando la historia clínica."""
     from datetime import datetime, timezone
@@ -452,7 +452,7 @@ def deactivate_patient(
 def reactivate_patient(
     patient_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     p = db.get(Patient, patient_id)
     if not p:
@@ -513,7 +513,7 @@ def delete_patient(
         description="true = borrado definitivo (solo ADMIN). false = baja lógica.",
     ),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("pacientes")),
 ):
     """
     Por defecto aplica baja lógica (activo=false).

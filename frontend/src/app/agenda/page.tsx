@@ -189,7 +189,7 @@ function AgendaPageInner() {
   useAppRefresh(() => {
     setLoading(true);
     void loadAppointments();
-  });
+  }, { eventPrefixes: ["appointment."] });
 
   const filtered = useMemo(() => {
     return appointments.filter((a) => {

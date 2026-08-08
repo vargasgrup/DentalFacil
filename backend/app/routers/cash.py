@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user, require_module
+from app.core.deps import get_current_user, require_module, require_any_module
 from app.database import get_db
 from app.db_prefetch import prefetch_patients
 from app.models import CashSession, CashTransaction, Patient, User
@@ -479,10 +479,12 @@ def close_session(
     if not session:
         raise HTTPException(status_code=400, detail="No hay caja abierta")
 
+    # Cierre atómico multi-PC: solo la primera cierra (open_lock / estado)
+    session_id = session.id
     transactions = (
         db.query(CashTransaction)
         .filter(
-            CashTransaction.cash_session_id == session.id,
+            CashTransaction.cash_session_id == session_id,
             CashTransaction.anulado.is_(False),
         )
         .all()
@@ -494,28 +496,47 @@ def close_session(
     total_esperado = float(session.monto_inicial) + neto
     monto_contado = round(float(payload.monto_contado), 2)
     diferencia = round(monto_contado - total_esperado, 2)
+    notas = (payload.notas or "").strip() or None
+    now = datetime.now(timezone.utc)
 
     por_metodo: dict[str, float] = {}
     for t in transactions:
         if t.tipo == "ingreso":
             por_metodo[t.metodo_pago] = por_metodo.get(t.metodo_pago, 0) + float(t.monto)
 
-    session.monto_final = total_esperado
-    session.monto_contado = monto_contado
-    session.diferencia = diferencia
-    session.cierre_notas = (payload.notas or "").strip() or None
-    session.cerrada_por_id = user.id
-    session.cerrada_en = datetime.now(timezone.utc)
-    session.estado = "cerrada"
-    session.open_lock = None
+    from sqlalchemy import update as sa_update
+
+    result = db.execute(
+        sa_update(CashSession)
+        .where(
+            CashSession.id == session_id,
+            CashSession.estado == "abierta",
+        )
+        .values(
+            monto_final=total_esperado,
+            monto_contado=monto_contado,
+            diferencia=diferencia,
+            cierre_notas=notas,
+            cerrada_por_id=user.id,
+            cerrada_en=now,
+            estado="cerrada",
+            open_lock=None,
+        )
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="La caja ya fue cerrada por otro usuario o no está abierta.",
+        )
     db.commit()
 
     from app.realtime.connection_manager import publish_event
 
-    publish_event("cash.session.closed", {"id": session.id}, actor=user.id)
+    publish_event("cash.session.closed", {"id": session_id}, actor=user.id)
 
     return CashCloseSummary(
-        session_id=session.id,
+        session_id=session_id,
         monto_inicial=float(session.monto_inicial),
         ingresos=ingresos,
         egresos=egresos,
@@ -523,7 +544,7 @@ def close_session(
         total_esperado=total_esperado,
         monto_contado=monto_contado,
         diferencia=diferencia,
-        cierre_notas=session.cierre_notas,
+        cierre_notas=notas,
         por_metodo=por_metodo,
         monto_final=total_esperado,
     )
@@ -599,7 +620,7 @@ def list_patient_payments(
     patient_id: str,
     include_voided: bool = False,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_any_module("pacientes", "caja")),
 ):
     """Historial de cobros del paciente (solo lectura en ficha; el cobro es en Caja)."""
     if not db.get(Patient, patient_id):

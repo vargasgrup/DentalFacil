@@ -151,7 +151,7 @@ def list_appointments(
     start: datetime = Query(None),
     end: datetime = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("agenda")),
 ):
     q = db.query(Appointment)
     if start:
@@ -166,7 +166,7 @@ def list_appointments(
 def create_appointment(
     payload: AppointmentCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("agenda")),
 ):
     get_active_patient_or_404(db, payload.patient_id)
     _assert_within_clinic_hours(db, payload.fecha_hora)
@@ -183,6 +183,17 @@ def create_appointment(
         notas=payload.notas,
     )
     db.add(apt)
+    db.flush()
+    # Re-chequeo bajo el mismo request (reduce double-booking multi-PC)
+    if _check_overlap(
+        db,
+        payload.doctor_id or user.id,
+        fecha_utc,
+        payload.duracion_minutos,
+        exclude_id=apt.id,
+    ):
+        db.rollback()
+        raise HTTPException(status_code=409, detail="El doctor ya tiene una cita en ese horario")
     # Acumula en ficha: especialidades de visitas en distintas fechas
     if payload.especialidad:
         from app.services.patient_especialidades import append_patient_especialidad
@@ -211,7 +222,7 @@ def update_appointment(
     appointment_id: str,
     payload: AppointmentUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("agenda")),
 ):
     apt = db.get(Appointment, appointment_id)
     if not apt:
@@ -261,7 +272,7 @@ def update_appointment(
 def delete_appointment(
     appointment_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("agenda")),
 ):
     apt = db.get(Appointment, appointment_id)
     if not apt:
@@ -311,7 +322,7 @@ def _reminder_to_out(
 @router.get("/reminders/pending", response_model=list[AppointmentReminderOut])
 def pending_reminders(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("agenda")),
 ):
     reminders = (
         db.query(AppointmentReminder)
@@ -345,7 +356,7 @@ def pending_reminders(
 def mark_reminder_sent(
     reminder_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("agenda")),
 ):
     """Mark reminder as 'sent' — this means the user clicked to open WhatsApp."""
     r = db.get(AppointmentReminder, reminder_id)
@@ -371,7 +382,7 @@ def mark_reminder_sent(
 @config_router.get("/reminders", response_model=ReminderConfigOut)
 def get_reminder_config_api(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("agenda")),
 ):
     return ReminderConfigOut(**get_reminder_config(db))
 
@@ -404,7 +415,7 @@ def _get_or_create_clinic_settings(db: Session) -> ClinicSettings:
 @config_router.get("/hours", response_model=ClinicHoursOut)
 def get_clinic_hours(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("agenda")),
 ):
     row = _get_or_create_clinic_settings(db)
     return ClinicHoursOut(hora_apertura=row.hora_apertura, hora_cierre=row.hora_cierre)
@@ -413,7 +424,7 @@ def get_clinic_hours(
 @config_router.get("/especialidades", response_model=EspecialidadesOut)
 def list_especialidades(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("agenda")),
 ):
     """Catálogo de especialidades del centro (editable en Configuración)."""
     from app.constants.especialidades import ESPECIALIDADES_ODONTOLOGICAS
@@ -572,7 +583,7 @@ def get_clinic_branding_public(db: Session = Depends(get_db)):
 @config_router.get("/clinic", response_model=ClinicProfileOut)
 def get_clinic_profile_api(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_module("agenda")),
 ):
     """Datos del centro odontológico (documentos oficiales)."""
     return _clinic_out(db)

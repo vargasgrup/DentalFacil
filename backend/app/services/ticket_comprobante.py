@@ -270,26 +270,32 @@ def _block_space(*, tight: bool) -> Spacer:
 
 def _ink_rule(content_w: float, *, compact: bool = True) -> Table:
     """
-    Raya de bloque con aire moderado respecto al texto (ni pegada ni suelta).
+    Raya de bloque con aire breve arriba/abajo (≈0,9–1,1 mm).
 
-    LINEABOVE va al borde superior: espacio *antes* → ``spaceBefore``;
-    espacio *después* → TOPPADDING.
+    Causa de huecos enormes: ``Table([[""]])`` reservaba la altura de una fila
+    de texto por defecto (~10–12 pt) *debajo* de LINEABOVE. Se fuerza fila
+    casi de altura 0; el aire queda solo en spaceBefore / spaceAfter.
     """
     thick = 0.65
-    # ~1.1–1.3 mm: legible y compacto en matricial/térmica
-    gap_above = 1.15 * mm if compact else 1.8 * mm
-    gap_below = 1.1 * mm if compact else 1.6 * mm
+    # ≈ 0.95–1.05 mm → no pegado, sin “aire muerto”
+    gap_above = 1.05 * mm if compact else 1.6 * mm
+    gap_below = 0.95 * mm if compact else 1.4 * mm
     t = Table([[""]], colWidths=[max(1.0, float(content_w))], hAlign="LEFT")
     t.spaceBefore = float(gap_above)
-    t.spaceAfter = 0
+    t.spaceAfter = float(gap_below)
     t.setStyle(
         TableStyle(
             [
                 ("LINEABOVE", (0, 0), (-1, 0), thick, TICKET_BLACK),
-                ("TOPPADDING", (0, 0), (-1, -1), float(gap_below)),
+                # Sin padding de celda: el hueco lo controlan spaceBefore/After
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                # Elimina la “línea fantasma” de altura de string vacío
+                ("FONTSIZE", (0, 0), (-1, -1), 0.1),
+                ("LEADING", (0, 0), (-1, -1), 0.1),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ]
         )
     )
@@ -313,7 +319,7 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
         font_r, font_b = TICKET_FONT, TICKET_FONT_BOLD
         mute = TICKET_INK
         # Cabecera identidad: un poco de aire antes de la raya de bloque
-        center_bold_after = 1.2
+        center_bold_after = 0.6
     elif fmt == "A5":
         title_sz, body_sz, small_sz, tiny_sz = 12, 9, 8, 7
         after = 2.0
@@ -351,8 +357,8 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
             fontSize=body_sz if fmt == "80mm" else body_sz + 1,
             alignment=0 if fmt == "80mm" else 1,
             leading=(body_sz if fmt == "80mm" else body_sz + 1) + lead_extra,
-            spaceBefore=1.2 if fmt == "80mm" else 2,
-            spaceAfter=1.0 if fmt == "80mm" else 2,
+            spaceBefore=0 if fmt == "80mm" else 2,
+            spaceAfter=0.8 if fmt == "80mm" else 2,
             textColor=TICKET_INK if fmt == "80mm" else colors.black,
             wordWrap="CJK",
         ),

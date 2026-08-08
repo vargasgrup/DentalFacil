@@ -928,7 +928,7 @@ export default function NuevoPacientePage() {
                 se registra en la cita o en la evolución de esa fecha.
               </p>
             </div>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
               <label className="block">
                 <span className="mb-1 block text-label text-slate-700">
                   Alergias{" "}
@@ -944,8 +944,8 @@ export default function NuevoPacientePage() {
                       focusNext(especialidadRef.current);
                     }
                   }}
-                  rows={4}
-                  className={`${selectClass} min-h-[5.5rem] resize-y`}
+                  rows={3}
+                  className={`${selectClass} min-h-[2.625rem] resize-y`}
                   placeholder="Penicilina, látex… o escriba Ninguna"
                 />
               </label>
@@ -954,8 +954,8 @@ export default function NuevoPacientePage() {
                 label="Especialidades de atención"
                 value={form.especialidades}
                 onChange={(v) => setForm((prev) => ({ ...prev, especialidades: v }))}
-                className="w-full min-w-0"
-                hint="Toque una o varias. Cada cita/evolución guarda la especialidad de esa fecha y la suma al perfil."
+                className="w-full"
+                hint="Puede marcar varias. Cada cita/evolución guarda la especialidad de esa fecha y la suma al perfil."
               />
             </div>
           </section>

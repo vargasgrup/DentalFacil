@@ -1,13 +1,16 @@
 /**
- * Impresión fiel de PDF con panel de trabajo propio (modo escritorio).
+ * Impresión fiel de PDF.
  *
- * - Raster (pdf.js → imagen) con @page del MediaBox.
- * - En WebView2/pywebview el diálogo nativo de Windows al cerrar (X)
- *   a veces cierra TODA la app: el panel N&K permite Cerrar sin matar el host.
+ * - Raster (pdf.js → imagen) con @page del MediaBox del PDF.
+ * - Ticket 80mm: un solo diálogo del sistema (iframe oculto) — sin panel
+ *   intermedio de vista previa (evita doble UI y demora en caja).
+ * - A5/A4: panel N&K (Cerrar sin matar WebView2/pywebview al usar la X del SO).
  */
 
 const PT_TO_MM = 25.4 / 72;
 const RENDER_SCALE = 2.5;
+/** Ancho típico de ticket POS; evita contar 2.ª hoja por redondeo mm/CSS. */
+const TICKET_WIDTH_MM_MAX = 95;
 
 export type PrintFormatHint = "80mm" | "A5" | "A4";
 
@@ -73,6 +76,17 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function isTicketPage(p: RenderedPage, formatHint?: PrintFormatHint): boolean {
+  if (formatHint === "80mm") return true;
+  return p.widthMm > 0 && p.widthMm <= TICKET_WIDTH_MM_MAX;
+}
+
+/** Recorta décimas de mm: Edge/Chromium suelen sumar 2.ª hoja en blanco por overflow 1px. */
+function printPageHeightMm(p: RenderedPage, ticket: boolean): number {
+  const raw = Math.max(20, p.heightMm);
+  return ticket ? Math.max(20, raw - 0.45) : raw;
+}
+
 function buildPrintHtml(
   pages: RenderedPage[],
   options?: { title?: string; formatHint?: PrintFormatHint }
@@ -85,31 +99,41 @@ function buildPrintHtml(
 
   const title = escapeHtml(options?.title || "Documento");
   const first = pages[0];
+  const ticketish =
+    options?.formatHint === "80mm" || pages.every((p) => isTicketPage(p, options?.formatHint));
   const sizeIndex = (p: RenderedPage) =>
     uniqueSizes.findIndex((u) => sizeKey(u) === sizeKey(p));
 
   const pageCss = uniqueSizes
     .map((p, i) => {
       const name = `sheet${i}`;
+      const ticket = isTicketPage(p, options?.formatHint) || ticketish;
+      const hMm = printPageHeightMm(p, ticket);
+      const wMm = p.widthMm.toFixed(2);
       return `
       @page ${name} {
-        size: ${p.widthMm.toFixed(2)}mm ${p.heightMm.toFixed(2)}mm;
+        size: ${wMm}mm ${hMm.toFixed(2)}mm;
         margin: 0;
       }
       .sz-${i} {
         page: ${name};
-        width: ${p.widthMm.toFixed(2)}mm;
-        height: ${p.heightMm.toFixed(2)}mm;
+        width: ${wMm}mm;
+        ${ticket ? "" : `height: ${hMm.toFixed(2)}mm;`}
+        max-height: ${hMm.toFixed(2)}mm;
       }`;
     })
     .join("\n");
 
+  const multi = pages.length > 1;
   const sheetsHtml = pages
     .map((p, i) => {
       const si = sizeIndex(p);
-      return `<div class="sheet sz-${si}"><img src="${p.dataUrl}" alt="Página ${i + 1}" /></div>`;
+      const breakCls = multi && i < pages.length - 1 ? " sheet-break" : "";
+      return `<div class="sheet sz-${si}${breakCls}"><img src="${p.dataUrl}" alt="Página ${i + 1}" width="${Math.round(p.widthMm * 3.78)}" /></div>`;
     })
     .join("\n");
+
+  const firstH = printPageHeightMm(first, ticketish || isTicketPage(first, options?.formatHint));
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -118,31 +142,42 @@ function buildPrintHtml(
   <title>${title}</title>
   <style>
     @page {
-      size: ${first.widthMm.toFixed(2)}mm ${first.heightMm.toFixed(2)}mm;
+      size: ${first.widthMm.toFixed(2)}mm ${firstH.toFixed(2)}mm;
       margin: 0;
     }
     ${pageCss}
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
+      margin: 0;
+      padding: 0;
+      width: ${first.widthMm.toFixed(2)}mm;
       background: #fff;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
     .sheet {
       overflow: hidden;
-      page-break-after: always;
-      break-after: page;
+      margin: 0;
+      padding: 0;
       background: #fff;
-    }
-    .sheet:last-child {
+      page-break-inside: avoid;
+      break-inside: avoid;
       page-break-after: auto;
       break-after: auto;
+    }
+    .sheet.sheet-break {
+      page-break-after: always;
+      break-after: page;
     }
     .sheet img {
       display: block;
       width: 100%;
-      height: 100%;
-      object-fit: fill;
+      height: auto;
+      max-width: 100%;
+      max-height: 100%;
+      margin: 0;
+      border: 0;
+      vertical-align: top;
     }
   </style>
 </head>
@@ -150,6 +185,97 @@ function buildPrintHtml(
   ${sheetsHtml}
 </body>
 </html>`;
+}
+
+/**
+ * Impresión directa: un solo diálogo de impresora (sin panel N&K).
+ * El iframe no es una ventana shell; afterprint limpia sin window.close del host.
+ */
+function printHtmlDirect(html: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof document === "undefined") {
+      resolve();
+      return;
+    }
+
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.setAttribute("title", "Impresión");
+    iframe.style.cssText = [
+      "position:fixed",
+      "right:0",
+      "bottom:0",
+      "width:1px",
+      "height:1px",
+      "opacity:0",
+      "pointer-events:none",
+      "border:0",
+      "z-index:-1",
+    ].join(";");
+    document.body.appendChild(iframe);
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const blobUrl = URL.createObjectURL(blob);
+    let settled = false;
+    let safetyTimer: number | undefined;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (safetyTimer !== undefined) {
+        window.clearTimeout(safetyTimer);
+      }
+      try {
+        iframe.remove();
+      } catch {
+        /* ignore */
+      }
+      try {
+        URL.revokeObjectURL(blobUrl);
+      } catch {
+        /* ignore */
+      }
+      resolve();
+    };
+
+    iframe.addEventListener(
+      "load",
+      () => {
+        const win = iframe.contentWindow;
+        if (!win) {
+          finish();
+          return;
+        }
+        const onAfterPrint = () => {
+          try {
+            win.removeEventListener("afterprint", onAfterPrint);
+          } catch {
+            /* ignore */
+          }
+          window.setTimeout(finish, 250);
+        };
+        try {
+          win.addEventListener("afterprint", onAfterPrint);
+        } catch {
+          /* ignore */
+        }
+        // Si afterprint no dispara (algunos WebView), no dejar el iframe colgado
+        safetyTimer = window.setTimeout(finish, 180_000);
+        // Pequeño delay: motor de layout del iframe y fuentes antes de print()
+        window.setTimeout(() => {
+          try {
+            win.focus();
+            win.print();
+          } catch {
+            finish();
+          }
+        }, 80);
+      },
+      { once: true }
+    );
+
+    iframe.src = blobUrl;
+  });
 }
 
 /**
@@ -338,7 +464,9 @@ function openClinicPrintWorkbench(
 }
 
 /**
- * Imprime un PDF (Blob) vía panel de trabajo interno (Imprimir / Cerrar).
+ * Imprime un PDF (Blob).
+ * - 80mm / ticket: solo el diálogo del sistema (rápido en caja y matriciales).
+ * - A5/A4: panel de vista previa N&K y luego diálogo de impresora.
  */
 export async function printPdfBlob(
   blob: Blob,
@@ -354,12 +482,22 @@ export async function printPdfBlob(
     ...options,
     title: options?.title ? options.title : "\u00a0",
   });
+
+  const ticketDirect =
+    options?.formatHint === "80mm" ||
+    (pages.length === 1 && isTicketPage(pages[0], options?.formatHint));
+
+  if (ticketDirect) {
+    await printHtmlDirect(html);
+    return;
+  }
+
   await openClinicPrintWorkbench(html, { title: options?.title || "Imprimir" });
 }
 
 export function resetPrintFormatPrefsIfNeeded(): void {
   if (typeof window === "undefined") return;
-  const FLAG = "ds_print_pipeline_v8";
+  const FLAG = "ds_print_pipeline_v9";
   if (localStorage.getItem(FLAG) === "1") return;
   localStorage.removeItem("pdf_format_pref");
   localStorage.setItem(FLAG, "1");

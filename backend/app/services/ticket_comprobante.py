@@ -262,10 +262,30 @@ def _p_html(text: str, style: ParagraphStyle) -> Paragraph:
     return Paragraph(text, style)
 
 
-# Separadores: en ticket 80mm se evitan reglas dibujadas (matricial lento y
-# cortes en térmicas). Los bloques se delimitan con títulos en negrita + espacio.
+# Separadores 80mm: pocas rayas horizontales sólidas (negro puro).
+# Matriciales son lentas dibujando gráficos: 3–4 reglas por tique, no una por línea.
 def _block_space(*, tight: bool) -> Spacer:
     return Spacer(1, 2.2 * mm if tight else 3.5 * mm)
+
+
+def _ink_rule(content_w: float, *, compact: bool = True) -> Table:
+    """Línea sólida de bloque (0.6–0.75 pt). Poco padding para no alargar el rollo."""
+    thick = 0.65
+    pad_top = 1.1 if compact else 1.6
+    pad_bot = 0.9 if compact else 1.4
+    t = Table([[""]], colWidths=[max(1.0, float(content_w))], hAlign="LEFT")
+    t.setStyle(
+        TableStyle(
+            [
+                ("LINEABOVE", (0, 0), (-1, 0), thick, TICKET_BLACK),
+                ("TOPPADDING", (0, 0), (-1, -1), pad_top),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), pad_bot),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    return t
 
 
 def _styles(fmt: str) -> dict[str, ParagraphStyle]:
@@ -409,10 +429,9 @@ def _styles(fmt: str) -> dict[str, ParagraphStyle]:
 
 
 def _sep(content_w: float, *, tight: bool = False) -> Spacer | Table:
-    """Compat: 80mm = espacio (sin raya); A5/A4 mantiene regla fina opcional."""
+    """80mm: raya negra de bloque; A5/A4: raya gris fina."""
     if tight:
-        return _block_space(tight=True)
-    # A5/A4: linea suave (no 80mm)
+        return _ink_rule(content_w, compact=True)
     thick = 0.5
     gap = 2.0
     ink = colors.HexColor("#64748b")
@@ -504,10 +523,10 @@ def build_comprobante_story(
         story.append(_p(dir_txt, styles["center_small"]))
 
     story.append(Spacer(1, 1.0 * mm if tight else 2.5 * mm))
-    # Bloque título: solo negrita (sin rayas — matricial/térmica)
+    # Identidad del documento (centro) + raya de cierre de cabecera
     story.append(_p("COMPROBANTE DE PAGO", styles["center_bold"]))
     story.append(_p(serie, styles["center_bold"]))
-    story.append(_block_space(tight=tight) if tight else _sep(content_w, tight=False))
+    story.append(_sep(content_w, tight=tight))
 
     field = styles["field"]
     story.append(_p_html(f"<b>F. Emisión:</b> {_esc(f_emision)}", field))
@@ -519,9 +538,10 @@ def build_comprobante_story(
     if direccion and direccion != "—":
         story.append(_p_html(f"<b>Dirección:</b> {_esc(direccion)}", field))
 
-    story.append(_block_space(tight=tight) if tight else _sep(content_w, tight=False))
+    # Cierre bloque cliente → detalle de cobro
+    story.append(_sep(content_w, tight=tight))
 
-    # --- Ítems (sin rayas horizontales)
+    # --- Ítems
     header_fs = 8 if fmt == "80mm" else 8
     body_fs = 9 if fmt == "80mm" else 9
     font_r = TICKET_FONT if fmt == "80mm" else "Helvetica"
@@ -629,14 +649,15 @@ def build_comprobante_story(
         ("RIGHTPADDING", (0, 0), (-1, -1), pad_x),
         ("TOPPADDING", (0, 0), (-1, -1), pad_y),
         ("BOTTOMPADDING", (0, 0), (-1, -1), pad_y),
+        # Una sola raya bajo cabecera de columnas (80mm y hoja)
+        ("LINEBELOW", (0, 0), (-1, 0), 0.55 if tight else 0.5, TICKET_BLACK),
     ]
-    # Solo A5/A4: rayas opcionales (no 80mm)
     if not tight:
-        style_cmds.append(("LINEBELOW", (0, 0), (-1, 0), 0.5, TICKET_BLACK))
         style_cmds.append(("LINEBELOW", (0, -1), (-1, -1), 0.5, TICKET_BLACK))
     items_table.setStyle(TableStyle(style_cmds))
     story.append(items_table)
-    story.append(_block_space(tight=tight) if tight else Spacer(1, 1.2 * mm))
+    # Detalle/total → se distingue del resto con raya (no relleno extra en 80mm)
+    story.append(_sep(content_w, tight=tight) if tight else Spacer(1, 1.2 * mm))
 
     # --- Totales y pagos
     story.append(
@@ -655,6 +676,7 @@ def build_comprobante_story(
     t_ac = data.get("tratamiento_a_cuenta")
     t_saldo = data.get("tratamiento_saldo")
     if t_costo is not None and t_ac is not None and t_saldo is not None:
+        # Sin raya extra (matricial): el bloque va tras pagos, ya delimitado arriba
         story.append(Spacer(1, 0.8 * mm if tight else 1.2 * mm))
         story.append(_p_html("<b>Estado del tratamiento:</b>", field))
         story.append(_p(f"Costo: {format_price_plain(float(t_costo))}", field))
@@ -671,10 +693,14 @@ def build_comprobante_story(
                     field,
                 )
             )
+    elif not tight:
+        story.append(Spacer(1, 0.8 * mm))
 
+    story.append(Spacer(1, 0.6 * mm if tight else 0.8 * mm))
     story.append(_p_html(f"<b>Atendido por:</b> {_esc(vendedor)}", field))
 
-    story.append(_block_space(tight=tight) if tight else _sep(content_w, tight=False))
+    # Pie de verificación (hash + QR)
+    story.append(_sep(content_w, tight=tight))
     story.append(
         _p("Código hash:", styles["left_bold"] if tight else styles["left"])
     )

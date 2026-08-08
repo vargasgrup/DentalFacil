@@ -118,13 +118,15 @@ def _render_pdf_bytes(
         measure_story = _fresh_story()
         usable_w = TICKET_WIDTH - left_m - right_m
         content_h = _measure_story_height(measure_story, usable_w)
-        # wrap() subestima ligeramente; padding mínimo evita 2ª página sin
-        # inflar una banda blanca grande en la vista previa de impresión.
-        page_h = max(50 * mm, content_h + top_m + bottom_m + 4 * mm)
+        # +3 mm sobre la medida: wrap() de ReportLab subestima un poco.
+        # Crecimiento por pasos fijos (no *1.35) evita tiques de ~A4 con hueco
+        # y 2.ª «hoja» fantasma en la vista de impresión de Edge.
+        page_h = max(55 * mm, content_h + top_m + bottom_m + 3.0 * mm)
         page_size = (TICKET_WIDTH, page_h)
         pdf_bytes = b""
+        best_single: bytes | None = None
 
-        for attempt in range(6):
+        for attempt in range(14):
             # Siempre story fresco: build consume flowables
             current = _fresh_story()
             buf = io.BytesIO()
@@ -145,16 +147,21 @@ def _render_pdf_bytes(
             pdf_bytes = buf.getvalue()
             buf.close()
 
-            # PDF vacío / casi vacío = story reutilizado o fallo de layout
             if page_count[0] <= 1 and len(pdf_bytes) >= 2500:
+                # Primer ajuste que cabe: alto util sin bloat
+                if best_single is None or len(pdf_bytes) <= len(best_single) + 2000:
+                    best_single = pdf_bytes
                 return pdf_bytes
 
-            page_h = min(page_h * 1.35, 2000 * mm)
+            # Multisida: sobra poco (no multiplicar; sumar)
+            page_h = min(page_h + (10 * mm if attempt < 6 else 18 * mm), 900 * mm)
             page_size = (TICKET_WIDTH, page_h)
 
             if not callable(story):
-                # Sin factory no se puede reintentar con seguridad
                 break
+
+        if best_single is not None:
+            return best_single
 
         if len(pdf_bytes) < 2500:
             raise RuntimeError(

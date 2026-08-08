@@ -31,6 +31,7 @@ import {
   type AppModule,
 } from "@/lib/roles";
 import { notifyClinicProfileUpdated } from "@/lib/clinicBrand";
+import { recoverClinicMainPaint } from "@/lib/desktopViewport";
 
 export default function ConfiguracionPage() {
   const { user: currentUser, refreshUser, demoMode } = useAuth();
@@ -228,11 +229,22 @@ export default function ConfiguracionPage() {
       setClinicMsg("El logo no debe superar 10 MB");
       return;
     }
+    // Snapshot bytes early (WebView2 may invalidate File after dialog closes)
+    let uploadFile: File = file;
+    try {
+      const buf = await file.arrayBuffer();
+      uploadFile = new File([buf], file.name || "logo.png", {
+        type: file.type || "image/png",
+        lastModified: file.lastModified || Date.now(),
+      });
+    } catch {
+      /* use original File */
+    }
     setLogoBusy(true);
     setClinicMsg("");
     try {
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", uploadFile, uploadFile.name);
       const updated = await apiUpload<ClinicProfile>("/api/config/clinic/logo", fd);
       setClinic(updated);
       // Broadcast BEFORE preview fetch so sidebar/login flip immediately.
@@ -259,6 +271,7 @@ export default function ConfiguracionPage() {
       setClinicMsg(err instanceof Error ? err.message : "Error al subir logo");
     } finally {
       setLogoBusy(false);
+      recoverClinicMainPaint();
     }
   };
 

@@ -31,6 +31,9 @@ os.environ["APP_ENV"] = "test"
 os.environ["MAINTENANCE_ACCESS_KEY"] = "Solo,yo1532"
 os.environ["RATE_LIMIT_LOGIN_PER_MINUTE"] = "1000"
 os.environ["RATE_LIMIT_SETUP_PER_MINUTE"] = "1000"
+# Suite asume DEMO off; los tests de demo_mode lo activan con monkeypatch.
+os.environ["DEMO_MODE"] = "false"
+os.environ["NKDENTALSOFT_DEMO"] = "0"
 
 ADMIN_EMAIL = "admin@example.com"
 ADMIN_USERNAME = "Admin"

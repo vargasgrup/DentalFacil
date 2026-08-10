@@ -111,8 +111,8 @@ class Settings(BaseSettings):
 
     # Shared DEMO (Railway / multi-user same Admin credentials).
     # true | 1 | yes | on — locks Admin username/password changes until disabled.
-    # Note: product currently forces DEMO off in validators below.
     # Desktop clinic installs should leave this false/unset.
+    # Alias de entorno: NKDENTALSOFT_DEMO=1
     DEMO_MODE: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -127,13 +127,34 @@ class Settings(BaseSettings):
     @field_validator("DEMO_MODE", mode="before")
     @classmethod
     def _parse_demo_mode(cls, v: object) -> object:
-        # DEMO desactivado por pedido del producto (2026-08).
-        # Para reactivar demos multi-usuario: quitar este return False y usar DEMO_MODE=true.
+        def _truthy(raw: object) -> bool | None:
+            if raw is None or raw is False or raw == "":
+                return False
+            if raw is True:
+                return True
+            if isinstance(raw, (int, float)):
+                return bool(raw)
+            s = str(raw).strip().lower()
+            if s in ("1", "true", "yes", "on", "demo"):
+                return True
+            if s in ("0", "false", "no", "off"):
+                return False
+            return None
+
+        parsed = _truthy(v)
+        if parsed is True:
+            return True
+        # Alias usado en demos / scripts sin tocar .env principal
+        alias = _truthy(os.environ.get("NKDENTALSOFT_DEMO"))
+        if alias is True:
+            return True
+        if parsed is False:
+            return False
         return False
 
     @property
     def demo_mode(self) -> bool:
-        return False
+        return bool(self.DEMO_MODE)
 
     @property
     def is_production(self) -> bool:

@@ -22,7 +22,6 @@ DEMO_ADMIN_CREDENTIALS_DETAIL = (
 
 
 def is_demo_mode() -> bool:
-    # Always honor settings (DEMO currently forced off in config.py).
     return bool(settings.demo_mode)
 
 

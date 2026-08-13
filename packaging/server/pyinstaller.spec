@@ -31,6 +31,7 @@ a = Analysis(
     datas=_datas,
     hiddenimports=[
         "server_entry",
+        "desktop_runtime",
         "app.frontend_static",
         "uvicorn.logging",
         "uvicorn.loops",

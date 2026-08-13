@@ -17,6 +17,22 @@ import time
 import traceback
 from pathlib import Path
 
+from desktop_runtime import (
+    DESKTOP_RETRY_WAIT_SECONDS,
+    DESKTOP_WAIT_SECONDS,
+    INPROCESS_WAIT_SECONDS,
+    MUTEX_HELD_NOT_LISTENING,
+    diagnose_failure,
+    foreground_log_path,
+    http_ready,
+    log_recently_written,
+    port_open,
+    server_ready,
+    sibling_server_pids,
+    terminate_pids,
+    wait_until_ready,
+)
+
 
 def _boot_log(msg: str) -> None:
     """Log before server_entry is importable (service / early crashes)."""
@@ -52,6 +68,8 @@ def _purge_shadow_modules(*roots: Path) -> None:
             root / "_internal" / "server_entry.py",
             root / "windows_service.py",
             root / "_internal" / "windows_service.py",
+            root / "desktop_runtime.py",
+            root / "_internal" / "desktop_runtime.py",
         ):
             try:
                 if stale.is_file():
@@ -124,7 +142,7 @@ def _ensure_path() -> None:
     _purge_shadow_modules(install, pf, Path(meipass) if meipass else None)
 
 
-def run_uvicorn() -> None:
+def run_uvicorn() -> int:
     _ensure_path()
     # One long-lived API process per session (installer + Open-UI can race).
     if sys.platform == "win32":
@@ -136,48 +154,63 @@ def run_uvicorn() -> None:
         )
         if handle and ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
             ctypes.windll.kernel32.CloseHandle(handle)
-            _boot_log("[foreground] another instance already holds mutex — exiting")
-            return
+            port = int(os.environ.get("BACKEND_PORT", "8001"))
+            if port_open(port) or http_ready(f"http://127.0.0.1:{port}/api/system/health"):
+                _boot_log("[foreground] another instance is already listening — exiting")
+                return 0
+            _boot_log(
+                "[foreground] mutex held but port closed — exiting "
+                "(launcher will wait or recover the stale holder)"
+            )
+            return MUTEX_HELD_NOT_LISTENING
         # Keep handle alive for process lifetime (prevent GC closing mutex).
         run_uvicorn._instance_mutex = handle  # type: ignore[attr-defined]
 
     from server_entry import run_server
 
     run_server()
+    return 0
 
 
-def _port_open(port: int, host: str = "127.0.0.1", timeout: float = 0.8) -> bool:
-    import socket
-
-    try:
-        with socket.create_connection((host, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
-
-
-def _start_foreground_detached() -> None:
-    """Start a hidden long-lived server process (user session)."""
+def _start_foreground_detached(root: Path):
+    """Start a hidden long-lived server; capture stdout/stderr to foreground.log."""
     import subprocess
+    from datetime import datetime, timezone
 
     port = int(os.environ.get("BACKEND_PORT", "8001"))
-    if _port_open(port):
-        return
+    if port_open(port):
+        return None
 
     exe = Path(sys.executable).resolve()
+    log_path = foreground_log_path(root)
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        fh = log_path.open("a", encoding="utf-8", errors="replace")
+        fh.write(f"\n--- detached --foreground {datetime.now(timezone.utc).isoformat()} ---\n")
+        fh.flush()
+    except OSError:
+        fh = subprocess.DEVNULL
+
     creation = 0
     if sys.platform == "win32":
         # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
         creation = 0x00000008 | 0x00000200 | 0x08000000
-    subprocess.Popen(
-        [str(exe), "--foreground"],
-        cwd=str(_install_dir()),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=creation,
-        close_fds=True,
-    )
+    try:
+        proc = subprocess.Popen(
+            [str(exe), "--foreground"],
+            cwd=str(_install_dir()),
+            stdin=subprocess.DEVNULL,
+            stdout=fh,
+            stderr=fh,
+            creationflags=creation,
+        )
+    finally:
+        if fh is not subprocess.DEVNULL:
+            try:
+                fh.close()
+            except OSError:
+                pass
+    return proc
 
 
 def _browser_candidates() -> list[Path]:
@@ -589,6 +622,44 @@ def run_clinic_webview(url: str) -> int:
         return 1
 
 
+def _desktop_ready(port: int, use_tls: bool) -> bool:
+    return server_ready(port, use_tls=use_tls)
+
+
+def _print_desktop_progress(msg: str) -> None:
+    print(msg, flush=True)
+
+
+def _wait_for_server(port: int, use_tls: bool, log, *, timeout: float, child=None, thread=None):
+    def _child_alive():
+        if thread is not None:
+            return thread.is_alive()
+        if child is None:
+            siblings = sibling_server_pids()
+            return bool(siblings)
+        return child.poll() is None
+
+    watch_child = child is not None or thread is not None or bool(sibling_server_pids())
+    return wait_until_ready(
+        timeout=timeout,
+        is_ready=lambda: _desktop_ready(port, use_tls),
+        child_alive=_child_alive if watch_child else None,
+        log_progress=lambda m: (log(f"desktop: {m}"), _print_desktop_progress(m)),
+    )
+
+
+def _recover_stale_servers(log, root: Path) -> list[int]:
+    stale = sibling_server_pids()
+    if not stale:
+        return []
+    startup = root / "logs" / "startup.log"
+    if log_recently_written(startup):
+        log("desktop: sibling still writing startup.log — not killing (bootstrap in progress)")
+        return []
+    log(f"desktop: terminating stale server PID(s) {stale} (not listening, log idle)")
+    return terminate_pids(stale)
+
+
 def run_desktop(open_browser: bool = True) -> int:
     """Ensure the API/UI is reachable, then open the branded clinic window."""
     _ensure_path()
@@ -611,24 +682,86 @@ def run_desktop(open_browser: bool = True) -> int:
 
     url = f"{'https' if use_tls else 'http'}://127.0.0.1:{port}/"
     log(f"desktop ensure url={url} (local UI only; API binds HOST=0.0.0.0 for LAN)")
+    _print_desktop_progress("Iniciando N&K DentalSoft. No cierre esta ventana…")
+    _print_desktop_progress(
+        "El primer arranque (o una actualización con pacientes) puede tardar unos minutos."
+    )
 
-    if not _port_open(port):
-        log("desktop: port closed — starting detached --foreground")
-        _start_foreground_detached()
-        for i in range(60):
-            time.sleep(0.5)
-            if _port_open(port):
-                log(f"desktop: port {port} open after {(i + 1) * 0.5:.1f}s")
-                break
+    if _desktop_ready(port, use_tls):
+        log("desktop: server already serving")
+    else:
+        siblings = sibling_server_pids()
+        child = None
+        if siblings:
+            log(f"desktop: waiting for existing server PID(s) {siblings} (no second instance)")
+            _print_desktop_progress("Hay un servidor en marcha. Esperando a que abra el puerto…")
         else:
-            log("desktop: FATAL — server did not open port")
-            print(
-                f"\nNo responde {url}\n"
-                f"Revise: {root / 'logs' / 'startup.log'}\n"
-                "Ejecute como Administrador: scripts\\repair_startup.cmd\n",
-                flush=True,
-            )
-            return 1
+            log("desktop: port closed — starting detached --foreground")
+            child = _start_foreground_detached(root)
+            if child is not None:
+                log(f"desktop: detached PID={child.pid}")
+
+        result = _wait_for_server(
+            port, use_tls, log, timeout=DESKTOP_WAIT_SECONDS, child=child
+        )
+        if result.ok:
+            log(f"desktop: ready after {result.elapsed:.1f}s ({result.reason})")
+        else:
+            log(f"desktop: first wait failed ({result.reason}) after {result.elapsed:.1f}s")
+            startup_log = root / "logs" / "startup.log"
+            if log_recently_written(startup_log) and sibling_server_pids():
+                log("desktop: bootstrap still in progress — extending wait")
+                _print_desktop_progress("Migrando datos de la clínica. Espere, no cierre la ventana…")
+                result = _wait_for_server(
+                    port, use_tls, log, timeout=DESKTOP_WAIT_SECONDS, child=child
+                )
+            if result.ok or _desktop_ready(port, use_tls):
+                log(f"desktop: ready after extended wait ({result.reason})")
+            else:
+                _recover_stale_servers(log, root)
+                time.sleep(1.5)
+                if _desktop_ready(port, use_tls):
+                    log("desktop: ready after stale-process recovery")
+                else:
+                    log("desktop: retry detached --foreground")
+                    child = _start_foreground_detached(root)
+                    result = _wait_for_server(
+                        port, use_tls, log, timeout=DESKTOP_RETRY_WAIT_SECONDS, child=child
+                    )
+                    if not result.ok and not _desktop_ready(port, use_tls):
+                        log("desktop: detached failed — starting API in this process")
+                        _recover_stale_servers(log, root)
+                        time.sleep(1.0)
+                        _print_desktop_progress("Arranque interno de respaldo…")
+                        worker = threading.Thread(
+                            target=run_uvicorn, name="nkds-inprocess", daemon=True
+                        )
+                        worker.start()
+                        result = _wait_for_server(
+                            port,
+                            use_tls,
+                            log,
+                            timeout=INPROCESS_WAIT_SECONDS,
+                            thread=worker,
+                        )
+                    if result.ok or _desktop_ready(port, use_tls):
+                        log(f"desktop: ready after fallback ({result.reason})")
+                    else:
+                        log("desktop: FATAL — server did not open port")
+                        detail = diagnose_failure(
+                            startup_log,
+                            foreground_log_path(root),
+                        )
+                        print(
+                            f"\nNo responde {url}\n"
+                            f"Revise: {startup_log}\n"
+                            f"También: {foreground_log_path(root)}\n"
+                            "Ejecute como Administrador: scripts\\repair_startup.cmd\n",
+                            flush=True,
+                        )
+                        if detail:
+                            print(detail, flush=True)
+                        return 1
 
     if not open_browser:
         return 0
@@ -748,7 +881,9 @@ def main() -> None:
                 "yes",
             }:
                 os.environ.setdefault("NKDENTALSOFT_DISABLE_TLS", "1")
-            run_uvicorn()
+            code = run_uvicorn()
+            if code:
+                sys.exit(code)
             return
 
         if win32serviceutil is None:

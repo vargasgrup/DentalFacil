@@ -89,7 +89,9 @@ Run-Hidden -FilePath "sc.exe" -ArgumentList @("delete", "NKDentalSoftServer") -S
   (Join-Path $InstallDir "server_entry.py"),
   (Join-Path $InstallDir "_internal\server_entry.py"),
   (Join-Path $InstallDir "windows_service.py"),
-  (Join-Path $InstallDir "_internal\windows_service.py")
+  (Join-Path $InstallDir "_internal\windows_service.py"),
+  (Join-Path $InstallDir "desktop_runtime.py"),
+  (Join-Path $InstallDir "_internal\desktop_runtime.py")
 ) | ForEach-Object {
   if (Test-Path -LiteralPath $_) {
     Remove-Item -LiteralPath $_ -Force -ErrorAction SilentlyContinue
@@ -151,27 +153,64 @@ function Start-ServerHidden {
   Start-Process -FilePath $exe -ArgumentList "--foreground" -WorkingDirectory $InstallDir -WindowStyle Hidden
 }
 
-# First post-install start: AV first-scan can take 60-90s on a fresh EXE
+function Test-LogFresh([string]$Path, [int]$Seconds = 45) {
+  if (-not (Test-Path -LiteralPath $Path)) { return $false }
+  try {
+    $age = (Get-Date) - (Get-Item -LiteralPath $Path).LastWriteTime
+    return ($age.TotalSeconds -le $Seconds)
+  } catch {
+    return $false
+  }
+}
+
+# First post-install / upgrade: existing clinica.db migrations + Defender first-scan
+# can exceed 90s. NEVER taskkill a process that is still writing startup.log.
+$startupLog = Join-Path $logDir "startup.log"
 $ok = $false
-for ($attempt = 1; $attempt -le 3; $attempt++) {
+for ($attempt = 1; $attempt -le 2; $attempt++) {
   if (Test-PortOpen) {
     Write-Boot ("[desktop] Port 8001 already listening (attempt " + $attempt + ")")
     $ok = $true
     break
   }
-  Start-ServerHidden
-  for ($i = 1; $i -le 90; $i++) {
+  $alive = Get-Process -Name "nkdentalsoft-server" -ErrorAction SilentlyContinue
+  if (-not $alive) {
+    Start-ServerHidden
+  } else {
+    Write-Boot ("[desktop] Server already running PID=" + (($alive | ForEach-Object { $_.Id }) -join ","))
+  }
+  for ($i = 1; $i -le 180; $i++) {
     if (Test-PortOpen) {
       Write-Boot ("[desktop] Port 8001 open after " + $i + "s (attempt " + $attempt + ")")
       $ok = $true
       break
     }
+    $alive = Get-Process -Name "nkdentalsoft-server" -ErrorAction SilentlyContinue
+    if (-not $alive -and $i -ge 8) {
+      Write-Boot ("[desktop] process exited at " + $i + "s - will retry")
+      break
+    }
+    if (($i % 15) -eq 0) {
+      $fresh = Test-LogFresh -Path $startupLog -Seconds 45
+      Write-Boot ("[desktop] still waiting " + $i + "s alive=" + [bool]$alive + " logFresh=" + $fresh)
+    }
     Start-Sleep -Seconds 1
   }
   if ($ok) { break }
+  $alive = Get-Process -Name "nkdentalsoft-server" -ErrorAction SilentlyContinue
+  $fresh = Test-LogFresh -Path $startupLog -Seconds 45
+  if ($alive -and $fresh) {
+    Write-Boot "[desktop] PARTIAL OK - process still bootstrapping (do not kill mid-migration)"
+    exit 0
+  }
+  if ($alive -and -not $fresh) {
+    Write-Boot "[desktop] stale process (no log progress) - restarting once"
+    Run-Hidden -FilePath "cmd.exe" -ArgumentList @("/c", "taskkill /F /IM nkdentalsoft-server.exe /T") -Seconds 15 | Out-Null
+    Start-Sleep -Seconds 3
+    continue
+  }
   Write-Boot ("[desktop] Attempt " + $attempt + " timed out - retrying")
-  Run-Hidden -FilePath "cmd.exe" -ArgumentList @("/c", "taskkill /F /IM nkdentalsoft-server.exe /T") -Seconds 15 | Out-Null
-  Start-Sleep -Seconds 3
+  Start-Sleep -Seconds 2
 }
 
 if ($ok) {

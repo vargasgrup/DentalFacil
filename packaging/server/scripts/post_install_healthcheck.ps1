@@ -2,7 +2,7 @@
 param(
   [string]$BaseUrl = "http://127.0.0.1:8001",
   [string]$InstallDir = "",
-  [int]$Retries = 40,
+  [int]$Retries = 90,
   [int]$DelaySeconds = 2
 )
 

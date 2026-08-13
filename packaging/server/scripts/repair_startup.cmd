@@ -34,7 +34,7 @@ if not exist "%INSTALL%\web\index.html" (
   exit /b 1
 )
 
-echo [3/3] Abriendo aplicacion...
+echo [3/3] Abriendo aplicacion (el primer arranque puede tardar unos minutos)...
 "%INSTALL%\nkdentalsoft-server.exe" --desktop
 echo.
 echo Si no abrio la ventana, use el navegador: http://127.0.0.1:8001/

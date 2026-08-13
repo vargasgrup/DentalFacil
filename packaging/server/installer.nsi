@@ -10,8 +10,8 @@
 
 !define PRODUCT_NAME "N&K DentalSoft Server"
 !define PRODUCT_PUBLISHER "N&K Systems"
-!define PRODUCT_VERSION "4.0.1"
-!define PRODUCT_VERSION_NUM "4.0.1.0"
+!define PRODUCT_VERSION "4.0.2"
+!define PRODUCT_VERSION_NUM "4.0.2.0"
 !define PRODUCT_REG_ROOT "Software\NKDentalSoft\Server"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\NKDentalSoftServer"
 
@@ -173,6 +173,8 @@ Section "Install"
   Delete "$INSTDIR\_internal\server_entry.py"
   Delete "$INSTDIR\windows_service.py"
   Delete "$INSTDIR\_internal\windows_service.py"
+  Delete "$INSTDIR\desktop_runtime.py"
+  Delete "$INSTDIR\_internal\desktop_runtime.py"
 
   ; Desktop-first: remove legacy Win32 service (zombie Session-0) and register Scheduled Task
   ; PowerShell 64-bit explícito (evita SysWOW64 roto en algunos PC)

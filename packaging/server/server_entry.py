@@ -362,7 +362,9 @@ def run_server() -> None:
     ui_probe = Path(os.environ.get("NKDENTALSOFT_UI_DIR") or (_install_dir() / "web"))
     log(f"UI index exists={ (ui_probe / 'index.html').is_file() } path={ui_probe / 'index.html'}")
     try:
+        log("schema bootstrap starting (existing clinic DB may take a few minutes)")
         bootstrap_schema()
+        log("schema bootstrap done")
     except Exception as exc:  # noqa: BLE001
         log(f"schema bootstrap failed: {exc}")
         traceback.print_exc()

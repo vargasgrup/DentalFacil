@@ -22,6 +22,7 @@ from desktop_runtime import (
     DESKTOP_WAIT_SECONDS,
     INPROCESS_WAIT_SECONDS,
     MUTEX_HELD_NOT_LISTENING,
+    data_writable,
     diagnose_failure,
     foreground_log_path,
     http_ready,
@@ -691,6 +692,21 @@ def run_desktop(open_browser: bool = True) -> int:
         log("desktop: server already serving")
     else:
         siblings = sibling_server_pids()
+        # Nothing else is starting up: a read-only data dir will never open the port,
+        # so say so now instead of timing out for minutes.
+        if not siblings:
+            writable, why = data_writable(root)
+            if not writable:
+                log(f"desktop: clinic data not writable — {why}")
+                print(
+                    "\nNo se puede iniciar N&K DentalSoft con este usuario.\n"
+                    f"{why}\n\n"
+                    "Solucion (una sola vez, como Administrador):\n"
+                    f"  {_install_dir() / 'scripts' / 'repair_startup.cmd'}\n\n"
+                    "Despues el sistema abrira con doble clic, sin Administrador.\n",
+                    flush=True,
+                )
+                return 1
         child = None
         if siblings:
             log(f"desktop: waiting for existing server PID(s) {siblings} (no second instance)")

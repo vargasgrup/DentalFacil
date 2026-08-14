@@ -10,8 +10,8 @@
 
 !define PRODUCT_NAME "N&K DentalSoft Server"
 !define PRODUCT_PUBLISHER "N&K Systems"
-!define PRODUCT_VERSION "4.0.2"
-!define PRODUCT_VERSION_NUM "4.0.2.0"
+!define PRODUCT_VERSION "4.0.3"
+!define PRODUCT_VERSION_NUM "4.0.3.0"
 !define PRODUCT_REG_ROOT "Software\NKDentalSoft\Server"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\NKDentalSoftServer"
 
@@ -142,6 +142,7 @@ Section "Install"
   File "scripts\rename_locked_exe.ps1"
   File "scripts\prepare_overwrite_install.ps1"
   File "scripts\post_install_healthcheck.ps1"
+  File "scripts\grant_clinic_data_access.ps1"
   File "scripts\enable_clinic_hotspot.ps1"
   File /nonfatal "scripts\*.*"
   ; Also next to BAT for USB/manual copies that omit scripts\
@@ -194,7 +195,7 @@ Section "Install"
   ${EndIf}
   ${If} $0 != 0
     MessageBox MB_ICONEXCLAMATION \
-      "El servidor quedo instalado, pero el arranque automatico fallo.$\r$\n$\r$\n1) Acepte UAC y ejecute como Administrador:$\r$\n$INSTDIR\scripts\repair_startup.cmd$\r$\n$\r$\n2) O use el acceso directo 'N&K DentalSoft' del Escritorio.$\r$\n$\r$\nLog: $COMMONPROGRAMDATA\NKDentalSoft\logs\install_autostart.log"
+      "El servidor quedo instalado, pero el arranque automatico fallo.$\r$\n$\r$\nSin esa tarea, tras reiniciar el sistema solo abriria 'como Administrador'.$\r$\n$\r$\n1) Acepte UAC y ejecute como Administrador:$\r$\n$INSTDIR\scripts\repair_startup.cmd$\r$\n$\r$\n2) Vuelva a abrir el acceso directo 'N&K DentalSoft' del Escritorio.$\r$\n$\r$\nLogs: $COMMONPROGRAMDATA\NKDentalSoft\logs\install_autostart.log$\r$\n$COMMONPROGRAMDATA\NKDentalSoft\logs\grant_data_access.log"
   ${EndIf}
 
   ; Desktop = open UI (what clinic staff expect)

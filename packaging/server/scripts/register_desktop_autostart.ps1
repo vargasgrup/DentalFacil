@@ -48,10 +48,22 @@ if (-not (Test-Path -LiteralPath $exe)) {
   throw ("Server exe not found: " + $exe)
 }
 
+function Quote-Arg([string]$Value) {
+  # Start-Process joins -ArgumentList verbatim with spaces and never quotes it, so an
+  # install path with a space (C:\Program Files\...) or a task name with a space used
+  # to arrive as two broken tokens. Quote every argument ourselves.
+  if ($null -eq $Value -or $Value -eq "") { return '""' }
+  if ($Value -match '[\s"]') {
+    return '"' + ($Value -replace '"', '\"') + '"'
+  }
+  return $Value
+}
+
 function Run-Hidden {
   param([string]$FilePath, [string[]]$ArgumentList, [int]$Seconds = 60)
   try {
-    $p = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -WindowStyle Hidden -PassThru -ErrorAction Stop
+    $line = (@($ArgumentList) | ForEach-Object { Quote-Arg $_ }) -join " "
+    $p = Start-Process -FilePath $FilePath -ArgumentList $line -WindowStyle Hidden -PassThru -ErrorAction Stop
     if (-not $p.WaitForExit($Seconds * 1000)) {
       try { $p.Kill() } catch {}
       return 124
@@ -101,26 +113,124 @@ Run-Hidden -FilePath "sc.exe" -ArgumentList @("delete", "NKDentalSoftServer") -S
 
 Start-Sleep -Seconds 2
 
+# Clinic data must be writable by the logged-on user, or a plain double-click can
+# never start the server (only "Run as Administrator" would work).
+$grantScript = Join-Path $InstallDir "scripts\grant_clinic_data_access.ps1"
+if (Test-Path -LiteralPath $grantScript) {
+  Write-Boot "[desktop] Granting clinic data write access to standard users..."
+  $code = Run-Hidden -FilePath $psExe -ArgumentList @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $grantScript
+  ) -Seconds 120
+  Write-Boot ("[desktop] grant_clinic_data_access exit=" + $code)
+  if ($code -ne 0) {
+    Write-Boot "[desktop] WARNING: clinic data may stay read-only for standard users"
+  }
+} else {
+  Write-Boot ("[desktop] WARNING: missing " + $grantScript)
+}
+
 $taskName = "NKDentalSoft Server"
 Write-Boot ("[desktop] Registering Scheduled Task '" + $taskName + "' (ONLOGON)...")
-Run-Hidden -FilePath "schtasks.exe" -ArgumentList @("/Delete", "/TN", $taskName, "/F") -Seconds 15 | Out-Null
 
-$tr = '"' + $exe + '" --foreground'
-$taskOk = $false
-$code = Run-Hidden -FilePath "schtasks.exe" -ArgumentList @(
-  "/Create", "/TN", $taskName, "/TR", $tr, "/SC", "ONLOGON", "/RL", "HIGHEST", "/F", "/IT"
-) -Seconds 20
-if ($code -ne 0) {
-  Write-Boot ("[desktop] WARNING: schtasks HIGHEST exit=" + $code + " - trying LIMITED")
-  $code = Run-Hidden -FilePath "schtasks.exe" -ArgumentList @(
-    "/Create", "/TN", $taskName, "/TR", $tr, "/SC", "ONLOGON", "/RL", "LIMITED", "/F", "/IT"
-  ) -Seconds 20
+function Test-TaskExists([string]$Name) {
+  try {
+    if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
+      if (Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue) { return $true }
+    }
+  } catch {}
+  # Call operator quotes $Name correctly even with spaces.
+  & schtasks.exe /Query /TN $Name 2>$null | Out-Null
+  return ($LASTEXITCODE -eq 0)
 }
-if ($code -ne 0) {
-  Write-Boot ("[desktop] WARNING: schtasks create failed exit=" + $code)
-} else {
+
+function Register-DesktopTask([string]$Name, [string]$Exe, [string]$WorkDir) {
+  # ScheduledTasks cmdlets build the action arguments without any quoting guesswork.
+  try {
+    if (Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue) {
+      $action = New-ScheduledTaskAction -Execute $Exe -Argument "--foreground" -WorkingDirectory $WorkDir
+      $trigger = New-ScheduledTaskTrigger -AtLogOn
+      # Group = BUILTIN\Users by SID so the task runs for whoever logs on, in any locale.
+      $principal = New-ScheduledTaskPrincipal -GroupId "S-1-5-32-545" -RunLevel Highest
+      # ExecutionTimeLimit 0 = never kill the server (schtasks defaults to 72h).
+      $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries -StartWhenAvailable `
+        -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+      Register-ScheduledTask -TaskName $Name -Action $action -Trigger $trigger `
+        -Principal $principal -Settings $settings -Force -ErrorAction Stop | Out-Null
+      if (Test-TaskExists $Name) { return "cmdlet" }
+    }
+  } catch {
+    Write-Boot ("[desktop] Register-ScheduledTask failed: " + $_.Exception.Message)
+  }
+
+  # Fallback: schtasks /XML avoids command-line quoting entirely.
+  try {
+    $xmlPath = Join-Path $env:TEMP ("nkds_task_" + [Guid]::NewGuid().ToString("N") + ".xml")
+    $xml = @"
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>NK DentalSoft clinic server (desktop autostart)</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <GroupId>S-1-5-32-545</GroupId>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>$Exe</Command>
+      <Arguments>--foreground</Arguments>
+      <WorkingDirectory>$WorkDir</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+"@
+    Set-Content -LiteralPath $xmlPath -Value $xml -Encoding Unicode
+    & schtasks.exe /Create /TN $Name /XML $xmlPath /F 2>&1 | ForEach-Object { Write-Boot ("[desktop]   " + $_) }
+    Remove-Item -LiteralPath $xmlPath -Force -ErrorAction SilentlyContinue
+    if (Test-TaskExists $Name) { return "xml" }
+  } catch {
+    Write-Boot ("[desktop] schtasks /XML failed: " + $_.Exception.Message)
+  }
+  return ""
+}
+
+# Call operator (not Run-Hidden) so the quoted task name reaches schtasks intact.
+& schtasks.exe /Delete /TN $taskName /F 2>$null | Out-Null
+
+$taskOk = $false
+$how = Register-DesktopTask -Name $taskName -Exe $exe -WorkDir $InstallDir
+if ($how) {
   $taskOk = $true
-  Write-Boot "[desktop] Scheduled Task registered"
+  Write-Boot ("[desktop] Scheduled Task registered via " + $how)
+} else {
+  Write-Boot "[desktop] WARNING: could not register Scheduled Task 'NKDentalSoft Server'"
 }
 
 $repairLan = Join-Path $InstallDir "scripts\repair_lan.ps1"
@@ -215,18 +325,27 @@ for ($attempt = 1; $attempt -le 2; $attempt++) {
 
 if ($ok) {
   Write-Boot "[desktop] OK - http://127.0.0.1:8001/ is listening"
-  exit 0
 }
 
+# The autostart task is what lets the desktop icon work after a reboot WITHOUT
+# elevation. A listening port right now is not proof: the installer's own elevated
+# child is listening. Never report success while the task is missing.
+if (-not $taskOk -and (Test-TaskExists $taskName)) {
+  $taskOk = $true
+  Write-Boot "[desktop] Scheduled Task verified on re-check"
+}
+
+if (-not $taskOk) {
+  Write-Boot ("[desktop] FAILED - autostart task missing, see " + $bootLog)
+  exit 3
+}
+
+if ($ok) { exit 0 }
+
 $alive = Get-Process -Name "nkdentalsoft-server" -ErrorAction SilentlyContinue
-if ($taskOk -and $alive) {
+if ($alive) {
   Write-Boot "[desktop] PARTIAL OK - task registered, process running, port not open yet"
   exit 0
 }
-if ($taskOk) {
-  Write-Boot "[desktop] PARTIAL OK - task registered; use Open-UI.bat or next logon"
-  exit 0
-}
-
-Write-Boot ("[desktop] FAILED - see " + $bootLog + " and " + (Join-Path $logDir "startup.log"))
-throw "Server did not open TCP 8001 after install start. See install_autostart.log"
+Write-Boot "[desktop] PARTIAL OK - task registered; use Open-UI.bat or next logon"
+exit 0

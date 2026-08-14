@@ -189,3 +189,49 @@ def test_terminate_pids_skips_self(rt):
 
 def test_foreground_log_path(rt, tmp_path: Path):
     assert rt.foreground_log_path(tmp_path) == tmp_path / "logs" / "foreground.log"
+
+
+def test_data_writable_ok_on_fresh_root(rt, tmp_path: Path):
+    ok, reason = rt.data_writable(tmp_path)
+    assert ok is True
+    assert reason == ""
+    assert (tmp_path / "data").is_dir()
+    assert not (tmp_path / "data" / ".nkds_write_probe").exists()
+
+
+def test_data_writable_ok_with_writable_db(rt, tmp_path: Path):
+    db = tmp_path / "data" / "clinica.db"
+    db.parent.mkdir(parents=True)
+    db.write_bytes(b"sqlite")
+    ok, reason = rt.data_writable(tmp_path)
+    assert ok is True
+    assert reason == ""
+
+
+def test_data_writable_detects_readonly_db(rt, tmp_path: Path, monkeypatch):
+    db = tmp_path / "data" / "clinica.db"
+    db.parent.mkdir(parents=True)
+    db.write_bytes(b"sqlite")
+
+    real_open = Path.open
+
+    def fake_open(self, mode="r", *args, **kwargs):
+        if self.name == "clinica.db" and "+" in mode:
+            raise PermissionError("Access is denied")
+        return real_open(self, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fake_open)
+    ok, reason = rt.data_writable(tmp_path)
+    assert ok is False
+    assert "solo lectura" in reason
+    assert "clinica.db" in reason
+
+
+def test_data_writable_detects_readonly_folder(rt, tmp_path: Path, monkeypatch):
+    def fake_write_bytes(self, _data):
+        raise PermissionError("Access is denied")
+
+    monkeypatch.setattr(Path, "write_bytes", fake_write_bytes)
+    ok, reason = rt.data_writable(tmp_path)
+    assert ok is False
+    assert "sin permiso de escritura" in reason

@@ -27,6 +27,7 @@ STALE_LOG_SECONDS = 45.0
 HTTP_PROBE_TIMEOUT = 1.5
 
 SERVER_EXE_NAME = "nkdentalsoft-server.exe"
+CLINIC_DB_NAME = "clinica.db"
 MUTEX_HELD_NOT_LISTENING = 2
 
 
@@ -215,3 +216,38 @@ def terminate_pids(pids: list[int]) -> list[int]:
 
 def foreground_log_path(root: Path) -> Path:
     return Path(root) / "logs" / "foreground.log"
+
+
+def data_writable(root: Path, db_name: str = CLINIC_DB_NAME) -> tuple[bool, str]:
+    """Can this process write the clinic data? Returns (ok, reason).
+
+    %ProgramData% only inherits "read & execute" for standard users on files, so
+    a database created by an elevated install is read-only for the clinic user
+    and the server dies before it can listen. Detect that up front instead of
+    failing as an opaque startup timeout.
+    """
+    data_dir = Path(root) / "data"
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return False, f"no se puede crear la carpeta de datos {data_dir}: {exc}"
+
+    probe = data_dir / ".nkds_write_probe"
+    try:
+        probe.write_bytes(b"probe")
+    except OSError as exc:
+        return False, f"sin permiso de escritura en {data_dir}: {exc}"
+    finally:
+        try:
+            probe.unlink()
+        except OSError:
+            pass
+
+    db = data_dir / db_name
+    if db.is_file():
+        try:
+            with db.open("r+b"):
+                pass
+        except OSError as exc:
+            return False, f"la base de datos {db} es de solo lectura para este usuario: {exc}"
+    return True, ""

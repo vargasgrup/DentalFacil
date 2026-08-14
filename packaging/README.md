@@ -139,6 +139,30 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging\scripts\build_serv
 4. En **Configuración**: copiar la **URL actual** para Clients (IP Ethernet preferida).
 5. Atajos: **Reparar red LAN**, **Activar Hotspot clinica** (enciende Mobile Hotspot por API WinRT, deja SSID/clave/URL en pantalla y en `%ProgramData%\NKDentalSoft\HOTSPOT.txt`; la ventana ya no se cierra sola).
 
+### Abrir con doble clic (sin «Ejecutar como Administrador»)
+
+Dos piezas, ambas del instalador, hacen que el icono del Escritorio funcione con la sesión normal del usuario:
+
+| Pieza | Script | Efecto |
+|---|---|---|
+| Permisos de datos | `scripts\grant_clinic_data_access.ps1` | Concede a `BUILTIN\Users` (SID `S-1-5-32-545`) **Modify** con `(OI)(CI)` sobre `%ProgramData%\NKDentalSoft`. Solo cambia ACLs; nunca lee ni mueve datos clínicos. |
+| Arranque automático | `scripts\register_desktop_autostart.ps1` | Tarea programada **`NKDentalSoft Server`**, ONLOGON, grupo Users, `HighestAvailable`, `ExecutionTimeLimit=PT0S`. |
+
+Por qué hace falta: `%ProgramData%` hereda «Usuarios = lectura» sobre **archivos**. Todo lo que crea el instalador elevado (`data\clinica.db`, `config\.env`, `logs\startup.log`) queda con propietario Administradores, así que el servidor lanzado por doble clic no puede escribir la base y nunca abre TCP 8001 — el síntoma clásico es «solo abre como Administrador».
+
+La tarea se crea con `Register-ScheduledTask` y, si falla, con `schtasks /Create /XML`. **Nunca** con `Start-Process -ArgumentList @(...)` sin comillas: PowerShell 5.1 une los argumentos verbatim, así que `/TN NKDentalSoft Server` llegaba partido en dos tokens y `schtasks` devolvía `0x80004005` en silencio. Por eso `Run-Hidden` ahora entrecomilla cada argumento (también arregla rutas con espacios, p. ej. `C:\Program Files\NKDentalSoft\Server`).
+
+El instalador **falla de forma visible** (exit 3 + MessageBox) si la tarea no queda registrada. Un puerto 8001 abierto no es prueba: el hijo elevado del propio instalador está escuchando.
+
+Verificación tras instalar:
+
+```powershell
+schtasks /Query /TN "NKDentalSoft Server"
+icacls C:\ProgramData\NKDentalSoft\data\clinica.db   # Usuarios debe tener (M) o (F)
+```
+
+Logs: `%ProgramData%\NKDentalSoft\logs\install_autostart.log` y `grant_data_access.log`.
+
 ### Actualización sobre una instalación previa (in-place)
 
 El Setup **es el actualizador**. No hay un “hotfix” aparte: generar un instalador nuevo y ejecutarlo en la PC Server **como Administrador**.

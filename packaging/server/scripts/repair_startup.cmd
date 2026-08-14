@@ -18,11 +18,12 @@ if not exist "%INSTALL%\nkdentalsoft-server.exe" (
 echo Instalacion detectada: %INSTALL%
 echo.
 
-echo [1/3] Registrando arranque de escritorio y eliminando servicio zombie...
+echo [1/3] Permisos de datos de la clinica + arranque automatico de escritorio...
 "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%INSTALL%\scripts\register_desktop_autostart.ps1" -InstallDir "%INSTALL%"
 if errorlevel 1 (
   echo FALLO el registro. Revise:
   echo   %SystemDrive%\ProgramData\NKDentalSoft\logs\install_autostart.log
+  echo   %SystemDrive%\ProgramData\NKDentalSoft\logs\grant_data_access.log
   pause
   exit /b 1
 )

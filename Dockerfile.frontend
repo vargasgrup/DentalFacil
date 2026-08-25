@@ -1,6 +1,6 @@
 # Build from repository root (Railway monorepo-safe):
 #   docker build -f Dockerfile.frontend .
-ARG BACKEND_URL=http://localhost:8001
+ARG BACKEND_URL=http://backend:8001
 
 FROM node:18-alpine AS builder
 
@@ -16,6 +16,7 @@ COPY frontend/ .
 # Never bake NEXT_PUBLIC_API_URL (see frontend/Dockerfile).
 ENV NEXT_PUBLIC_API_URL=
 ENV BACKEND_URL=$BACKEND_URL
+# Cache buster: 2026-08-25-1132
 RUN npm run build
 
 FROM node:18-alpine AS runner

@@ -58,6 +58,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.nk-backend.rule=Host(`dentalsoft.duckdns.org`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.nk-backend.priority=100"
       - "traefik.http.routers.nk-backend.entrypoints=websecure"
       - "traefik.http.routers.nk-backend.tls.certresolver=letsencrypt"
       - "traefik.http.services.nk-backend.loadbalancer.server.port=8001"
@@ -87,6 +88,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.nk-frontend.rule=Host(`dentalsoft.duckdns.org`)"
+      - "traefik.http.routers.nk-frontend.priority=10"
       - "traefik.http.routers.nk-frontend.entrypoints=websecure"
       - "traefik.http.routers.nk-frontend.tls.certresolver=letsencrypt"
       - "traefik.http.services.nk-frontend.loadbalancer.server.port=3001"

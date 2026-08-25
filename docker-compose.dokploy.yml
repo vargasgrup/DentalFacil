@@ -1,0 +1,115 @@
+####################################################################
+# docker-compose.dokploy.yml
+# Dominio: dentalsoft.duckdns.org → IP Contabo: 80.190.75.186
+# Uso: Dokploy → New Service → Docker Compose → este archivo
+####################################################################
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: nk_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-nk_dentalsoft}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD requerido}
+      POSTGRES_DB: ${DB_NAME:-nk_dentalsoft}
+    volumes:
+      - nk_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-nk_dentalsoft}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nk_internal
+
+  # ── Backend (FastAPI) ────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: nk_backend
+    restart: always
+    environment:
+      PORT: "8001"
+      APP_ENV: production
+      DATABASE_URL: postgresql+psycopg://${DB_USER:-nk_dentalsoft}:${DB_PASSWORD}@db:5432/${DB_NAME:-nk_dentalsoft}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requerido}
+      MAINTENANCE_ACCESS_KEY: ${MAINTENANCE_ACCESS_KEY:-changeme}
+      CORS_ORIGINS: '["https://dentalsoft.duckdns.org"]'
+      CLINIC_NAME: ${CLINIC_NAME:-DentalSimple}
+      CLINIC_TICKET_SERIE: ${CLINIC_TICKET_SERIE:-T001}
+      PUBLIC_APP_URL: https://dentalsoft.duckdns.org
+      REMINDER_HOURS_BEFORE: "24"
+      DEMO_MODE: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - nk_uploads:/app/app/assets/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8001/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nk-backend.rule=Host(`dentalsoft.duckdns.org`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.nk-backend.entrypoints=websecure"
+      - "traefik.http.routers.nk-backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.nk-backend.loadbalancer.server.port=8001"
+      - "traefik.docker.network=dokploy-network"
+    networks:
+      - nk_internal
+      - dokploy-network
+
+  # ── Frontend (Next.js) ───────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        # Baked en el bundle del browser — usar rutas relativas /api/...
+        NEXT_PUBLIC_API_URL: ""
+        # URL interna Docker para los rewrites de Next.js
+        BACKEND_URL: http://backend:8001
+    container_name: nk_frontend
+    restart: always
+    environment:
+      BACKEND_URL: http://backend:8001
+      NODE_ENV: production
+    depends_on:
+      backend:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nk-frontend.rule=Host(`dentalsoft.duckdns.org`)"
+      - "traefik.http.routers.nk-frontend.entrypoints=websecure"
+      - "traefik.http.routers.nk-frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.nk-frontend.loadbalancer.server.port=3001"
+      - "traefik.docker.network=dokploy-network"
+      # Redirigir HTTP → HTTPS
+      - "traefik.http.routers.nk-frontend-http.rule=Host(`dentalsoft.duckdns.org`)"
+      - "traefik.http.routers.nk-frontend-http.entrypoints=web"
+      - "traefik.http.routers.nk-frontend-http.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
+      - "traefik.docker.network=dokploy-network"
+    networks:
+      - nk_internal
+      - dokploy-network
+
+volumes:
+  nk_pgdata:
+    name: nk_dentalsoft_pgdata
+  nk_uploads:
+    name: nk_dentalsoft_uploads
+
+networks:
+  nk_internal:
+    driver: bridge
+  dokploy-network:
+    external: true

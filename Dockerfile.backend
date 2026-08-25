@@ -21,4 +21,5 @@ ENV PORT=8001
 ENV DEMO_MODE=false
 EXPOSE 8001
 
-CMD ["./start.sh"]
+CMD ["python", "boot.py"]
+

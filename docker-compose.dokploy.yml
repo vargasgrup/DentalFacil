@@ -51,10 +51,10 @@ services:
       - nk_uploads:/app/app/assets/uploads
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8001/api/health || exit 1"]
-      interval: 15s
+      interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 20s
+      retries: 10
+      start_period: 40s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.nk-backend.rule=Host(`dentalsoft.duckdns.org`) && PathPrefix(`/api`)"
@@ -83,7 +83,7 @@ services:
       NODE_ENV: production
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.nk-frontend.rule=Host(`dentalsoft.duckdns.org`)"
@@ -94,9 +94,9 @@ services:
       # Redirigir HTTP → HTTPS
       - "traefik.http.routers.nk-frontend-http.rule=Host(`dentalsoft.duckdns.org`)"
       - "traefik.http.routers.nk-frontend-http.entrypoints=web"
-      - "traefik.http.routers.nk-frontend-http.middlewares=redirect-to-https"
-      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
-      - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
+      - "traefik.http.routers.nk-frontend-http.middlewares=nk-redirect-to-https"
+      - "traefik.http.middlewares.nk-redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.nk-redirect-to-https.redirectscheme.permanent=true"
       - "traefik.docker.network=dokploy-network"
     networks:
       - nk_internal

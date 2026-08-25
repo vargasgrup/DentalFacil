@@ -6,25 +6,6 @@
 
 services:
 
-  # ── PostgreSQL ──────────────────────────────────────────────
-  db:
-    image: postgres:16-alpine
-    container_name: nk_db
-    restart: always
-    environment:
-      POSTGRES_USER: ${DB_USER:-nk_dentalsoft}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD requerido}
-      POSTGRES_DB: ${DB_NAME:-nk_dentalsoft}
-    volumes:
-      - nk_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-nk_dentalsoft}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - nk_internal
-
   # ── Backend (FastAPI) ────────────────────────────────────────
   backend:
     build:
@@ -35,7 +16,7 @@ services:
     environment:
       PORT: "8001"
       APP_ENV: production
-      DATABASE_URL: postgresql+psycopg://${DB_USER:-nk_dentalsoft}:${DB_PASSWORD}@db:5432/${DB_NAME:-nk_dentalsoft}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/clinica.db}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requerido}
       MAINTENANCE_ACCESS_KEY: ${MAINTENANCE_ACCESS_KEY:-changeme}
       CORS_ORIGINS: '["https://dentalsoft.duckdns.org"]'
@@ -44,17 +25,15 @@ services:
       PUBLIC_APP_URL: https://dentalsoft.duckdns.org
       REMINDER_HOURS_BEFORE: "24"
       DEMO_MODE: "false"
-    depends_on:
-      db:
-        condition: service_healthy
     volumes:
+      - nk_data:/data
       - nk_uploads:/app/app/assets/uploads
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8001/api/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 40s
+      retries: 5
+      start_period: 15s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.nk-backend.rule=Host(`dentalsoft.duckdns.org`) && PathPrefix(`/api`)"
@@ -105,8 +84,8 @@ services:
       - dokploy-network
 
 volumes:
-  nk_pgdata:
-    name: nk_dentalsoft_pgdata
+  nk_data:
+    name: nk_dentalsoft_data
   nk_uploads:
     name: nk_dentalsoft_uploads
 

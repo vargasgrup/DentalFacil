@@ -84,6 +84,21 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [inlineCode, setInlineCode] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const savedUser = localStorage.getItem("nk_remember_username");
+      const savedRemember = localStorage.getItem("nk_remember_me");
+      if (savedUser && (savedRemember === "true" || savedRemember === null)) {
+        setUsername(savedUser);
+        setRememberMe(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -142,6 +157,21 @@ export default function LoginPage() {
         await setup(nombre, username, password, email);
       } else {
         await login(username, password);
+        if (rememberMe) {
+          try {
+            localStorage.setItem("nk_remember_username", username.trim());
+            localStorage.setItem("nk_remember_me", "true");
+          } catch {
+            /* ignore */
+          }
+        } else {
+          try {
+            localStorage.removeItem("nk_remember_username");
+            localStorage.removeItem("nk_remember_me");
+          } catch {
+            /* ignore */
+          }
+        }
       }
       // After PC sleep, server may wake slowly — probe HTML shell before navigate
       await navigateToAppShell("/dashboard/");
@@ -537,10 +567,23 @@ export default function LoginPage() {
               />
 
               {!needsSetup && (
-                <div className="-mt-1 text-right">
+                <div className="-mt-0.5 flex items-center justify-between gap-2 text-xs sm:text-sm">
+                  <label className="group inline-flex cursor-pointer items-center gap-2 select-none text-slate-600 transition-colors hover:text-slate-900">
+                    <input
+                      type="checkbox"
+                      id="remember-me"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="h-4 w-4 rounded-[4px] border-slate-300 text-[#2B9FD9] focus:ring-2 focus:ring-[#55BBF9]/30 focus:ring-offset-0 transition cursor-pointer accent-[#2B9FD9]"
+                    />
+                    <span className="text-[0.8125rem] text-slate-600 transition-colors group-hover:text-slate-900 sm:text-[0.875rem]">
+                      Recordar usuario
+                    </span>
+                  </label>
+
                   <button
                     type="button"
-                    className="text-sm font-medium text-[#2B9FD9] transition-colors hover:text-[#1c66e8]"
+                    className="text-[0.8125rem] font-medium text-[#2B9FD9] transition-colors hover:text-[#1c66e8] hover:underline sm:text-[0.875rem]"
                     onClick={() => {
                       setError("");
                       setInfo("");

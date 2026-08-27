@@ -16,7 +16,7 @@ COPY frontend/ .
 # Never bake NEXT_PUBLIC_API_URL (see frontend/Dockerfile).
 ENV NEXT_PUBLIC_API_URL=
 ENV BACKEND_URL=$BACKEND_URL
-# Cache buster: 2026-08-25-1132
+# Cache buster: 2026-08-27-0706
 RUN npm run build
 
 FROM node:18-alpine AS runner

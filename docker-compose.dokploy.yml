@@ -24,7 +24,7 @@ services:
       CLINIC_TICKET_SERIE: ${CLINIC_TICKET_SERIE:-T001}
       PUBLIC_APP_URL: https://dentalsoft.duckdns.org
       REMINDER_HOURS_BEFORE: "24"
-      DEMO_MODE: "false"
+      DEMO_MODE: ${DEMO_MODE:-true}
     volumes:
       - nk_data:/data
       - nk_uploads:/app/app/assets/uploads
